@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from zeus_dev_helper_mcp.config import HelperConfig
+from zeus_dev_helper_mcp.docs_links import docs_url
 
 STAMP_WARNING = (
     "TEMPLATE ONLY — not stamped for your cluster. "
@@ -124,12 +125,10 @@ def list_modes(cfg: HelperConfig) -> dict[str, Any]:
         "warning": STAMP_WARNING,
         "docs": {
             "contracts": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "zeus-client/contracts-and-catalog.md"
+                docs_url("zeus-client/contracts-and-catalog.md")
             ),
             "using_client": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "zeus-client/using-zeus-client.md"
+                docs_url("zeus-client/using-zeus-client.md")
             ),
         },
     }
@@ -179,12 +178,10 @@ def fetch_chat_request(
         ),
         "docs": {
             "contracts": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "zeus-client/contracts-and-catalog.md"
+                docs_url("zeus-client/contracts-and-catalog.md")
             ),
             "errors_hash_drift": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "zeus-client/errors.md#err-409-drift"
+                docs_url("zeus-client/errors.md#err-409-drift")
             ),
         },
     }

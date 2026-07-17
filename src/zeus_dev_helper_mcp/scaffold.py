@@ -16,7 +16,7 @@ SAMPLE_TRAVEL = {
     "clone": "git clone https://github.com/koten-ai/demo_travel_sample.git",
     "related": [
         "https://github.com/koten-ai/zeus_client_python/tree/main/docs/demo-builder",
-        "https://github.com/koten-ai/koten_docs/blob/zeus-v1.0.0/zeus-client/using-zeus-client.md",
+        docs_url("zeus-client/using-zeus-client.md"),
     ],
 }
 
@@ -124,7 +124,7 @@ python main.py
 
 ## Docs
 
-- https://github.com/koten-ai/koten_docs/blob/zeus-v1.0.0/zeus-client/using-zeus-client.md
+- https://docs.koten.ai/zeus-client/using-zeus-client
 - https://github.com/koten-ai/zeus_chat_request (min catalog templates)
 """
 
@@ -136,6 +136,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from zeus_dev_helper_mcp.docs_links import docs_url
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -271,8 +272,8 @@ dependencies = [
         "run": f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cp .env.example .env && python main.py",
         "next_action": "Fill .env secrets, install deps, run main.py; then smoke_test_agent via Helper or locally",
         "docs": {
-            "using": f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/zeus-client/using-zeus-client.md",
-            "recipe_01": f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/zeus-client/recipes/01-minimal-qa.md",
+            "using": docs_url("zeus-client/using-zeus-client.md"),
+            "recipe_01": docs_url("zeus-client/recipes/01-minimal-qa.md"),
         },
     }
 

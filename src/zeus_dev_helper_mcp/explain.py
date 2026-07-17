@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from zeus_dev_helper_mcp.config import HelperConfig
+from zeus_dev_helper_mcp.docs_links import docs_url
 
 # Short answers; deep-links to koten_docs. Expand from glossary.md as needed.
 TOPICS: dict[str, dict[str, str]] = {
@@ -80,20 +81,21 @@ def explain_topic(cfg: HelperConfig, topic: str) -> dict:
     }
     key = aliases.get(key, key)
     entry = TOPICS.get(key)
-    base = f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
     if not entry:
         return {
             "topic": topic,
             "found": False,
             "known_topics": sorted(TOPICS.keys()),
             "hint": "Use a known topic id or see glossary.md",
-            "docs_glossary": base + "zeus-client/glossary.md",
+            "docs_glossary": docs_url("zeus-client/glossary.md"),
+            "docs_home": docs_url(""),
         }
     out = {
         "topic": key,
         "found": True,
         "summary": entry["summary"],
-        "doc_url": base + entry["doc"],
+        "doc_url": docs_url(entry["doc"]),
+        "docs_home": docs_url(""),
     }
     if entry.get("external"):
         out["external_url"] = entry["external"]

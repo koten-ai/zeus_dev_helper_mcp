@@ -8,7 +8,7 @@
 | **Epic** | [ZDH-1](https://kotenai.atlassian.net/browse/ZDH-1) |
 | **Skeleton** | [ZDH-3](https://kotenai.atlassian.net/browse/ZDH-3) |
 | **Catalogs** | [ZDH-14](https://kotenai.atlassian.net/browse/ZDH-14) → [zeus_chat_request](https://github.com/koten-ai/zeus_chat_request) |
-| **Docs** | [koten_docs · dev-helper-mcp](https://github.com/koten-ai/koten_docs/blob/zeus-v1.0.0/zeus-client/dev-helper-mcp.md) |
+| **Docs** | [docs.koten.ai](https://docs.koten.ai/) · [Dev Helper MCP](https://docs.koten.ai/zeus-client/dev-helper-mcp) |
 
 > Not a data-plane MCP. Coaches: checklist → templates → (later) live readiness & smoke.
 
@@ -118,7 +118,8 @@ start_project → set_prereq → validate_env → readiness_check
 | `GITHUB_TOKEN` / `GH_TOKEN` | Private GitHub fetch |
 | `ZEUS_CHAT_REQUEST_REPO` | default `koten-ai/zeus_chat_request` |
 | `ZEUS_CHAT_REQUEST_BRANCH` | default `main` |
-| `KOTEN_DOCS_BRANCH` | default `zeus-v1.0.0` |
+| `KOTEN_DOCS_BASE_URL` | default `https://docs.koten.ai` (published site) |
+| `KOTEN_DOCS_BRANCH` | default `zeus-v1.0.0` (source branch for machine files) |
 | `ZEUS_DEV_HELPER_STATE_DIR` | checklist + prereqs state (default `~/.config/zeus_dev_helper`) |
 | `LLM_API_KEY` / `OPENAI_API_KEY` | presence checked by `validate_env` |
 
@@ -137,5 +138,6 @@ Requires sibling `../zeus_chat_request` with `manifest.json` for catalog tests.
 | --- | --- |
 | [zeus_client_python](https://github.com/koten-ai/zeus_client_python) | SDK |
 | [zeus_chat_request](https://github.com/koten-ai/zeus_chat_request) | Min catalogs |
-| [koten_docs](https://github.com/koten-ai/koten_docs) | Docs + agent-index |
+| [docs.koten.ai](https://docs.koten.ai/) | Published platform docs |
+| [koten_docs](https://github.com/koten-ai/koten_docs) | Docs source + agent-index.yaml |
 | [Zeus](https://github.com/koten-ai/Zeus) | Engine |

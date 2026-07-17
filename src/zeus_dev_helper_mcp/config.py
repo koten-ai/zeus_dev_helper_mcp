@@ -11,6 +11,7 @@ DEFAULT_DOCS_BRANCH = "zeus-v1.0.0"
 DEFAULT_CHAT_REQUEST_REPO = "koten-ai/zeus_chat_request"
 DEFAULT_CHAT_REQUEST_BRANCH = "main"
 DEFAULT_KOTEN_DOCS_REPO = "koten-ai/koten_docs"
+DEFAULT_DOCS_BASE_URL = "https://docs.koten.ai"
 
 
 @dataclass
@@ -36,6 +37,7 @@ class HelperConfig:
     docs_repo: str = DEFAULT_KOTEN_DOCS_REPO
     docs_branch: str = DEFAULT_DOCS_BRANCH
     docs_local_dir: Path | None = None
+    docs_base_url: str = DEFAULT_DOCS_BASE_URL
     # Project state dir
     state_dir: Path = field(default_factory=lambda: Path.home() / ".config" / "zeus_dev_helper")
 
@@ -57,6 +59,7 @@ class HelperConfig:
             "chat_request_branch": self.chat_request_branch,
             "docs_branch": self.docs_branch,
             "docs_local_dir": str(self.docs_local_dir) if self.docs_local_dir else None,
+            "docs_base_url": self.docs_base_url,
             "state_dir": str(self.state_dir),
         }
 
@@ -138,6 +141,8 @@ def load_config() -> HelperConfig:
         docs_branch=os.environ.get("KOTEN_DOCS_BRANCH", DEFAULT_DOCS_BRANCH).strip()
         or DEFAULT_DOCS_BRANCH,
         docs_local_dir=Path(docs_dir).expanduser() if docs_dir else None,
+        docs_base_url=os.environ.get("KOTEN_DOCS_BASE_URL", DEFAULT_DOCS_BASE_URL).strip().rstrip("/")
+        or DEFAULT_DOCS_BASE_URL,
         state_dir=state_dir,
     )
 

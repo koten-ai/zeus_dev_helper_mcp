@@ -12,6 +12,7 @@ import httpx
 from zeus_dev_helper_mcp.checklist import set_item_status
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.readiness import run_readiness_check
+from zeus_dev_helper_mcp.docs_links import docs_url
 
 
 def _base(cfg: HelperConfig) -> str:
@@ -170,8 +171,8 @@ def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict
         "req_id": req_id or None,
         "steps": steps,
         "docs": {
-            "errors": f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/zeus-client/errors.md",
-            "probes": f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/zeus/developers/api/probes.md",
+            "errors": docs_url("zeus-client/errors.md"),
+            "probes": docs_url("zeus/developers/api/probes.md"),
         },
     }
 
@@ -206,12 +207,10 @@ def smoke_test_agent(
             ),
             "docs": {
                 "using": (
-                    f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                    "zeus-client/using-zeus-client.md"
+                    docs_url("zeus-client/using-zeus-client.md")
                 ),
                 "recipe_01": (
-                    f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                    "zeus-client/recipes/01-minimal-qa.md"
+                    docs_url("zeus-client/recipes/01-minimal-qa.md")
                 ),
             },
         }
@@ -380,8 +379,8 @@ def smoke_test_agent(
             pass
 
     result["docs"] = {
-        "using": f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/zeus-client/using-zeus-client.md",
-        "errors": f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/zeus-client/errors.md",
-        "recipe_01": f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/zeus-client/recipes/01-minimal-qa.md",
+        "using": docs_url("zeus-client/using-zeus-client.md"),
+        "errors": docs_url("zeus-client/errors.md"),
+        "recipe_01": docs_url("zeus-client/recipes/01-minimal-qa.md"),
     }
     return result

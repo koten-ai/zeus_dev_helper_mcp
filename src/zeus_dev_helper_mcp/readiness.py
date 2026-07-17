@@ -11,6 +11,7 @@ import httpx
 from zeus_dev_helper_mcp.catalog import list_modes
 from zeus_dev_helper_mcp.checklist import set_item_status
 from zeus_dev_helper_mcp.config import HelperConfig
+from zeus_dev_helper_mcp.docs_links import docs_url
 
 GateStatus = str  # pass | fail | unknown | skip
 
@@ -568,16 +569,13 @@ def _finish(
 
     docs = {
         "probes": (
-            f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-            "zeus/developers/api/probes.md"
+            docs_url("zeus/developers/api/probes.md")
         ),
         "errors": (
-            f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-            "zeus-client/errors.md"
+            docs_url("zeus-client/errors.md")
         ),
         "dev_helper": (
-            f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-            "zeus-client/dev-helper-mcp.md"
+            docs_url("zeus-client/dev-helper-mcp.md")
         ),
     }
 

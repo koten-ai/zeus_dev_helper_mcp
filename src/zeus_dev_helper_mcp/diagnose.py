@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from zeus_dev_helper_mcp.config import HelperConfig
+from zeus_dev_helper_mcp.docs_links import docs_url
 
 # Ordered rules: first match wins
 _RULES: list[tuple[list[str], str, str]] = [
@@ -60,7 +61,7 @@ def diagnose_error(
     elif st == "409":
         failure, anchor = "hash_drift", "err-409-drift"
 
-    base = f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/zeus-client/errors.md"
+    base = docs_url("zeus-client/errors.md")
     return {
         "implemented": True,
         "failure_class": failure,
@@ -76,6 +77,6 @@ def diagnose_error(
             "message_preview": (message or body)[:300] or None,
         },
         "agent_index": (
-            f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/agent-index.yaml"
+            docs_url("agent-index.yaml")
         ),
     }

@@ -32,6 +32,7 @@ from zeus_dev_helper_mcp.scaffold import (
 from zeus_dev_helper_mcp.smoke import smoke_test_agent as smoke_agent_impl
 from zeus_dev_helper_mcp.smoke import smoke_test_zeus as smoke_zeus_impl
 from zeus_dev_helper_mcp.walkthrough import build_gap_report, enriched_next_step
+from zeus_dev_helper_mcp.docs_links import docs_url
 
 mcp = FastMCP(
     "zeus-dev-helper",
@@ -59,8 +60,7 @@ def _stub(tool: str, phase: str) -> dict[str, Any]:
         "get_checklist, next_step, list_catalog_modes, fetch_chat_request, explain.",
         "docs": {
             "dev_helper_mcp": (
-                f"https://github.com/koten-ai/koten_docs/blob/{_cfg().docs_branch}/"
-                "zeus-client/dev-helper-mcp.md"
+                docs_url("zeus-client/dev-helper-mcp.md")
             ),
             "zdh_board": "https://kotenai.atlassian.net/jira/software/projects/ZDH/boards/45",
         },
@@ -95,12 +95,10 @@ def doctor() -> dict[str, Any]:
         },
         "docs": {
             "for_ai_agents": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "zeus-client/for-ai-agents.md"
+                docs_url("zeus-client/for-ai-agents.md")
             ),
             "using_zeus_client": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "zeus-client/using-zeus-client.md"
+                docs_url("zeus-client/using-zeus-client.md")
             ),
             "zeus_chat_request": f"https://github.com/{cfg.chat_request_repo}",
         },
@@ -125,8 +123,8 @@ def start_project(goal: str = "single-agent", sample: str = "travel") -> dict[st
         "checklist_path": str(cfg.state_dir / "checklist.json"),
         "next_step": nxt,
         "read_first": [
-            f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/zeus-client/for-ai-agents.md",
-            f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/zeus-client/using-zeus-client.md",
+            docs_url("zeus-client/for-ai-agents.md"),
+            docs_url("zeus-client/using-zeus-client.md"),
         ],
     }
 
@@ -228,8 +226,7 @@ def validate_env() -> dict[str, Any]:
         "catalog_templates": catalog_note,
         "issues": issues,
         "docs": (
-            f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-            "zeus-client/config-reference.md"
+            docs_url("zeus-client/config-reference.md")
         ),
         "next_action": "Run readiness_check after ZEUS_URL is set",
     }
@@ -336,8 +333,7 @@ def fetch_chat_request(mode: str = "analytics", detail: str = "summary") -> dict
                 "or GITHUB_TOKEN; then retry. Still stamp on Zeus for production."
             ),
             "docs": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "zeus-client/contracts-and-catalog.md"
+                docs_url("zeus-client/contracts-and-catalog.md")
             ),
         }
 
@@ -444,8 +440,7 @@ def suggest_demo_prompts() -> dict[str, Any]:
         ],
         "note": "Prefer advice-shaped questions, not raw SQL.",
         "docs": (
-            f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-            "zeus-client/using-zeus-client.md"
+            docs_url("zeus-client/using-zeus-client.md")
         ),
     }
 

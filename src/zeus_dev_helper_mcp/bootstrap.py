@@ -10,6 +10,7 @@ import httpx
 
 from zeus_dev_helper_mcp.checklist import set_item_status
 from zeus_dev_helper_mcp.config import HelperConfig
+from zeus_dev_helper_mcp.docs_links import docs_url
 
 
 def _auth() -> tuple[str, str] | None:
@@ -144,8 +145,7 @@ def bootstrap_scope(
         ),
         "docs": {
             "contracts": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "zeus-client/contracts-and-catalog.md"
+                docs_url("zeus-client/contracts-and-catalog.md")
             ),
             "templates": "https://github.com/koten-ai/zeus_chat_request",
         },

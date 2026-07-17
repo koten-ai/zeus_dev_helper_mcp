@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from zeus_dev_helper_mcp.config import HelperConfig
+from zeus_dev_helper_mcp.docs_links import docs_url
 
 PHASES: list[dict[str, Any]] = [
     {
@@ -94,20 +95,16 @@ def load_checklist(cfg: HelperConfig) -> dict[str, Any]:
         "phases": deepcopy(PHASES),
         "docs": {
             "for_ai_agents": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "zeus-client/for-ai-agents.md"
+                docs_url("zeus-client/for-ai-agents.md")
             ),
             "using_zeus_client": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "zeus-client/using-zeus-client.md"
+                docs_url("zeus-client/using-zeus-client.md")
             ),
             "dev_helper_mcp": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "zeus-client/dev-helper-mcp.md"
+                docs_url("zeus-client/dev-helper-mcp.md")
             ),
             "agent_index": (
-                f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-                "agent-index.yaml"
+                docs_url("agent-index.yaml")
             ),
         },
     }

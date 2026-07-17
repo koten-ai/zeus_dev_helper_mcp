@@ -5,10 +5,11 @@
 ## Load order
 
 1. This file  
-2. [koten_docs agent-index.yaml](https://github.com/koten-ai/koten_docs/blob/zeus-v1.0.0/agent-index.yaml)  
-3. [for-ai-agents.md](https://github.com/koten-ai/koten_docs/blob/zeus-v1.0.0/zeus-client/for-ai-agents.md)  
-4. [using-zeus-client.md](https://github.com/koten-ai/koten_docs/blob/zeus-v1.0.0/zeus-client/using-zeus-client.md)  
-5. [zeus_chat_request](https://github.com/koten-ai/zeus_chat_request) for templates  
+2. [docs.koten.ai](https://docs.koten.ai/) (published docs; site may be placeholder while wiring)  
+3. [agent-index.yaml](https://github.com/koten-ai/koten_docs/blob/zeus-v1.0.0/agent-index.yaml) (machine index in source repo)  
+4. [For AI agents](https://docs.koten.ai/zeus-client/for-ai-agents)  
+5. [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client)  
+6. [zeus_chat_request](https://github.com/koten-ai/zeus_chat_request) for templates  
 
 ## Hard constraints
 
