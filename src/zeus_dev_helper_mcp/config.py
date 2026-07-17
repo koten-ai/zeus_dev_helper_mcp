@@ -1,4 +1,4 @@
-"""Helper runtime config from environment (no secrets in logs)."""
+"""Helper runtime config from environment + persisted prereqs (no secrets in logs)."""
 
 from __future__ import annotations
 
@@ -61,26 +61,71 @@ class HelperConfig:
         }
 
 
+def _state_dir() -> Path:
+    state = os.environ.get("ZEUS_DEV_HELPER_STATE_DIR", "").strip()
+    return Path(state).expanduser() if state else Path.home() / ".config" / "zeus_dev_helper"
+
+
+def _load_prereq_file(state_dir: Path) -> dict:
+    path = state_dir / "prereqs.json"
+    if not path.is_file():
+        return {}
+    try:
+        import json
+
+        return json.loads(path.read_text())
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def load_config() -> HelperConfig:
     cr_dir = os.environ.get("ZEUS_CHAT_REQUEST_DIR", "").strip()
     docs_dir = os.environ.get("KOTEN_DOCS_DIR", "").strip()
-    state = os.environ.get("ZEUS_DEV_HELPER_STATE_DIR", "").strip()
+    state_dir = _state_dir()
+    pr = _load_prereq_file(state_dir)
+
+    # Env wins; then persisted prereqs
+    zeus_url = os.environ.get("ZEUS_URL", "").strip() or str(pr.get("zeus_url") or "")
+    auth_mode = (
+        os.environ.get("ZEUS_AUTH_MODE", "").strip()
+        or str(pr.get("auth_mode") or "")
+        or "none"
+    )
+    bucket = os.environ.get("ZEUS_BUCKET", "").strip() or str(pr.get("bucket") or "")
+    scope = os.environ.get("ZEUS_SCOPE", "").strip() or str(pr.get("scope") or "")
+    collection = (
+        os.environ.get("ZEUS_COLLECTION", "").strip()
+        or str(pr.get("collection") or "")
+        or "_default"
+    )
+    mode = os.environ.get("ZEUS_MODE", "").strip() or str(pr.get("mode") or "") or "analytics"
+    role = os.environ.get("ZEUS_HELPER_ROLE", "").strip() or str(pr.get("role") or "") or "dev"
+
+    has_user = bool(os.environ.get("ZEUS_USERNAME") or os.environ.get("ZEUS_USER")) or bool(
+        pr.get("has_username")
+    )
+    has_password = bool(os.environ.get("ZEUS_PASSWORD")) or bool(pr.get("has_password"))
+    has_bearer = bool(os.environ.get("ZEUS_BEARER_TOKEN") or os.environ.get("ZEUS_TOKEN")) or bool(
+        pr.get("has_bearer")
+    )
+    has_llm = bool(
+        os.environ.get("LLM_API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("XAI_API_KEY")
+    ) or bool(pr.get("has_llm_key"))
+
     return HelperConfig(
-        zeus_url=os.environ.get("ZEUS_URL", "").strip(),
-        zeus_auth_mode=os.environ.get("ZEUS_AUTH_MODE", "none").strip() or "none",
-        has_zeus_user=bool(os.environ.get("ZEUS_USERNAME") or os.environ.get("ZEUS_USER")),
-        has_zeus_password=bool(os.environ.get("ZEUS_PASSWORD")),
-        has_bearer=bool(os.environ.get("ZEUS_BEARER_TOKEN") or os.environ.get("ZEUS_TOKEN")),
-        has_llm_key=bool(
-            os.environ.get("LLM_API_KEY")
-            or os.environ.get("OPENAI_API_KEY")
-            or os.environ.get("XAI_API_KEY")
-        ),
-        default_bucket=os.environ.get("ZEUS_BUCKET", "").strip(),
-        default_scope=os.environ.get("ZEUS_SCOPE", "").strip(),
-        default_collection=os.environ.get("ZEUS_COLLECTION", "_default").strip() or "_default",
-        default_mode=os.environ.get("ZEUS_MODE", "analytics").strip() or "analytics",
-        role=os.environ.get("ZEUS_HELPER_ROLE", "dev").strip() or "dev",
+        zeus_url=zeus_url,
+        zeus_auth_mode=auth_mode,
+        has_zeus_user=has_user,
+        has_zeus_password=has_password,
+        has_bearer=has_bearer,
+        has_llm_key=has_llm,
+        default_bucket=bucket,
+        default_scope=scope,
+        default_collection=collection or "_default",
+        default_mode=mode or "analytics",
+        role=role or "dev",
         chat_request_dir=Path(cr_dir).expanduser() if cr_dir else None,
         chat_request_repo=os.environ.get("ZEUS_CHAT_REQUEST_REPO", DEFAULT_CHAT_REQUEST_REPO).strip()
         or DEFAULT_CHAT_REQUEST_REPO,
@@ -93,11 +138,10 @@ def load_config() -> HelperConfig:
         docs_branch=os.environ.get("KOTEN_DOCS_BRANCH", DEFAULT_DOCS_BRANCH).strip()
         or DEFAULT_DOCS_BRANCH,
         docs_local_dir=Path(docs_dir).expanduser() if docs_dir else None,
-        state_dir=Path(state).expanduser() if state else Path.home() / ".config" / "zeus_dev_helper",
+        state_dir=state_dir,
     )
 
 
-# Module-level singleton for tools
 CFG = load_config()
 
 

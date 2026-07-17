@@ -72,7 +72,7 @@ Add to MCP servers config (example):
 
 Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the same env vars.
 
-## Implemented tools (0.1.0)
+## Implemented tools (0.2.0)
 
 | Tool | Status |
 | --- | --- |
@@ -80,12 +80,15 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 | `start_project` | Init checklist |
 | `get_checklist` / `next_step` | Checklist walkthrough |
 | `mark_done` / `mark_blocked` | Checklist updates |
-| `validate_env` | Env presence + :9091 guard |
+| `set_prereq` | **ZDH-4** — store non-secret prereqs |
+| `validate_env` | Env + prereqs + :9091 guard |
+| `readiness_check` | **ZDH-4** — live `/healthz` `/readyz` `/version`, auth, bootstrap, chat_request |
 | `list_catalog_modes` | **ZDH-14** — zeus_chat_request manifest |
 | `fetch_chat_request` | **ZDH-14** — min template by mode |
 | `explain` | Glossary topics + docs links |
 | `diagnose_error` | Partial heuristic + docs |
-| readiness / bootstrap / scaffold / smoke | **Stubs** (P2–P5) |
+| `bootstrap_scope` | Partial (via readiness gate) |
+| scaffold / smoke | **Stubs** (P4–P5) |
 
 ## Catalog rules (never invent hashes)
 
@@ -98,12 +101,16 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 | Variable | Purpose |
 | --- | --- |
 | `ZEUS_URL` | Public Zeus API (`:8080`) |
+| `ZEUS_BUCKET` / `ZEUS_SCOPE` / `ZEUS_COLLECTION` | Scope for bootstrap/auth probes |
+| `ZEUS_MODE` | default `analytics` |
+| `ZEUS_USERNAME` / `ZEUS_PASSWORD` | basic auth (not stored by set_prereq) |
+| `ZEUS_BEARER_TOKEN` | bearer auth |
 | `ZEUS_CHAT_REQUEST_DIR` | Local clone of zeus_chat_request |
 | `GITHUB_TOKEN` / `GH_TOKEN` | Private GitHub fetch |
 | `ZEUS_CHAT_REQUEST_REPO` | default `koten-ai/zeus_chat_request` |
 | `ZEUS_CHAT_REQUEST_BRANCH` | default `main` |
 | `KOTEN_DOCS_BRANCH` | default `zeus-v1.0.0` |
-| `ZEUS_DEV_HELPER_STATE_DIR` | checklist state (default `~/.config/zeus_dev_helper`) |
+| `ZEUS_DEV_HELPER_STATE_DIR` | checklist + prereqs state (default `~/.config/zeus_dev_helper`) |
 | `LLM_API_KEY` / `OPENAI_API_KEY` | presence checked by `validate_env` |
 
 ## Tests

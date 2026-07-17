@@ -19,8 +19,10 @@ from zeus_dev_helper_mcp.checklist import (
     next_step as checklist_next_step,
     set_item_status,
 )
-from zeus_dev_helper_mcp.config import CFG, HelperConfig, load_config, reload_config
+from zeus_dev_helper_mcp.config import HelperConfig, reload_config
 from zeus_dev_helper_mcp.explain import explain_topic
+from zeus_dev_helper_mcp.prereqs import load_prereqs, public_prereqs, save_prereqs
+from zeus_dev_helper_mcp.readiness import run_readiness_check
 
 mcp = FastMCP(
     "zeus-dev-helper",
@@ -28,6 +30,7 @@ mcp = FastMCP(
         "Developer Helper MCP: coach first Zeus Client app to green. "
         "Prefer live Zeus for stamps; use zeus_chat_request for min templates. "
         "Never invent contract hashes. Public API is :8080 not Hub :9091. "
+        "Use readiness_check for platform gates; fetch_chat_request for templates. "
         "Docs: koten_docs agent-index.yaml + using-zeus-client.md."
     ),
 )
@@ -43,8 +46,8 @@ def _stub(tool: str, phase: str) -> dict[str, Any]:
         "tool": tool,
         "phase": phase,
         "message": f"{tool} is not implemented yet (scheduled {phase}).",
-        "next_action": "Continue with implemented tools: doctor, get_checklist, next_step, "
-        "list_catalog_modes, fetch_chat_request, explain, mark_done/mark_blocked.",
+        "next_action": "Continue with implemented tools: doctor, readiness_check, set_prereq, "
+        "get_checklist, next_step, list_catalog_modes, fetch_chat_request, explain.",
         "docs": {
             "dev_helper_mcp": (
                 f"https://github.com/koten-ai/koten_docs/blob/{_cfg().docs_branch}/"
@@ -147,7 +150,7 @@ def mark_blocked(item_id: str, reason: str = "") -> dict[str, Any]:
 
 @mcp.tool()
 def validate_env() -> dict[str, Any]:
-    """Validate Helper env shape (presence only — no secret values)."""
+    """Validate Helper env + stored prereqs shape (presence only — no secret values)."""
     cfg = _cfg()
     issues: list[dict[str, str]] = []
     if not cfg.zeus_url:
@@ -155,10 +158,10 @@ def validate_env() -> dict[str, Any]:
             {
                 "field": "ZEUS_URL",
                 "level": "warn",
-                "message": "Not set — required for live readiness/smoke (P2/P5).",
+                "message": "Not set — required for readiness_check / smoke.",
             }
         )
-    elif ":9091" in cfg.zeus_url:
+    elif ":9091" in cfg.zeus_url or cfg.zeus_url.rstrip("/").endswith(":9091"):
         issues.append(
             {
                 "field": "ZEUS_URL",
@@ -174,6 +177,14 @@ def validate_env() -> dict[str, Any]:
                 "level": "warn",
                 "failure_class": "llm_key_missing",
                 "message": "No LLM key env detected — needed for smoke_test_agent.",
+            }
+        )
+    if not cfg.default_bucket or not cfg.default_scope:
+        issues.append(
+            {
+                "field": "ZEUS_BUCKET/ZEUS_SCOPE",
+                "level": "warn",
+                "message": "Bucket/scope not set — bootstrap/auth scope probes will skip.",
             }
         )
     catalog_note = None
@@ -198,13 +209,79 @@ def validate_env() -> dict[str, Any]:
     return {
         "ok": ok,
         "config": cfg.public_view(),
+        "prereqs": public_prereqs(cfg),
         "catalog_templates": catalog_note,
         "issues": issues,
         "docs": (
             f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
             "zeus-client/config-reference.md"
         ),
+        "next_action": "Run readiness_check after ZEUS_URL is set",
     }
+
+
+@mcp.tool()
+def set_prereq(
+    zeus_url: str = "",
+    auth_mode: str = "",
+    bucket: str = "",
+    scope: str = "",
+    collection: str = "",
+    mode: str = "",
+    role: str = "",
+    has_llm_key: bool | None = None,
+    has_bearer: bool | None = None,
+    has_username: bool | None = None,
+    has_password: bool | None = None,
+) -> dict[str, Any]:
+    """Store non-secret prereqs for readiness (does not store password/token values).
+
+    Put real secrets in environment variables (ZEUS_PASSWORD, ZEUS_BEARER_TOKEN, LLM_API_KEY).
+    """
+    cfg = _cfg()
+    payload: dict[str, Any] = {}
+    if zeus_url:
+        payload["zeus_url"] = zeus_url.strip()
+    if auth_mode:
+        payload["auth_mode"] = auth_mode.strip()
+    if bucket:
+        payload["bucket"] = bucket.strip()
+    if scope:
+        payload["scope"] = scope.strip()
+    if collection:
+        payload["collection"] = collection.strip()
+    if mode:
+        payload["mode"] = mode.strip()
+    if role:
+        payload["role"] = role.strip()
+    if has_llm_key is not None:
+        payload["has_llm_key"] = has_llm_key
+    if has_bearer is not None:
+        payload["has_bearer"] = has_bearer
+    if has_username is not None:
+        payload["has_username"] = has_username
+    if has_password is not None:
+        payload["has_password"] = has_password
+
+    stored = save_prereqs(cfg, payload)
+    cfg = reload_config()
+    return {
+        "saved": True,
+        "stored_public": stored,
+        "effective_config": cfg.public_view(),
+        "note": "Secrets must remain in env vars — only presence flags are stored.",
+        "next_action": "validate_env → readiness_check",
+    }
+
+
+@mcp.tool()
+def readiness_check(update_checklist: bool = True) -> dict[str, Any]:
+    """Live Zeus platform gates: healthz/readyz/version, auth, bootstrap, chat_request.
+
+    Never returns secret values. Emits failure_class + next_action on red paths.
+    """
+    cfg = _cfg()
+    return run_readiness_check(cfg, update_checklist=update_checklist)
 
 
 @mcp.tool()
@@ -260,23 +337,19 @@ def explain(topic: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def set_prereq() -> dict[str, Any]:
-    """Store prereqs (P2) — not fully implemented; use env vars for now."""
-    return _stub("set_prereq", "P2")
-
-
-@mcp.tool()
-def readiness_check() -> dict[str, Any]:
-    """Live Zeus readiness probes (P2) — stub."""
-    return _stub("readiness_check", "P2")
-
-
-@mcp.tool()
 def bootstrap_scope() -> dict[str, Any]:
-    """Call Zeus bootstrap API (P3) — stub; use fetch_chat_request for templates now."""
-    out = _stub("bootstrap_scope", "P3")
-    out["workaround"] = "fetch_chat_request(mode=...) for offline templates (ZDH-14)"
-    return out
+    """Call Zeus bootstrap API (P3) — partial via readiness_check; dedicated tool later."""
+    cfg = _cfg()
+    result = run_readiness_check(cfg, update_checklist=False, probe_bootstrap=True)
+    boot = next((g for g in result.get("gates") or [] if g.get("id") == "bootstrap_scope"), None)
+    return {
+        "implemented": "partial",
+        "note": "Full P3 bootstrap tool later; this runs readiness bootstrap gate.",
+        "bootstrap_gate": boot,
+        "readiness_overall": result.get("overall"),
+        "workaround": "fetch_chat_request(mode=...) for offline templates (ZDH-14)",
+        "next_action": result.get("next_action"),
+    }
 
 
 @mcp.tool()
