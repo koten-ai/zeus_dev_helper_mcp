@@ -8,6 +8,7 @@ from typing import Any
 
 from zeus_dev_helper_mcp.checklist import set_item_status
 from zeus_dev_helper_mcp.config import HelperConfig
+from zeus_dev_helper_mcp.docs_links import docs_url
 
 SAMPLE_TRAVEL = {
     "name": "demo_travel_sample",
@@ -16,7 +17,7 @@ SAMPLE_TRAVEL = {
     "clone": "git clone https://github.com/koten-ai/demo_travel_sample.git",
     "related": [
         "https://github.com/koten-ai/zeus_client_python/tree/main/docs/demo-builder",
-        docs_url("zeus-client/using-zeus-client.md"),
+        "https://docs.koten.ai/zeus-client/using-zeus-client",
     ],
 }
 
