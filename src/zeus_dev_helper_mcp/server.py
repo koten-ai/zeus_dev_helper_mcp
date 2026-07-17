@@ -1,8 +1,7 @@
-"""Developer Helper MCP server (ZDH-3 skeleton + ZDH-14 catalogs)."""
+"""Developer Helper MCP server — first-app coach (ZDH MVP tools)."""
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -14,18 +13,25 @@ from zeus_dev_helper_mcp.catalog import (
     list_modes,
     resolve_local_repo_hint,
 )
+from zeus_dev_helper_mcp.bootstrap import bootstrap_scope as bootstrap_scope_impl
 from zeus_dev_helper_mcp.checklist import (
     load_checklist,
-    next_step as checklist_next_step,
     set_item_status,
 )
 from zeus_dev_helper_mcp.config import HelperConfig, reload_config
-from zeus_dev_helper_mcp.explain import explain_topic
 from zeus_dev_helper_mcp.diagnose import diagnose_error as diagnose_error_impl
+from zeus_dev_helper_mcp.explain import explain_topic
 from zeus_dev_helper_mcp.prereqs import public_prereqs, save_prereqs
 from zeus_dev_helper_mcp.readiness import run_readiness_check
+from zeus_dev_helper_mcp.scaffold import (
+    scaffold_app as scaffold_app_impl,
+    use_sample as use_sample_impl,
+    verify_local_setup as verify_local_setup_impl,
+    write_env_example,
+)
 from zeus_dev_helper_mcp.smoke import smoke_test_agent as smoke_agent_impl
 from zeus_dev_helper_mcp.smoke import smoke_test_zeus as smoke_zeus_impl
+from zeus_dev_helper_mcp.walkthrough import build_gap_report, enriched_next_step
 
 mcp = FastMCP(
     "zeus-dev-helper",
@@ -111,7 +117,7 @@ def start_project(goal: str = "single-agent", sample: str = "travel") -> dict[st
     from zeus_dev_helper_mcp.checklist import save_checklist
 
     save_checklist(cfg, data)
-    nxt = checklist_next_step(cfg)
+    nxt = enriched_next_step(cfg)
     return {
         "started": True,
         "goal": goal,
@@ -133,22 +139,28 @@ def get_checklist() -> dict[str, Any]:
 
 @mcp.tool()
 def next_step() -> dict[str, Any]:
-    """Return the next incomplete checklist item with a short hint."""
-    return checklist_next_step(_cfg())
+    """Return the single current checklist blocker + recommended Helper tools (coach)."""
+    return enriched_next_step(_cfg())
+
+
+@mcp.tool()
+def gap_report() -> dict[str, Any]:
+    """What's left for single-agent / production-ish path (phases 4–7 focus)."""
+    return build_gap_report(_cfg())
 
 
 @mcp.tool()
 def mark_done(item_id: str, evidence: str = "") -> dict[str, Any]:
     """Mark a checklist item done (optional evidence string, no secrets)."""
     data = set_item_status(_cfg(), item_id, "done", evidence=evidence or None)
-    return {"updated": item_id, "status": "done", "next_step": checklist_next_step(_cfg()), "checklist": data}
+    return {"updated": item_id, "status": "done", "next_step": enriched_next_step(_cfg()), "checklist": data}
 
 
 @mcp.tool()
 def mark_blocked(item_id: str, reason: str = "") -> dict[str, Any]:
     """Mark a checklist item blocked with a reason."""
     data = set_item_status(_cfg(), item_id, "blocked", evidence=reason or None)
-    return {"updated": item_id, "status": "blocked", "next_step": checklist_next_step(_cfg()), "checklist": data}
+    return {"updated": item_id, "status": "blocked", "next_step": enriched_next_step(_cfg()), "checklist": data}
 
 
 @mcp.tool()
@@ -336,35 +348,51 @@ def explain(topic: str) -> dict[str, Any]:
     return explain_topic(_cfg(), topic)
 
 
-# --- Stubs for later phases (registered so hosts see full catalog) ---
+@mcp.tool()
+def bootstrap_scope(
+    bucket: str = "",
+    scope: str = "",
+    mode: str = "",
+    detail: str = "summary",
+    update_checklist: bool = True,
+) -> dict[str, Any]:
+    """Live GET /v1/ai/bootstrap/scope/{bucket}/{scope} + chat_request summary (P3)."""
+    return bootstrap_scope_impl(
+        _cfg(),
+        bucket=bucket,
+        scope=scope,
+        mode=mode,
+        detail=detail,
+        update_checklist=update_checklist,
+    )
 
 
 @mcp.tool()
-def bootstrap_scope() -> dict[str, Any]:
-    """Call Zeus bootstrap API (P3) — partial via readiness_check; dedicated tool later."""
-    cfg = _cfg()
-    result = run_readiness_check(cfg, update_checklist=False, probe_bootstrap=True)
-    boot = next((g for g in result.get("gates") or [] if g.get("id") == "bootstrap_scope"), None)
-    return {
-        "implemented": "partial",
-        "note": "Full P3 bootstrap tool later; this runs readiness bootstrap gate.",
-        "bootstrap_gate": boot,
-        "readiness_overall": result.get("overall"),
-        "workaround": "fetch_chat_request(mode=...) for offline templates (ZDH-14)",
-        "next_action": result.get("next_action"),
-    }
+def scaffold_app(
+    target_dir: str,
+    project_name: str = "zeus_first_app",
+    force: bool = False,
+) -> dict[str, Any]:
+    """Write a minimal Zeus Client middle-man project (main.py, requirements, .env.example)."""
+    return scaffold_app_impl(_cfg(), target_dir, project_name=project_name, force=force)
 
 
 @mcp.tool()
-def scaffold_app() -> dict[str, Any]:
-    """Scaffold middle-man app (P4) — stub."""
-    return _stub("scaffold_app", "P4")
+def use_sample(sample: str = "travel") -> dict[str, Any]:
+    """Point at demo_travel_sample (or block multi until single-agent green)."""
+    return use_sample_impl(_cfg(), sample=sample)
 
 
 @mcp.tool()
-def use_sample() -> dict[str, Any]:
-    """Point at demo_travel_sample (P4/P8) — stub."""
-    return _stub("use_sample", "P4")
+def write_env(target_dir: str) -> dict[str, Any]:
+    """Write .env.example from prereqs (no secrets)."""
+    return write_env_example(_cfg(), target_dir)
+
+
+@mcp.tool()
+def verify_local_setup(target_dir: str = "") -> dict[str, Any]:
+    """Check zeus_client import and optional scaffold files."""
+    return verify_local_setup_impl(_cfg(), target_dir=target_dir)
 
 
 @mcp.tool()

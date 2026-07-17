@@ -77,25 +77,27 @@ Add to MCP servers config (example):
 
 Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the same env vars.
 
-## Implemented tools (0.3.0)
+## Implemented tools (0.4.0)
 
 | Tool | Status |
 | --- | --- |
 | `doctor` | Config + catalog reachability |
-| `start_project` | Init checklist |
-| `get_checklist` / `next_step` | Checklist walkthrough |
+| `start_project` / `get_checklist` / `next_step` / `gap_report` | **ZDH-8** coach walkthrough |
 | `mark_done` / `mark_blocked` | Checklist updates |
-| `set_prereq` | **ZDH-4** — store non-secret prereqs |
-| `validate_env` | Env + prereqs + :9091 guard |
-| `readiness_check` | **ZDH-4** — live probes |
-| `smoke_test_zeus` | **ZDH-7** — readiness + `POST …/describe` (no LLM) |
-| `smoke_test_agent` | **ZDH-7** — one `run_agent` turn (needs `pip install -e ".[agent]"`) |
-| `diagnose_error` | **ZDH-7** — failure_class + errors.md anchors |
-| `suggest_demo_prompts` | Starter advice-shaped prompts |
+| `set_prereq` / `validate_env` / `readiness_check` | **ZDH-4** |
+| `bootstrap_scope` | **ZDH-5** live bootstrap + chat_request summary |
+| `scaffold_app` / `use_sample` / `write_env` / `verify_local_setup` | **ZDH-6** |
+| `smoke_test_zeus` / `smoke_test_agent` / `diagnose_error` | **ZDH-7** |
 | `list_catalog_modes` / `fetch_chat_request` | **ZDH-14** |
-| `explain` | Glossary topics |
-| `bootstrap_scope` | Partial via readiness |
-| scaffold / use_sample | **Stubs** (P4) |
+| `explain` / `suggest_demo_prompts` | Glossary + prompts |
+
+### Day-one coach path
+
+```text
+start_project → set_prereq → validate_env → readiness_check
+  → use_sample | scaffold_app → bootstrap_scope / fetch_chat_request
+  → smoke_test_zeus → smoke_test_agent → gap_report
+```
 
 ## Catalog rules (never invent hashes)
 
