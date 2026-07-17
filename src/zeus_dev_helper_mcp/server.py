@@ -21,8 +21,11 @@ from zeus_dev_helper_mcp.checklist import (
 )
 from zeus_dev_helper_mcp.config import HelperConfig, reload_config
 from zeus_dev_helper_mcp.explain import explain_topic
-from zeus_dev_helper_mcp.prereqs import load_prereqs, public_prereqs, save_prereqs
+from zeus_dev_helper_mcp.diagnose import diagnose_error as diagnose_error_impl
+from zeus_dev_helper_mcp.prereqs import public_prereqs, save_prereqs
 from zeus_dev_helper_mcp.readiness import run_readiness_check
+from zeus_dev_helper_mcp.smoke import smoke_test_agent as smoke_agent_impl
+from zeus_dev_helper_mcp.smoke import smoke_test_zeus as smoke_zeus_impl
 
 mcp = FastMCP(
     "zeus-dev-helper",
@@ -365,46 +368,57 @@ def use_sample() -> dict[str, Any]:
 
 
 @mcp.tool()
-def smoke_test_zeus() -> dict[str, Any]:
-    """Smoke Zeus without LLM (P5) — stub."""
-    return _stub("smoke_test_zeus", "P5")
+def smoke_test_zeus(update_checklist: bool = True) -> dict[str, Any]:
+    """Smoke Zeus without LLM: readiness + POST /v2/{bucket}/{scope}/describe."""
+    return smoke_zeus_impl(_cfg(), update_checklist=update_checklist)
 
 
 @mcp.tool()
-def smoke_test_agent() -> dict[str, Any]:
-    """Full agent turn smoke (P5) — stub."""
-    return _stub("smoke_test_agent", "P5")
+def smoke_test_agent(
+    question: str = "In one short sentence, what data is available in this scope?",
+    update_checklist: bool = True,
+) -> dict[str, Any]:
+    """One Zeus Client run_agent turn (requires kotenai-zeus-client + LLM key)."""
+    return smoke_agent_impl(_cfg(), question=question, update_checklist=update_checklist)
 
 
 @mcp.tool()
-def diagnose_error(status: str = "", body: str = "", message: str = "") -> dict[str, Any]:
-    """Map error signals to failure_class (P5) — minimal heuristic + docs links."""
+def diagnose_error(
+    status: str = "",
+    body: str = "",
+    message: str = "",
+    req_id: str = "",
+    session_id: str = "",
+    zeus_url: str = "",
+) -> dict[str, Any]:
+    """Map error signals to failure_class + errors.md anchor (ZDH-7)."""
+    return diagnose_error_impl(
+        _cfg(),
+        status=status,
+        body=body,
+        message=message,
+        req_id=req_id,
+        session_id=session_id,
+        zeus_url=zeus_url,
+    )
+
+
+@mcp.tool()
+def suggest_demo_prompts() -> dict[str, Any]:
+    """Starter advice-shaped prompts for smoke / demos."""
     cfg = _cfg()
-    blob = f"{status} {body} {message}".lower()
-    failure = "dispatch_failed"
-    if "9091" in blob or "hub" in blob:
-        failure = "wrong_port_hub_vs_public"
-    elif "401" in blob or "unauthor" in blob:
-        failure = "auth_failed"
-    elif "409" in blob or "drift" in blob:
-        failure = "hash_drift"
-    elif "timeout" in blob:
-        failure = "network_timeout"
-    elif "llm" in blob or "api_key" in blob:
-        failure = "llm_key_missing"
-    elif "catalog" in blob or "chat_request" in blob:
-        failure = "empty_tool_catalog"
     return {
-        "implemented": "partial",
-        "failure_class": failure,
+        "prompts": [
+            "What kinds of entities exist in this dataset?",
+            "Give me a short overview of available data for analysis.",
+            "A fun beach destination in Mexico, in April, under $300.",
+            "List a few example records and what fields they have.",
+        ],
+        "note": "Prefer advice-shaped questions, not raw SQL.",
         "docs": (
             f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/"
-            f"zeus-client/errors.md"
+            "zeus-client/using-zeus-client.md"
         ),
-        "agent_index": (
-            f"https://github.com/koten-ai/koten_docs/blob/{cfg.docs_branch}/agent-index.yaml"
-        ),
-        "note": "Full diagnose matrix lands in ZDH-7; this is a first-pass heuristic.",
     }
 
 

@@ -72,7 +72,7 @@ Add to MCP servers config (example):
 
 Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the same env vars.
 
-## Implemented tools (0.2.0)
+## Implemented tools (0.3.0)
 
 | Tool | Status |
 | --- | --- |
@@ -82,13 +82,15 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 | `mark_done` / `mark_blocked` | Checklist updates |
 | `set_prereq` | **ZDH-4** — store non-secret prereqs |
 | `validate_env` | Env + prereqs + :9091 guard |
-| `readiness_check` | **ZDH-4** — live `/healthz` `/readyz` `/version`, auth, bootstrap, chat_request |
-| `list_catalog_modes` | **ZDH-14** — zeus_chat_request manifest |
-| `fetch_chat_request` | **ZDH-14** — min template by mode |
-| `explain` | Glossary topics + docs links |
-| `diagnose_error` | Partial heuristic + docs |
-| `bootstrap_scope` | Partial (via readiness gate) |
-| scaffold / smoke | **Stubs** (P4–P5) |
+| `readiness_check` | **ZDH-4** — live probes |
+| `smoke_test_zeus` | **ZDH-7** — readiness + `POST …/describe` (no LLM) |
+| `smoke_test_agent` | **ZDH-7** — one `run_agent` turn (needs `pip install -e ".[agent]"`) |
+| `diagnose_error` | **ZDH-7** — failure_class + errors.md anchors |
+| `suggest_demo_prompts` | Starter advice-shaped prompts |
+| `list_catalog_modes` / `fetch_chat_request` | **ZDH-14** |
+| `explain` | Glossary topics |
+| `bootstrap_scope` | Partial via readiness |
+| scaffold / use_sample | **Stubs** (P4) |
 
 ## Catalog rules (never invent hashes)
 
