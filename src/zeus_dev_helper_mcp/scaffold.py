@@ -22,30 +22,42 @@ SAMPLE_TRAVEL = {
 }
 
 
-def use_sample(cfg: HelperConfig, sample: str = "travel") -> dict[str, Any]:
+def use_sample(cfg: HelperConfig, sample: str = "travel", sample_dir: str = "") -> dict[str, Any]:
+    """Point at a sample path. Travel uses ZDH-10 golden-path validation."""
     sample = (sample or "travel").lower().strip()
     if sample in ("travel", "demo_travel", "travel_sample", "demo_travel_sample"):
+        from zeus_dev_helper_mcp.travel import travel_golden_path
+
+        golden = travel_golden_path(cfg, sample_dir=sample_dir)
         info = dict(SAMPLE_TRAVEL)
         info["sample"] = "travel"
-        try:
-            set_item_status(cfg, "0.2", "done", evidence="sample=travel")
-        except Exception:  # noqa: BLE001
-            pass
         return {
             "ok": True,
             "sample": info,
-            "next_action": (
+            "golden_path": golden,
+            "local_dir": golden.get("local_dir"),
+            "layout": golden.get("layout"),
+            "next_action": golden.get("next_action")
+            or (
                 "Clone the sample if you have access, or call scaffold_app "
                 "for a minimal middle-man without the full demo UI."
             ),
             "checklist_hint": "Mark 3.1 done after clone/scaffold succeeds",
+            "sample_readme_snippet": golden.get("sample_readme_snippet"),
         }
     if sample in ("yelp", "multi"):
+        from zeus_dev_helper_mcp.handoff import handoff_to_multi
+
+        handoff = handoff_to_multi(cfg, force=False)
         return {
             "ok": False,
             "sample": sample,
-            "next_action": "Multi-agent / Yelp path is stretch (ZDH-11). Finish single-agent green first.",
             "blocked": True,
+            "handoff_to_multi": handoff,
+            "next_action": (
+                "Multi-agent / Yelp path is stretch (ZDH-11). "
+                "Call handoff_to_multi after single-agent green, or force=true."
+            ),
         }
     return {
         "ok": False,

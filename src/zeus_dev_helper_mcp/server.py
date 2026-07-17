@@ -33,6 +33,14 @@ from zeus_dev_helper_mcp.smoke import smoke_test_agent as smoke_agent_impl
 from zeus_dev_helper_mcp.smoke import smoke_test_zeus as smoke_zeus_impl
 from zeus_dev_helper_mcp.walkthrough import build_gap_report, enriched_next_step
 from zeus_dev_helper_mcp.docs_links import docs_url
+from zeus_dev_helper_mcp.travel import travel_golden_path as travel_golden_path_impl
+from zeus_dev_helper_mcp.handoff import (
+    emit_mcp_config as emit_mcp_config_impl,
+    handoff_to_multi as handoff_to_multi_impl,
+    metrics_summary as metrics_summary_impl,
+    recommend_data_plane_mcp as recommend_data_plane_impl,
+    record_metric,
+)
 
 mcp = FastMCP(
     "zeus-dev-helper",
@@ -41,6 +49,7 @@ mcp = FastMCP(
         "Prefer live Zeus for stamps; use zeus_chat_request for min templates. "
         "Never invent contract hashes. Public API is :8080 not Hub :9091. "
         "Use readiness_check for platform gates; fetch_chat_request for templates. "
+        "After smoke green: recommend_data_plane_mcp / handoff_to_multi (handoffs only). "
         "Docs: koten_docs agent-index.yaml + using-zeus-client.md."
     ),
 )
@@ -106,17 +115,51 @@ def doctor() -> dict[str, Any]:
 
 
 @mcp.tool()
-def start_project(goal: str = "single-agent", sample: str = "travel") -> dict[str, Any]:
-    """Start or reset first-app coaching checklist (single-agent default)."""
+def start_project(
+    goal: str = "single-agent",
+    sample: str = "travel",
+    force_multi: bool = False,
+) -> dict[str, Any]:
+    """Start or reset first-app coaching checklist (single-agent default).
+
+    Multi-agent goals (goal=multi or sample=yelp) are gated until single-agent
+    smokes are green, unless force_multi=true (ZDH-11).
+    """
     cfg = _cfg()
+    goal_l = (goal or "single-agent").lower().strip()
+    sample_l = (sample or "travel").lower().strip()
+    wants_multi = goal_l in ("multi", "multi-agent", "multi_agent") or sample_l in (
+        "yelp",
+        "multi",
+    )
+    if wants_multi:
+        handoff = handoff_to_multi_impl(cfg, force=force_multi)
+        if handoff.get("blocked"):
+            return {
+                "started": False,
+                "blocked": True,
+                "goal": goal,
+                "sample": sample,
+                "handoff_to_multi": handoff,
+                "next_action": handoff.get("next_action"),
+                "read_first": [
+                    docs_url("zeus-client/for-ai-agents.md"),
+                    docs_url("zeus-client/using-zeus-client.md"),
+                ],
+            }
+
     data = load_checklist(cfg)
     data["project"] = f"{goal}:{sample}"
-    data["meta"] = {"goal": goal, "sample": sample}
+    data["meta"] = {"goal": goal, "sample": sample, "force_multi": force_multi}
     from zeus_dev_helper_mcp.checklist import save_checklist
 
     save_checklist(cfg, data)
+    try:
+        record_metric(cfg, "start_project")
+    except Exception:  # noqa: BLE001
+        pass
     nxt = enriched_next_step(cfg)
-    return {
+    out: dict[str, Any] = {
         "started": True,
         "goal": goal,
         "sample": sample,
@@ -127,6 +170,11 @@ def start_project(goal: str = "single-agent", sample: str = "travel") -> dict[st
             docs_url("zeus-client/using-zeus-client.md"),
         ],
     }
+    if wants_multi:
+        out["track"] = "multi-agent"
+        out["handoff_to_multi"] = handoff_to_multi_impl(cfg, force=True)
+        out["note"] = "Multi track is graduation guidance only — jobs live in ZJA."
+    return out
 
 
 @mcp.tool()
@@ -374,9 +422,15 @@ def scaffold_app(
 
 
 @mcp.tool()
-def use_sample(sample: str = "travel") -> dict[str, Any]:
+def use_sample(sample: str = "travel", sample_dir: str = "") -> dict[str, Any]:
     """Point at demo_travel_sample (or block multi until single-agent green)."""
-    return use_sample_impl(_cfg(), sample=sample)
+    return use_sample_impl(_cfg(), sample=sample, sample_dir=sample_dir)
+
+
+@mcp.tool()
+def travel_golden_path(sample_dir: str = "") -> dict[str, Any]:
+    """ZDH-10: demo_travel_sample golden path phases + optional layout validation."""
+    return travel_golden_path_impl(_cfg(), sample_dir=sample_dir)
 
 
 @mcp.tool()
@@ -425,6 +479,39 @@ def diagnose_error(
         session_id=session_id,
         zeus_url=zeus_url,
     )
+
+
+@mcp.tool()
+def handoff_to_multi(force: bool = False) -> dict[str, Any]:
+    """ZDH-11: graduate to multi-agent guidance after single-agent green (or force)."""
+    return handoff_to_multi_impl(_cfg(), force=force)
+
+
+@mcp.tool()
+def recommend_data_plane_mcp() -> dict[str, Any]:
+    """ZDH-12: hand off to a future scope-bound Data Plane MCP (Helper stays coach)."""
+    return recommend_data_plane_impl(_cfg())
+
+
+@mcp.tool()
+def emit_mcp_config(
+    server_name: str = "zeus-data-plane",
+    read_only: bool = True,
+    host: str = "claude",
+) -> dict[str, Any]:
+    """Emit safe-by-default MCP config fragment for a future data-plane server."""
+    return emit_mcp_config_impl(
+        _cfg(),
+        server_name=server_name,
+        read_only=read_only,
+        host=host,
+    )
+
+
+@mcp.tool()
+def helper_metrics() -> dict[str, Any]:
+    """Local privacy-safe success metrics (time-to-green heuristic; never leaves machine)."""
+    return metrics_summary_impl(_cfg())
 
 
 @mcp.tool()

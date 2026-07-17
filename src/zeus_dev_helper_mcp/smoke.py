@@ -161,6 +161,14 @@ def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict
         except Exception:  # noqa: BLE001
             pass
 
+    if ok:
+        try:
+            from zeus_dev_helper_mcp.handoff import record_metric
+
+            record_metric(cfg, "smoke_test_zeus_ok")
+        except Exception:  # noqa: BLE001
+            pass
+
     return {
         "ok": ok,
         "failure_class": failure,
@@ -375,6 +383,14 @@ def smoke_test_agent(
                     "blocked",
                     evidence=result.get("failure_class") or result.get("error") or "agent smoke failed",
                 )
+        except Exception:  # noqa: BLE001
+            pass
+
+    if result.get("ok"):
+        try:
+            from zeus_dev_helper_mcp.handoff import record_metric
+
+            record_metric(cfg, "smoke_test_agent_ok")
         except Exception:  # noqa: BLE001
             pass
 

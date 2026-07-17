@@ -1,15 +1,35 @@
-"""Curated explain(topic) — mirrors koten_docs glossary (ZDH-13 docs source)."""
+"""Curated explain(topic) — mirrors koten_docs glossary (ZDH-13)."""
 
 from __future__ import annotations
 
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.docs_links import docs_url
 
-# Short answers; deep-links to koten_docs. Expand from glossary.md as needed.
+# Short answers; deep-links to koten_docs. Expand only after glossary.md updates.
 TOPICS: dict[str, dict[str, str]] = {
     "zeus": {
         "summary": "Zeus is the AI-ready data engine beside Couchbase: tools, contracts, sessions, audit on public :8080.",
         "doc": "zeus-client/glossary.md#zeus",
+    },
+    "couchbase": {
+        "summary": "Underlying database cluster. Zeus sits beside it; apps usually talk to Zeus, not raw N1QL for agent paths.",
+        "doc": "zeus-client/glossary.md#couchbase",
+    },
+    "bucket": {
+        "summary": "Top-level Couchbase container. Zeus enablement and contracts are usually scoped under bucket + scope.",
+        "doc": "zeus-client/glossary.md#bucket",
+    },
+    "scope": {
+        "summary": "Couchbase scope (with bucket) is the usual Zeus enablement unit for contracts and catalogs.",
+        "doc": "zeus-client/glossary.md#scope",
+    },
+    "collection": {
+        "summary": "Documents live in a collection under a scope. Tools often bind a default collection for describe/search.",
+        "doc": "zeus-client/glossary.md#collection",
+    },
+    "mode": {
+        "summary": "chat_request / agent mode name (e.g. analytics). Selects which catalog/guidance apply for a turn.",
+        "doc": "zeus-client/glossary.md#mode",
     },
     "zeus_client": {
         "summary": "Zeus Client is the middleman library (kotenai-zeus-client): auth → catalog → LLM rounds → Zeus tools.",
@@ -27,17 +47,25 @@ TOPICS: dict[str, dict[str, str]] = {
         "summary": "Server-authoritative fingerprint of the stamped catalog. Never invent production hashes.",
         "doc": "zeus-client/glossary.md#contract_hash",
     },
+    "enforce_contracts": {
+        "summary": "When enforce is on, Zeus rejects tool use that drifts from the stamped contract/hash.",
+        "doc": "zeus-client/glossary.md#enforce_contracts",
+    },
     "catalog": {
         "summary": "Allowed tools/verbs for a bind. Prefer live Zeus stamp; public min templates: zeus_chat_request.",
         "doc": "zeus-client/glossary.md#catalog",
     },
-    "scope": {
-        "summary": "Couchbase scope (with bucket) is the usual Zeus enablement unit for contracts and catalogs.",
-        "doc": "zeus-client/glossary.md#scope",
-    },
     "hub": {
         "summary": "Hub is admin UI on :9091. App code uses public API :8080 only.",
         "doc": "zeus-client/glossary.md#hub",
+    },
+    "workbench": {
+        "summary": "Hub Workbench stamps chat_request / contracts for a scope. Operators stamp; apps bind the result.",
+        "doc": "zeus-client/glossary.md#workbench",
+    },
+    "enable_wizard": {
+        "summary": "Hub flow to enable Zeus on a scope (collections, tools, contracts). Admin path — not Helper mutations.",
+        "doc": "zeus-client/glossary.md#enable_wizard",
     },
     "public_api": {
         "summary": "Zeus public API for agents/clients is port :8080.",
@@ -51,14 +79,66 @@ TOPICS: dict[str, dict[str, str]] = {
         "summary": "Durable multi-turn conversation on Zeus when enabled; client returns session_id in session_meta.",
         "doc": "zeus-client/glossary.md#session",
     },
+    "turn": {
+        "summary": "One agent request/response cycle (may include multiple Zeus tool calls).",
+        "doc": "zeus-client/glossary.md#turn",
+    },
+    "req_id": {
+        "summary": "Request id from Zeus responses/logs for support and audit correlation.",
+        "doc": "zeus-client/glossary.md#req_id",
+    },
     "v2_verbs": {
         "summary": "Modern Zeus tool surface via catalog; prefer default_api_version v2.",
         "doc": "zeus-client/glossary.md#v2_verbs",
+    },
+    "v1_tools": {
+        "summary": "Legacy tool surface. Prefer v2 verbs/catalog for new apps.",
+        "doc": "zeus-client/glossary.md#v1_tools",
+    },
+    "detective": {
+        "summary": "Evidence/audit style motion — grounded answers with tool proof, not free-form invention.",
+        "doc": "zeus-client/glossary.md#detective",
+    },
+    "motion": {
+        "summary": "How an agent works a problem (e.g. detective / exploratory). Guidance, not a Zeus server type.",
+        "doc": "zeus-client/glossary.md#motion",
+    },
+    "single_agent": {
+        "summary": "One middle-man agent loop to first green. Helper MVP track before multi-agent graduation.",
+        "doc": "zeus-client/glossary.md#single_agent",
+    },
+    "multi_agent": {
+        "summary": "Orchestrator / workers / advisor patterns. Helper only hands off (ZDH-11); jobs live in ZJA.",
+        "doc": "zeus-client/glossary.md#multi_agent",
+    },
+    "crawl_walk_run_turbo": {
+        "summary": "Capability ladder from first green (crawl) toward multi-agent turbo. See docs ladder page.",
+        "doc": "zeus-client/crawl-walk-run-turbo.md",
+    },
+    "agent_hooks": {
+        "summary": "Extension points around agent turns (logging, policy, tools). Product-specific; keep secrets out.",
+        "doc": "zeus-client/glossary.md#agent_hooks",
+    },
+    "evidence": {
+        "summary": "Grounding: tool results, req_id, citations. Checklist evidence must never include secrets.",
+        "doc": "zeus-client/glossary.md#evidence",
     },
     "zeus_chat_request": {
         "summary": "Published V2 min chat_request templates for clients/MCP/demos (not stamped for your cluster).",
         "doc": "zeus-client/contracts-and-catalog.md",
         "external": "https://github.com/koten-ai/zeus_chat_request",
+    },
+    "data_plane_mcp": {
+        "summary": "Future scope-bound Explore/Verify MCP after first app is green. Helper only recommends/handoffs.",
+        "doc": "zeus-client/dev-helper-mcp.md",
+    },
+    "helper_mcp": {
+        "summary": "This product: onboarding coach MCP — checklist, readiness, scaffold, smoke. Not data-plane tools.",
+        "doc": "zeus-client/dev-helper-mcp.md",
+    },
+    "bootstrap": {
+        "summary": "GET bootstrap for a scope returns what Zeus knows (collections, chat_request summary, etc.).",
+        "doc": "zeus-client/using-zeus-client.md",
     },
 }
 
@@ -78,6 +158,18 @@ def explain_topic(cfg: HelperConfig, topic: str) -> dict:
         "9091": "hub",
         "min_catalog": "zeus_chat_request",
         "catalog_repo": "zeus_chat_request",
+        "wizard": "enable_wizard",
+        "turbo": "crawl_walk_run_turbo",
+        "ladder": "crawl_walk_run_turbo",
+        "cwr": "crawl_walk_run_turbo",
+        "data_plane": "data_plane_mcp",
+        "helper": "helper_mcp",
+        "dev_helper": "helper_mcp",
+        "request_id": "req_id",
+        "multi": "multi_agent",
+        "single": "single_agent",
+        "tools_v2": "v2_verbs",
+        "tools_v1": "v1_tools",
     }
     key = aliases.get(key, key)
     entry = TOPICS.get(key)
@@ -89,6 +181,7 @@ def explain_topic(cfg: HelperConfig, topic: str) -> dict:
             "hint": "Use a known topic id or see glossary.md",
             "docs_glossary": docs_url("zeus-client/glossary.md"),
             "docs_home": docs_url(""),
+            "docs_pin": "koten_docs branch zeus-v1.0.0 (canonical); explain snapshots summaries only",
         }
     out = {
         "topic": key,
@@ -96,6 +189,7 @@ def explain_topic(cfg: HelperConfig, topic: str) -> dict:
         "summary": entry["summary"],
         "doc_url": docs_url(entry["doc"]),
         "docs_home": docs_url(""),
+        "docs_pin": "koten_docs branch zeus-v1.0.0",
     }
     if entry.get("external"):
         out["external_url"] = entry["external"]

@@ -10,7 +10,9 @@
 | **Catalogs** | [ZDH-14](https://kotenai.atlassian.net/browse/ZDH-14) → [zeus_chat_request](https://github.com/koten-ai/zeus_chat_request) |
 | **Docs** | [docs.koten.ai](https://docs.koten.ai/) · [Dev Helper MCP](https://docs.koten.ai/zeus-client/dev-helper-mcp) |
 
-> Not a data-plane MCP. Coaches: checklist → templates → (later) live readiness & smoke.
+> Not a data-plane MCP. Coaches: checklist → templates → live readiness & smoke → handoffs.
+
+**Design:** [`docs/DESIGN.md`](docs/DESIGN.md) (ZDH-2)
 
 ## Stack
 
@@ -32,6 +34,8 @@ export ZEUS_CHAT_REQUEST_DIR=../zeus_chat_request   # sibling clone
 # or: export GITHUB_TOKEN=...   # Contents API for private zeus_chat_request
 export ZEUS_URL=http://localhost:8080
 export ZEUS_BUCKET=beer-sample ZEUS_SCOPE=_default
+# Optional travel golden path (private sample):
+# export DEMO_TRAVEL_SAMPLE_DIR=/path/to/demo_travel_sample
 ```
 
 ## Run
@@ -77,7 +81,7 @@ Add to MCP servers config (example):
 
 Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the same env vars.
 
-## Implemented tools (0.4.0)
+## Implemented tools (0.5.0)
 
 | Tool | Status |
 | --- | --- |
@@ -87,16 +91,22 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 | `set_prereq` / `validate_env` / `readiness_check` | **ZDH-4** |
 | `bootstrap_scope` | **ZDH-5** live bootstrap + chat_request summary |
 | `scaffold_app` / `use_sample` / `write_env` / `verify_local_setup` | **ZDH-6** |
+| `travel_golden_path` | **ZDH-10** travel sample golden path |
 | `smoke_test_zeus` / `smoke_test_agent` / `diagnose_error` | **ZDH-7** |
 | `list_catalog_modes` / `fetch_chat_request` | **ZDH-14** |
-| `explain` / `suggest_demo_prompts` | Glossary + prompts |
+| `explain` / `suggest_demo_prompts` | **ZDH-13** glossary + prompts |
+| `handoff_to_multi` | **ZDH-11** multi-agent graduation (gated) |
+| `recommend_data_plane_mcp` / `emit_mcp_config` | **ZDH-12** data-plane handoff |
+| `helper_metrics` | Local time-to-green (privacy-safe) |
 
 ### Day-one coach path
 
 ```text
 start_project → set_prereq → validate_env → readiness_check
-  → use_sample | scaffold_app → bootstrap_scope / fetch_chat_request
+  → use_sample | travel_golden_path | scaffold_app
+  → bootstrap_scope / fetch_chat_request
   → smoke_test_zeus → smoke_test_agent → gap_report
+  → (optional) recommend_data_plane_mcp | handoff_to_multi
 ```
 
 ## Catalog rules (never invent hashes)
@@ -118,6 +128,17 @@ start_project → set_prereq → validate_env → readiness_check
 | `GITHUB_TOKEN` / `GH_TOKEN` | Private GitHub fetch |
 | `ZEUS_CHAT_REQUEST_REPO` | default `koten-ai/zeus_chat_request` |
 | `ZEUS_CHAT_REQUEST_BRANCH` | default `main` |
+| `DEMO_TRAVEL_SAMPLE_DIR` | Local clone of demo_travel_sample (ZDH-10) |
+| `KOTEN_DOCS_BASE_URL` | default `https://docs.koten.ai` |
+| `ZEUS_DEV_HELPER_STATE_DIR` | checklist / prereqs / local metrics |
+
+## Boundaries
+
+| This Helper | Not this Helper |
+| --- | --- |
+| Onboarding coach to first green | Data-plane Explore/Verify tools |
+| Catalog **templates** + readiness/smoke | Inventing `contract_hash` |
+| Multi / data-plane **handoffs** | ZJA job runtime / Hub admin mutations |
 | `KOTEN_DOCS_BASE_URL` | default `https://docs.koten.ai` (published site) |
 | `KOTEN_DOCS_BRANCH` | default `zeus-v1.0.0` (source branch for machine files) |
 | `ZEUS_DEV_HELPER_STATE_DIR` | checklist + prereqs state (default `~/.config/zeus_dev_helper`) |

@@ -22,6 +22,12 @@
 
 `doctor` → `start_project` → `list_catalog_modes` → `fetch_chat_request` → `explain` → `next_step`
 
+Travel sample: `use_sample` / `travel_golden_path` (set `DEMO_TRAVEL_SAMPLE_DIR` if cloned).
+
+After 5.1+5.2 green: `recommend_data_plane_mcp`, `emit_mcp_config`, `handoff_to_multi` — **handoffs only**.
+
+Design freeze: `docs/DESIGN.md`. Glossary: `explain(topic)`.
+
 ## Not this MCP
 
 Data-plane tools, Hub admin mutations, multi-agent jobs (ZJA).

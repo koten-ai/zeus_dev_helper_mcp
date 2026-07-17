@@ -10,28 +10,39 @@ from zeus_dev_helper_mcp.config import HelperConfig
 # Recommended Helper tool(s) per checklist item
 TOOL_HINTS: dict[str, list[str]] = {
     "0.1": ["start_project", "explain"],
-    "0.2": ["use_sample", "scaffold_app"],
+    "0.2": ["use_sample", "travel_golden_path", "scaffold_app"],
     "1.1": ["doctor", "verify_local_setup"],
     "1.2": ["set_prereq", "validate_env"],
     "2.1": ["readiness_check", "smoke_test_zeus"],
     "2.2": ["readiness_check", "set_prereq"],
     "2.3": ["bootstrap_scope", "readiness_check"],
-    "3.1": ["scaffold_app", "use_sample"],
+    "3.1": ["scaffold_app", "use_sample", "travel_golden_path"],
     "3.2": ["write_env", "scaffold_app"],
     "4.1": ["fetch_chat_request", "list_catalog_modes", "bootstrap_scope"],
     "4.2": ["explain", "bootstrap_scope"],  # stamp is ops/Hub
     "5.1": ["smoke_test_zeus"],
     "5.2": ["smoke_test_agent", "suggest_demo_prompts"],
-    "6.1": ["explain", "suggest_demo_prompts"],
-    "7.1": ["diagnose_error", "gap_report"],
+    "6.1": ["explain", "suggest_demo_prompts", "recommend_data_plane_mcp"],
+    "7.1": ["diagnose_error", "gap_report", "recommend_data_plane_mcp"],
 }
+
+
+def _smokes_green(cfg: HelperConfig) -> bool:
+    data = load_checklist(cfg)
+    flags = {"5.1": False, "5.2": False}
+    for phase in data.get("phases") or []:
+        for item in phase.get("items") or []:
+            iid = item.get("id")
+            if iid in flags and item.get("status") == "done":
+                flags[iid] = True
+    return flags["5.1"] and flags["5.2"]
 
 
 def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
     base = base_next_step(cfg)
     item = base.get("item") or {}
     item_id = item.get("id") if isinstance(item, dict) else None
-    tools = TOOL_HINTS.get(item_id or "", ["get_checklist", "doctor"])
+    tools = list(TOOL_HINTS.get(item_id or "", ["get_checklist", "doctor"]))
     base["recommended_tools"] = tools
     base["coach"] = {
         "do_not": "Do not dump entire checklist unless asked; do not invent contract hashes",
@@ -42,6 +53,25 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         base["ops_note"] = (
             "Contract stamp is usually Administrator/Hub. Dev binds id+hash after stamp."
         )
+    # Post-green handoffs (ZDH-11 / ZDH-12)
+    if _smokes_green(cfg):
+        base["post_green"] = {
+            "single_agent_smokes": "green",
+            "suggested_tools": [
+                "recommend_data_plane_mcp",
+                "emit_mcp_config",
+                "handoff_to_multi",
+                "gap_report",
+            ],
+            "note": (
+                "First-app smokes are green. Helper stays the onboarding coach; "
+                "data-plane MCP and multi-agent (ZJA) are handoffs only."
+            ),
+        }
+        if not item_id or item_id in ("6.1", "7.1") or base.get("complete"):
+            for t in ("recommend_data_plane_mcp", "handoff_to_multi"):
+                if t not in base["recommended_tools"]:
+                    base["recommended_tools"].append(t)
     return base
 
 
