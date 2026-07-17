@@ -22,11 +22,16 @@
 ```bash
 git clone https://github.com/koten-ai/zeus_dev_helper_mcp.git
 cd zeus_dev_helper_mcp
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
+# Agent smoke (optional):
+pip install -e ".[agent]"   # pulls kotenai-zeus-client
 
 # Recommended: local catalog repo (private GH needs this or GITHUB_TOKEN)
 export ZEUS_CHAT_REQUEST_DIR=../zeus_chat_request   # sibling clone
 # or: export GITHUB_TOKEN=...   # Contents API for private zeus_chat_request
+export ZEUS_URL=http://localhost:8080
+export ZEUS_BUCKET=beer-sample ZEUS_SCOPE=_default
 ```
 
 ## Run
