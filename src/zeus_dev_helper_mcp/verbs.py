@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from typing import Any
 
 from zeus_dev_helper_mcp.config import HelperConfig
@@ -305,12 +306,80 @@ def _field_names_from_describe(payload: Any, *, cap: int = 200) -> list[str]:
     return names
 
 
-def _probe_mini_schema(cfg: HelperConfig) -> tuple[list[str] | None, str | None]:
-    """Optional live describe — field names only. Skip if Zeus is down."""
-    if not cfg.zeus_url or not cfg.default_bucket or not cfg.default_scope:
-        return None, "no_live_target"
-    if ":9091" in (cfg.zeus_url or ""):
-        return None, "wrong_port_hub_vs_public"
+def schema_from_describe(payload: Any, *, cap: int = 80) -> dict[str, Any]:
+    """Entity types + field names only. Ignores document samples / node rows."""
+    types: list[dict[str, Any]] = []
+    field_names: list[str] = []
+    seen: set[str] = set()
+
+    def add_field(name: str) -> None:
+        n = (name or "").strip()
+        if not n or n in seen or len(field_names) >= max(cap * 2, 200):
+            return
+        seen.add(n)
+        field_names.append(n)
+
+    root: Any = payload
+    if isinstance(payload, dict) and isinstance(payload.get("result"), dict):
+        root = payload["result"]
+    ents = None
+    if isinstance(root, dict):
+        ents = root.get("entity_types") or root.get("entities")
+    if isinstance(ents, list):
+        for e in ents:
+            if len(types) >= cap:
+                break
+            if isinstance(e, str):
+                types.append({"name": e, "fields": []})
+                continue
+            if not isinstance(e, dict):
+                continue
+            name = e.get("name") or e.get("type") or e.get("entity_type")
+            fl: list[str] = []
+            for f in e.get("fields") or e.get("properties") or e.get("attributes") or []:
+                fname = f if isinstance(f, str) else None
+                if isinstance(f, dict):
+                    fname = f.get("name") or f.get("field") or f.get("path")
+                if isinstance(fname, str) and fname.strip():
+                    fl.append(fname.strip())
+                    add_field(fname.strip())
+            if name:
+                types.append({"name": str(name), "fields": fl[:40]})
+    if not field_names:
+        field_names = _field_names_from_describe(payload, cap=max(cap * 2, 200))
+    return {
+        "entity_types": types,
+        "field_names": field_names,
+        "capped": len(types) >= cap,
+        "includes_samples": False,
+    }
+
+
+def describe_scope(
+    cfg: HelperConfig,
+    *,
+    bucket: str = "",
+    scope: str = "",
+) -> dict[str, Any]:
+    """POST /v2/{bucket}/{scope}/describe — entity types + field names only."""
+    if bucket or scope:
+        cfg = replace(
+            cfg,
+            default_bucket=bucket or cfg.default_bucket,
+            default_scope=scope or cfg.default_scope,
+        )
+    base = (cfg.zeus_url or "").strip()
+    if not base:
+        return {
+            "ok": False,
+            "next_action": "Set ZEUS_URL and bucket/scope, then retry describe_scope",
+        }
+    if ":9091" in base:
+        return {
+            "ok": False,
+            "failure_class": "wrong_port_hub_vs_public",
+            "next_action": "Use public API :8080, not Hub :9091",
+        }
     try:
         import httpx
 
@@ -320,22 +389,64 @@ def _probe_mini_schema(cfg: HelperConfig) -> tuple[list[str] | None, str | None]
             request_headers,
         )
     except Exception as e:  # noqa: BLE001
-        return None, f"import:{e}"
+        return {"ok": False, "error": str(e)[:200]}
 
     url = describe_scope_url(cfg)
     if not url:
-        return None, "no_live_target"
+        return {
+            "ok": False,
+            "failure_class": "scope_not_enabled",
+            "next_action": "set_prereq(bucket=..., scope=...) or pass bucket/scope",
+        }
     try:
         with httpx.Client(timeout=httpx.Timeout(8.0, connect=3.0), headers=request_headers()) as client:
             r = client.post(url, json={"include": ["entity_types"]}, auth=request_auth())
-        if r.status_code >= 400:
-            return None, f"http_{r.status_code}"
+    except Exception as e:  # noqa: BLE001
+        return {
+            "ok": False,
+            "failure_class": "network_timeout",
+            "error": str(e)[:200],
+            "next_action": "Check ZEUS_URL / network; lint_verb_args can use caller mini_schema",
+        }
+    if r.status_code >= 400:
+        return {
+            "ok": False,
+            "status": r.status_code,
+            "failure_class": "auth_failed" if r.status_code == 401 else "dispatch_failed",
+            "url": url,
+            "next_action": "Fix auth/scope; Helper does not return document samples",
+        }
+    try:
         payload = r.json()
-    except Exception:  # noqa: BLE001 — Zeus down: skip schema rules
-        return None, "zeus_unavailable"
+    except Exception:  # noqa: BLE001
+        payload = {}
+    schema = schema_from_describe(payload)
+    return {
+        "ok": True,
+        "url": url,
+        "bucket": cfg.default_bucket,
+        "scope": cfg.default_scope,
+        "entity_types": schema["entity_types"],
+        "field_names": schema["field_names"],
+        "capped": schema["capped"],
+        "includes_samples": False,
+        "note": "Entity types + field names only. No document samples.",
+        "docs": _docs(),
+        "next_action": "Pass field_names into lint_verb_args(mini_schema=...)",
+    }
 
-    fields = _field_names_from_describe(payload)
-    return (fields or None), None
+
+def _probe_mini_schema(cfg: HelperConfig) -> tuple[list[str] | None, str | None]:
+    """Optional live describe — field names only. Skip if Zeus is down."""
+    live = describe_scope(cfg)
+    if live.get("ok"):
+        names = live.get("field_names") or []
+        return (list(names) if names else None), None
+    if live.get("failure_class") == "wrong_port_hub_vs_public":
+        return None, "wrong_port_hub_vs_public"
+    if not cfg.zeus_url or not cfg.default_bucket or not cfg.default_scope:
+        return None, "no_live_target"
+    return None, live.get("failure_class") or "zeus_unavailable"
 
 
 def _where_issues(where: Any, schema: set[str] | None) -> list[dict[str, str]]:

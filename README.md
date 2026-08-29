@@ -97,6 +97,9 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 | `compat_check` | **ZDH-21** version/feature gates on `:8080` (not a COMPAT row) |
 | `lint_chat_request` / `bind_contract` / `explain_hash_boundary` / `catalog_diff` | **ZDH-22** catalog coach — extract stamp only |
 | `lint_runtime_config` / `lint_app_code` | **ZDH-24** config + anti-example scan (secrets redacted) |
+| `explain_req_id_policy` / `detective_links` / `support_pack_from_turn` | **ZDH-23** correlation + redacted support pack |
+| `describe_scope` | **ZDH-25** schema-only live describe |
+| `recommend_motion` | **ZDH-26** 13 motions; no custom chat_request |
 | `list_catalog_modes` / `fetch_chat_request` | **ZDH-14** |
 | `explain` / `suggest_demo_prompts` | **ZDH-13** glossary + prompts |
 | `handoff_to_multi` | **ZDH-11** multi-agent graduation (gated) |

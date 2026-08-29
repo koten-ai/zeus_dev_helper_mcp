@@ -32,8 +32,15 @@ from zeus_dev_helper_mcp.contract import (
     explain_hash_boundary as explain_hash_boundary_impl,
     lint_chat_request as lint_chat_request_impl,
 )
+from zeus_dev_helper_mcp.motion import recommend_motion as recommend_motion_impl
+from zeus_dev_helper_mcp.support import (
+    detective_links as detective_links_impl,
+    explain_req_id_policy as explain_req_id_policy_impl,
+    support_pack_from_turn as support_pack_from_turn_impl,
+)
 from zeus_dev_helper_mcp.surface import recommend_surface as recommend_surface_impl
 from zeus_dev_helper_mcp.verbs import (
+    describe_scope as describe_scope_impl,
     explain_verb as explain_verb_impl,
     lint_verb_args as lint_verb_args_impl,
     suggest_verb_call as suggest_verb_call_impl,
@@ -608,6 +615,42 @@ def lint_runtime_config(path: str) -> dict[str, Any]:
 def lint_app_code(path: str) -> dict[str, Any]:
     """Anti-example scan of main.py / Dockerfiles (stale V1, hash literals, :9091) (ZDH-24)."""
     return lint_app_code_impl(_cfg(), path=path)
+
+
+@mcp.tool()
+def explain_req_id_policy() -> dict[str, Any]:
+    """One UUID per hop; never base:1; never Rewind /v2/session/{id}/turn (ZDH-23)."""
+    return explain_req_id_policy_impl(_cfg())
+
+
+@mcp.tool()
+def detective_links(req_id: str = "", chat_id: str = "", zeus_url: str = "") -> dict[str, Any]:
+    """Hub Detective URL templates only — no scrape (ZDH-23)."""
+    return detective_links_impl(_cfg(), req_id=req_id, chat_id=chat_id, zeus_url=zeus_url)
+
+
+@mcp.tool()
+def support_pack_from_turn(
+    debug_json: str = "",
+    path: str = "",
+    zeus_url: str = "",
+) -> dict[str, Any]:
+    """Redacted support-pack markdown from debug JSON or last smoke artifact (ZDH-23)."""
+    return support_pack_from_turn_impl(
+        _cfg(), debug_json=debug_json, path=path, zeus_url=zeus_url
+    )
+
+
+@mcp.tool()
+def describe_scope(bucket: str = "", scope: str = "") -> dict[str, Any]:
+    """Live MINI-SCHEMA: entity types + field names only, no document samples (ZDH-25)."""
+    return describe_scope_impl(_cfg(), bucket=bucket, scope=scope)
+
+
+@mcp.tool()
+def recommend_motion(user_job: str) -> dict[str, Any]:
+    """Map a user job to a Zeus motion + typical verbs/modes. Does not generate a chat_request (ZDH-26)."""
+    return recommend_motion_impl(_cfg(), user_job=user_job)
 
 
 @mcp.tool()

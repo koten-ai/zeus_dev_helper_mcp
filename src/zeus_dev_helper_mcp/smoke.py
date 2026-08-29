@@ -349,6 +349,18 @@ def smoke_test_agent(
                 failure = failure or "dispatch_failed"
                 next_action = "Empty answer — inspect trace notes and LLM config"
 
+            hops: list[dict[str, Any]] = []
+            if isinstance(tool_calls, list):
+                for tc in tool_calls:
+                    if not isinstance(tc, dict):
+                        continue
+                    hops.append(
+                        {
+                            "name": tc.get("name") or tc.get("verb") or tc.get("tool"),
+                            "status": tc.get("status"),
+                            "req_id": tc.get("req_id") or tc.get("zeus_req_id"),
+                        }
+                    )
             return {
                 "ok": ok,
                 "failure_class": failure,
@@ -358,6 +370,7 @@ def smoke_test_agent(
                 "round": (session_meta or {}).get("round"),
                 "tool_call_count": n_tools,
                 "req_ids": req_ids[:5],
+                "hops": hops[:20],
                 "notes_preview": [str(n)[:200] for n in (notes if isinstance(notes, list) else [])][:5],
                 "bucket": bucket,
                 "scope": scope,
@@ -411,6 +424,21 @@ def smoke_test_agent(
             from zeus_dev_helper_mcp.handoff import record_metric
 
             record_metric(cfg, "smoke_test_agent_ok")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            cfg.state_dir.mkdir(parents=True, exist_ok=True)
+            artifact = {
+                "session_id": result.get("session_id"),
+                "req_ids": result.get("req_ids") or [],
+                "hops": result.get("hops") or [],
+                "bucket": result.get("bucket"),
+                "scope": result.get("scope"),
+                "mode": result.get("mode"),
+            }
+            (cfg.state_dir / "last_smoke_agent.json").write_text(
+                json.dumps(artifact) + "\n", encoding="utf-8"
+            )
         except Exception:  # noqa: BLE001
             pass
 

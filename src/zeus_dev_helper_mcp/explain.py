@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.docs_links import docs_url
+from zeus_dev_helper_mcp.motion import MOTIONS, motion_doc
 
 # Short answers; deep-links to koten_docs. Expand only after glossary.md updates.
 TOPICS: dict[str, dict[str, str]] = {
@@ -100,8 +101,15 @@ TOPICS: dict[str, dict[str, str]] = {
         "doc": "zeus-client/glossary.md#detective",
     },
     "motion": {
-        "summary": "How an agent works a problem (e.g. detective / exploratory). Guidance, not a Zeus server type.",
+        "summary": (
+            "Motions are interaction shapes, not Zeus modes. The 13 motions: Funnel, Explore, "
+            "Verify, Compare, Monitor, Explain, Compose, Simulate, Triage, Route, Refine, "
+            "Remember, Custom. A Zeus mode (analytics, tenant, regulated, …) is a deployment "
+            "control for tools on a scope. Use recommend_motion(user_job) — it does not generate "
+            "a chat_request."
+        ),
         "doc": "zeus-client/glossary.md#motion",
+        "external": "https://github.com/koten-ai/Zeus/blob/main/docs/public/motions/ZEUS_MOTIONS_GUIDE.md",
     },
     "single_agent": {
         "summary": "One middle-man agent loop to first green. Helper MVP track before multi-agent graduation.",
@@ -215,6 +223,18 @@ TOPICS: dict[str, dict[str, str]] = {
     },
 }
 
+for _mname, _mrow in MOTIONS.items():
+    _key = "explain_motion" if _mname == "explain" else _mname
+    TOPICS[_key] = {
+        "summary": (
+            f"{_mname.title()} motion: {_mrow['user_shape']} "
+            f"Typical verbs: {', '.join(_mrow['typical_verbs'])}. "
+            f"Modes that often support it: {', '.join(_mrow['modes'])}."
+        ),
+        "doc": "zeus-client/glossary.md#motion",
+        "external": motion_doc(_mname),
+    }
+
 
 def explain_topic(cfg: HelperConfig, topic: str) -> dict:
     key = (topic or "").strip().lower().replace("-", "_").replace(" ", "_")
@@ -263,6 +283,22 @@ def explain_topic(cfg: HelperConfig, topic: str) -> dict:
         "hash_boundary": "hash_boundary",
         "mini_schema": "hash_boundary",
         "compat": "zeus_runtime",
+        "funnel": "funnel",
+        "explore": "explore",
+        "investigate": "explore",
+        "verify": "verify",
+        "compare": "compare",
+        "monitor": "monitor",
+        "explain_motion": "explain_motion",
+        "why": "explain_motion",
+        "compose": "compose",
+        "simulate": "simulate",
+        "triage": "triage",
+        "route": "route",
+        "refine": "refine",
+        "remember": "remember",
+        "custom_motion": "custom",
+        "motions": "motion",
     }
     key = aliases.get(key, key)
     entry = TOPICS.get(key)

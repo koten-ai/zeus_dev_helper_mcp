@@ -5,7 +5,7 @@
 **Promise (unchanged):** first green middle-man turn — `session_id` / `req_id` — on public **`:8080`**.  
 **Not this MCP:** data-plane verbs as tools, Hub mutations, ZJA jobs, invented `contract_hash`.
 
-**Status:** Wave 0 + Wave 1 (PR 2, 3, 5, 6, 8 + glue) implemented as **0.6.0**. Waves 2–3 not started. Cancelled: PR 1 / [ZDH-17](https://kotenai.atlassian.net/browse/ZDH-17) (V1 scaffold/smoke rewrite); PR 4 / [ZDH-20](https://kotenai.atlassian.net/browse/ZDH-20) (v2 bootstrap probe).  
+**Status:** Waves 0–2 (PR 2, 3, 5–10 + glue) implemented as **0.6.0**. Wave 3 not started. Cancelled: PR 1 / [ZDH-17](https://kotenai.atlassian.net/browse/ZDH-17) (V1 scaffold/smoke rewrite); PR 4 / [ZDH-20](https://kotenai.atlassian.net/browse/ZDH-20) (v2 bootstrap probe).  
 **Date:** 2026-08-26  
 **Board:** [ZDH](https://kotenai.atlassian.net/jira/software/projects/ZDH/boards/45)  
 **Parent epic:** [ZDH-1](https://kotenai.atlassian.net/browse/ZDH-1)  
