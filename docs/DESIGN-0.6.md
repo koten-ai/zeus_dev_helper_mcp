@@ -1,6 +1,6 @@
 # Developer Helper MCP 0.6 — ZeusRuntime coach
 
-**Status:** Wave 0 implemented (0.6.0). Waves 1–3 remain queued.  
+**Status:** Wave 0 + Wave 1 implemented (0.6.0). Waves 2–3 remain queued.  
 **Product:** `zeus_dev_helper_mcp`  
 **Parent epic:** [ZDH-15](https://kotenai.atlassian.net/browse/ZDH-15) (relates [ZDH-1](https://kotenai.atlassian.net/browse/ZDH-1))  
 **Plan:** [`PLAN-runtime-coach-0.6.md`](PLAN-runtime-coach-0.6.md)  
@@ -28,7 +28,21 @@ This increment coaches the **current** client surface (`ZeusRuntime`, `TurnResul
 | `suggest_verb_call` | draft **legal** JSON body | does **not** POST |
 | `diagnose_error` | existing + ErrorCode / 0.7 classes | none (Detective **URLs only**) |
 
-`explain` topics added: `zeus_runtime`, `turn_result`, `cheap_path`, `semantic_cache`, `req_id_policy`, `trace_class`, `direct`, `typeahead`, `pipeline`.
+`explain` topics added: `zeus_runtime`, `turn_result`, `cheap_path`, `semantic_cache`, `req_id_policy`, `trace_class`, `direct`, `typeahead`, `pipeline`, `hash_boundary`.
+
+### Wave 1 tools
+
+| Tool | Role | Side effects |
+| --- | --- | --- |
+| `compat_check` | `GET /version` + `/healthz` on `:8080`; static 0.7 feature gates | none (read probes) |
+| `lint_chat_request` | path or pasted JSON; `_format` / `verbs` / `TO_BE_FILLED` | none |
+| `bind_contract` | extract stamped `contract.hash` only; refuse placeholders / `compute_local` | none |
+| `explain_hash_boundary` | MINI-SCHEMA / brief excluded from hash; inject at call time | none |
+| `catalog_diff` | live bootstrap summary vs on-disk vs bound hash **prefix** | optional live GET |
+| `lint_runtime_config` | `config.json`: port, auth_mode, env names, cheap path, cache off | none (redacts secrets) |
+| `lint_app_code` | `main.py` / Dockerfiles anti-examples | none |
+
+Checklist 4.2 `recommended_tools`: `bind_contract` / `catalog_diff` / `explain_hash_boundary`.
 
 ---
 
@@ -90,10 +104,10 @@ Match order: explicit `error_code` / `error_class` → HTTP status → needles. 
 
 - Rewriting V1 `scaffold_app` / `smoke_test_agent` to `ZeusRuntime`.
 - Switching bootstrap/auth/catalog probes to `/v2`.
-- Wave 1–3 tools (`compat_check`, catalog bind/diff, support pack, config lint, `describe_scope` tool, `recommend_motion`, hooks recipes, semantic-cache probe).
+- Wave 2–3 tools (support pack, `describe_scope` tool, `recommend_motion`, hooks recipes, semantic-cache probe).
 
 ---
 
 ## 8. Verification
 
-Unit tests (`pytest -q`) must not require a cluster. Diagnose: 409, 401, `:9091`, 400 `invalid_req_id` / `base:1`, `060010`. Surface: typeahead → `rt.data.search` + `direct.interactive`; multi_step does not recommend Direct `pipeline`. Verb lint: `where.abv.$gt` fails; unknown field fails when schema provided; `suggest_verb_call` does not POST.
+Unit tests (`pytest -q`) must not require a cluster. Diagnose: 409, 401, `:9091`, 400 `invalid_req_id` / `base:1`, `060010`. Surface: typeahead → `rt.data.search` + `direct.interactive`; multi_step does not recommend Direct `pipeline`. Verb lint: `where.abv.$gt` fails; unknown field fails when schema provided; `suggest_verb_call` does not POST. Compat: `:9091` rejected; 0.7.5 lacks semantic cache; never a fake COMPAT row. Bind: placeholder hash refused; stamped hash copied only. Config lint: Hub port error; secret values redacted from output.

@@ -206,6 +206,13 @@ TOPICS: dict[str, dict[str, str]] = {
         ),
         "doc": "zeus-client/using-zeus-client.md",
     },
+    "hash_boundary": {
+        "summary": (
+            "MINI-SCHEMA and SCOPE BRIEF are excluded from contract_hash and injected at call time. "
+            "guidance, contract metadata, and _* roots are also excluded. Never compute production hashes."
+        ),
+        "doc": "zeus-client/contracts-and-catalog.md",
+    },
 }
 
 
@@ -253,6 +260,9 @@ def explain_topic(cfg: HelperConfig, topic: str) -> dict:
         "suggest": "typeahead",
         "autocomplete": "typeahead",
         "dag": "pipeline",
+        "hash_boundary": "hash_boundary",
+        "mini_schema": "hash_boundary",
+        "compat": "zeus_runtime",
     }
     key = aliases.get(key, key)
     entry = TOPICS.get(key)

@@ -8,6 +8,9 @@
 - `explain` topics: `zeus_runtime`, `turn_result`, `cheap_path`, `semantic_cache`, `req_id_policy`, `trace_class`, `direct`, `typeahead`, `pipeline`
 - `docs/DESIGN-0.6.md` increment (frozen `docs/DESIGN.md` pointer only)
 - Optional extra `[agent]` floor `kotenai-zeus-client>=2.3.0`
+- **ZDH-21** `compat_check` — `/version` + `/healthz` on `:8080`; static 0.7 feature gates (not a COMPAT matrix row)
+- **ZDH-22** `lint_chat_request`, `bind_contract`, `explain_hash_boundary`, `catalog_diff` — stamp extract only; never compute production hashes
+- **ZDH-24** `lint_runtime_config` + `lint_app_code` — env names not values; secrets redacted; V1 / hash-literal / Dockerfile smells
 
 ### Notes
 - V1 `scaffold_app` / `smoke_test_agent` are **not** rewritten in this release ([ZDH-17](https://kotenai.atlassian.net/browse/ZDH-17) Cancelled)

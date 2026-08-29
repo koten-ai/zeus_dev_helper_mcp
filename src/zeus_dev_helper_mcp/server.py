@@ -21,6 +21,17 @@ from zeus_dev_helper_mcp.checklist import (
 from zeus_dev_helper_mcp.config import HelperConfig, reload_config
 from zeus_dev_helper_mcp.diagnose import diagnose_error as diagnose_error_impl
 from zeus_dev_helper_mcp.explain import explain_topic
+from zeus_dev_helper_mcp.compat import compat_check as compat_check_impl
+from zeus_dev_helper_mcp.config_lint import (
+    lint_app_code as lint_app_code_impl,
+    lint_runtime_config as lint_runtime_config_impl,
+)
+from zeus_dev_helper_mcp.contract import (
+    bind_contract as bind_contract_impl,
+    catalog_diff as catalog_diff_impl,
+    explain_hash_boundary as explain_hash_boundary_impl,
+    lint_chat_request as lint_chat_request_impl,
+)
 from zeus_dev_helper_mcp.surface import recommend_surface as recommend_surface_impl
 from zeus_dev_helper_mcp.verbs import (
     explain_verb as explain_verb_impl,
@@ -56,7 +67,8 @@ mcp = FastMCP(
         "Never invent contract hashes. Public API is :8080 not Hub :9091. "
         "Use readiness_check for platform gates; fetch_chat_request for templates. "
         "Use recommend_surface / explain_verb / lint_verb_args for Zeus 0.7 + Client 2.3 "
-        "(ZeusRuntime / Direct vs agent). Do not treat this as a Runtime scaffold rewrite. "
+        "(ZeusRuntime / Direct vs agent). Use compat_check, lint_chat_request, bind_contract, "
+        "lint_runtime_config. Do not treat this as a Runtime scaffold rewrite. "
         "After smoke green: recommend_data_plane_mcp / handoff_to_multi (handoffs only). "
         "Docs: koten_docs agent-index.yaml + using-zeus-client.md."
     ),
@@ -541,6 +553,61 @@ def suggest_verb_call(goal: str, mini_schema: str = "") -> dict[str, Any]:
         goal=goal,
         mini_schema=mini_schema or None,
     )
+
+
+@mcp.tool()
+def compat_check(zeus_url: str = "") -> dict[str, Any]:
+    """Probe GET /version + /healthz on :8080 and evaluate static 0.7 feature gates (ZDH-21)."""
+    return compat_check_impl(_cfg(), zeus_url=zeus_url)
+
+
+@mcp.tool()
+def lint_chat_request(path: str = "", json_text: str = "") -> dict[str, Any]:
+    """Lint a chat_request JSON (path or pasted). Read-only; never stamps (ZDH-22)."""
+    return lint_chat_request_impl(_cfg(), path=path, json_text=json_text)
+
+
+@mcp.tool()
+def bind_contract(
+    path: str = "",
+    json_text: str = "",
+    bucket: str = "",
+    scope: str = "",
+    mode: str = "",
+) -> dict[str, Any]:
+    """Extract stamped contract.hash only. Refuse placeholders / compute_local (ZDH-22)."""
+    return bind_contract_impl(
+        _cfg(),
+        path=path,
+        json_text=json_text,
+        bucket=bucket,
+        scope=scope,
+        mode=mode,
+    )
+
+
+@mcp.tool()
+def explain_hash_boundary() -> dict[str, Any]:
+    """MINI-SCHEMA / brief are excluded from contract_hash (ZDH-22)."""
+    return explain_hash_boundary_impl(_cfg())
+
+
+@mcp.tool()
+def catalog_diff(path: str = "", json_text: str = "", bound_hash: str = "") -> dict[str, Any]:
+    """Compare live bootstrap summary vs on-disk catalog vs bound hash prefix (ZDH-22)."""
+    return catalog_diff_impl(_cfg(), path=path, json_text=json_text, bound_hash=bound_hash)
+
+
+@mcp.tool()
+def lint_runtime_config(path: str) -> dict[str, Any]:
+    """Lint client config.json (:8080, auth_mode, env names, cheap path). Secrets redacted (ZDH-24)."""
+    return lint_runtime_config_impl(_cfg(), path=path)
+
+
+@mcp.tool()
+def lint_app_code(path: str) -> dict[str, Any]:
+    """Anti-example scan of main.py / Dockerfiles (stale V1, hash literals, :9091) (ZDH-24)."""
+    return lint_app_code_impl(_cfg(), path=path)
 
 
 @mcp.tool()

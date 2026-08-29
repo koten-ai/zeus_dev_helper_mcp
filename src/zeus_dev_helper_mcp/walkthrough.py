@@ -19,7 +19,7 @@ TOOL_HINTS: dict[str, list[str]] = {
     "3.1": ["scaffold_app", "use_sample", "travel_golden_path"],
     "3.2": ["write_env", "scaffold_app"],
     "4.1": ["fetch_chat_request", "list_catalog_modes", "bootstrap_scope"],
-    "4.2": ["explain", "bootstrap_scope"],  # stamp is ops/Hub
+    "4.2": ["bind_contract", "catalog_diff", "explain_hash_boundary"],
     "5.1": ["smoke_test_zeus"],
     "5.2": ["smoke_test_agent", "suggest_demo_prompts"],
     "6.1": ["explain", "suggest_demo_prompts", "recommend_data_plane_mcp"],

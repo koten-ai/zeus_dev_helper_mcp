@@ -94,6 +94,9 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 | `travel_golden_path` | **ZDH-10** travel sample golden path |
 | `smoke_test_zeus` / `smoke_test_agent` / `diagnose_error` | **ZDH-7** / **ZDH-19** ErrorCode + 0.7 classes |
 | `recommend_surface` / `explain_verb` / `lint_verb_args` / `suggest_verb_call` | **ZDH-18** Direct vs agent + V2 verb lint (does not POST; no Runtime scaffold rewrite) |
+| `compat_check` | **ZDH-21** version/feature gates on `:8080` (not a COMPAT row) |
+| `lint_chat_request` / `bind_contract` / `explain_hash_boundary` / `catalog_diff` | **ZDH-22** catalog coach — extract stamp only |
+| `lint_runtime_config` / `lint_app_code` | **ZDH-24** config + anti-example scan (secrets redacted) |
 | `list_catalog_modes` / `fetch_chat_request` | **ZDH-14** |
 | `explain` / `suggest_demo_prompts` | **ZDH-13** glossary + prompts |
 | `handoff_to_multi` | **ZDH-11** multi-agent graduation (gated) |
@@ -105,8 +108,9 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 ```text
 start_project → set_prereq → validate_env → readiness_check
   → use_sample | travel_golden_path | scaffold_app
-  → bootstrap_scope / fetch_chat_request
-  → recommend_surface / explain_verb / lint_verb_args
+  → bootstrap_scope / fetch_chat_request / bind_contract / catalog_diff
+  → recommend_surface / explain_verb / lint_verb_args / compat_check
+  → lint_runtime_config / lint_app_code
   → smoke_test_zeus → smoke_test_agent → gap_report
   → (optional) recommend_data_plane_mcp | handoff_to_multi
 ```
