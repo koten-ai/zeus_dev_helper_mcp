@@ -22,7 +22,7 @@
 
 `doctor` → `start_project` → `list_catalog_modes` → `fetch_chat_request` → `explain` → `recommend_surface` → `next_step`
 
-Coach (0.6): `recommend_surface` / `explain_verb` / `lint_verb_args` / `suggest_verb_call` / `diagnose_error` / `compat_check` / `bind_contract` / `lint_runtime_config` / `describe_scope` / `recommend_motion` / `support_pack_from_turn`. Does **not** rewrite V1 `scaffold_app` / `smoke_test_agent`.
+Coach (0.6): `recommend_surface` / `explain_verb` / `lint_verb_args` / `suggest_verb_call` / `diagnose_error` / `compat_check` / `bind_contract` / `lint_runtime_config` / `describe_scope` / `recommend_motion` / `support_pack_from_turn` / `suggest_hooks` / `semantic_cache_status`. Does **not** rewrite V1 `scaffold_app` / `smoke_test_agent`. Semantic cache stays **off**.
 
 Travel sample: `use_sample` / `travel_golden_path` (set `DEMO_TRAVEL_SAMPLE_DIR` if cloned).
 

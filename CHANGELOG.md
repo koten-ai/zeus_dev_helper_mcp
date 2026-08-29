@@ -14,6 +14,8 @@
 - **ZDH-23** `explain_req_id_policy`, `detective_links`, `support_pack_from_turn` — URL templates + redacted ids/hops only
 - **ZDH-25** `describe_scope` — entity types + field names; no document samples
 - **ZDH-26** `recommend_motion` — 13 Zeus motions; does not generate a chat_request
+- **ZDH-27** `suggest_hooks` — tenant pin / deny pipeline / output_schema / OCR snippets (not executed)
+- **ZDH-28** `semantic_cache_status` — default off; optional `/v2/agent_memory/status` probe
 
 ### Notes
 - V1 `scaffold_app` / `smoke_test_agent` are **not** rewritten in this release ([ZDH-17](https://kotenai.atlassian.net/browse/ZDH-17) Cancelled)

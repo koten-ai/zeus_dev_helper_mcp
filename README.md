@@ -100,6 +100,8 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 | `explain_req_id_policy` / `detective_links` / `support_pack_from_turn` | **ZDH-23** correlation + redacted support pack |
 | `describe_scope` | **ZDH-25** schema-only live describe |
 | `recommend_motion` | **ZDH-26** 13 motions; no custom chat_request |
+| `suggest_hooks` | **ZDH-27** policy snippets (not a policy engine) |
+| `semantic_cache_status` | **ZDH-28** leave enabled=false; optional status probe |
 | `list_catalog_modes` / `fetch_chat_request` | **ZDH-14** |
 | `explain` / `suggest_demo_prompts` | **ZDH-13** glossary + prompts |
 | `handoff_to_multi` | **ZDH-11** multi-agent graduation (gated) |

@@ -21,7 +21,9 @@ from zeus_dev_helper_mcp.checklist import (
 from zeus_dev_helper_mcp.config import HelperConfig, reload_config
 from zeus_dev_helper_mcp.diagnose import diagnose_error as diagnose_error_impl
 from zeus_dev_helper_mcp.explain import explain_topic
+from zeus_dev_helper_mcp.cache import semantic_cache_status as semantic_cache_status_impl
 from zeus_dev_helper_mcp.compat import compat_check as compat_check_impl
+from zeus_dev_helper_mcp.hooks import suggest_hooks as suggest_hooks_impl
 from zeus_dev_helper_mcp.config_lint import (
     lint_app_code as lint_app_code_impl,
     lint_runtime_config as lint_runtime_config_impl,
@@ -196,6 +198,13 @@ def start_project(
             docs_url("zeus-client/for-ai-agents.md"),
             docs_url("zeus-client/using-zeus-client.md"),
         ],
+        "semantic_cache": {
+            "enabled": False,
+            "note": (
+                "Leave session.semantic_cache.enabled=false. start_project never turns it on. "
+                "Direct/typeahead must not call agent_memory."
+            ),
+        },
     }
     if wants_multi:
         out["track"] = "multi-agent"
@@ -651,6 +660,18 @@ def describe_scope(bucket: str = "", scope: str = "") -> dict[str, Any]:
 def recommend_motion(user_job: str) -> dict[str, Any]:
     """Map a user job to a Zeus motion + typical verbs/modes. Does not generate a chat_request (ZDH-26)."""
     return recommend_motion_impl(_cfg(), user_job=user_job)
+
+
+@mcp.tool()
+def suggest_hooks(recipe: str = "") -> dict[str, Any]:
+    """Middleware snippets (tenant pin, deny pipeline, output_schema, OCR). Not executed (ZDH-27)."""
+    return suggest_hooks_impl(_cfg(), recipe=recipe)
+
+
+@mcp.tool()
+def semantic_cache_status(zeus_url: str = "") -> dict[str, Any]:
+    """Semantic cache coach: leave enabled=false; optional GET /v2/agent_memory/status (ZDH-28)."""
+    return semantic_cache_status_impl(_cfg(), zeus_url=zeus_url)
 
 
 @mcp.tool()

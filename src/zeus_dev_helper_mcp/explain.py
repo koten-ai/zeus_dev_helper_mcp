@@ -172,8 +172,10 @@ TOPICS: dict[str, dict[str, str]] = {
     },
     "semantic_cache": {
         "summary": (
-            "Semantic cache / agent_memory is a Zeus ≥0.7.6 flag and defaults OFF. "
-            "Leave enabled=false in configs and scaffolds. Direct/typeahead must not call agent_memory."
+            "Semantic cache is POST/GET /v2/agent_memory/* (not the graph tool agent_memory.read). "
+            "Client session.semantic_cache.enabled defaults OFF — leave it false in start_project and "
+            "scaffolds. Needs Zeus ≥ 0.7.6; GET /v2/agent_memory/status 404 means engine too old or flag off. "
+            "Direct/typeahead must not call agent_memory. Use semantic_cache_status to probe."
         ),
         "doc": "zeus-client/using-zeus-client.md",
     },

@@ -22,8 +22,14 @@ TOOL_HINTS: dict[str, list[str]] = {
     "4.2": ["bind_contract", "catalog_diff", "explain_hash_boundary"],
     "5.1": ["smoke_test_zeus", "describe_scope"],
     "5.2": ["smoke_test_agent", "suggest_demo_prompts"],
-    "6.1": ["explain", "suggest_demo_prompts", "recommend_data_plane_mcp"],
-    "7.1": ["diagnose_error", "support_pack_from_turn", "detective_links", "gap_report"],
+    "6.1": ["suggest_hooks", "explain", "suggest_demo_prompts"],
+    "7.1": [
+        "diagnose_error",
+        "suggest_hooks",
+        "support_pack_from_turn",
+        "detective_links",
+        "gap_report",
+    ],
 }
 
 

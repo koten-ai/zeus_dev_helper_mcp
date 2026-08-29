@@ -1,6 +1,6 @@
 # Developer Helper MCP 0.6 — ZeusRuntime coach
 
-**Status:** Waves 0–2 implemented (0.6.0). Wave 3 remains queued.  
+**Status:** Waves 0–3 implemented (0.6.0).  
 **Product:** `zeus_dev_helper_mcp`  
 **Parent epic:** [ZDH-15](https://kotenai.atlassian.net/browse/ZDH-15) (relates [ZDH-1](https://kotenai.atlassian.net/browse/ZDH-1))  
 **Plan:** [`PLAN-runtime-coach-0.6.md`](PLAN-runtime-coach-0.6.md)  
@@ -55,6 +55,15 @@ Checklist 4.2 `recommended_tools`: `bind_contract` / `catalog_diff` / `explain_h
 | `recommend_motion` | user job → 13 Zeus motions + typical verbs/modes | none — **no** chat_request |
 
 `explain("motion")` lists the 13 motions vs `mode`. `smoke_test_agent` writes ids/hops (no bodies) to `last_smoke_agent.json`.
+
+### Wave 3 tools
+
+| Tool | Role | Side effects |
+| --- | --- | --- |
+| `suggest_hooks` | snippets: tenant pin, deny pipeline on Direct, `output_schema` allowlist, never promote OCR to system | none — **not executed** |
+| `semantic_cache_status` | leave `enabled=false`; optional `GET /v2/agent_memory/status` (404 = too old or flag off) | read-only GET |
+
+Checklist 6.1 / 7.1 include `suggest_hooks`. `start_project` never enables semantic cache.
 
 ---
 
@@ -116,10 +125,10 @@ Match order: explicit `error_code` / `error_class` → HTTP status → needles. 
 
 - Rewriting V1 `scaffold_app` / `smoke_test_agent` to `ZeusRuntime`.
 - Switching bootstrap/auth/catalog probes to `/v2`.
-- Wave 3 tools (hooks recipes, semantic-cache probe).
+- (none remaining in this train).
 
 ---
 
 ## 8. Verification
 
-Unit tests (`pytest -q`) must not require a cluster. Diagnose: 409, 401, `:9091`, 400 `invalid_req_id` / `base:1`, `060010`. Surface: typeahead → `rt.data.search` + `direct.interactive`; multi_step does not recommend Direct `pipeline`. Verb lint: `where.abv.$gt` fails; unknown field fails when schema provided; `suggest_verb_call` does not POST. Compat: `:9091` rejected; 0.7.5 lacks semantic cache; never a fake COMPAT row. Bind: placeholder hash refused; stamped hash copied only. Config lint: Hub port error; secret values redacted from output. Support pack: no prompt/body in markdown; Detective URLs only. `describe_scope`: names only. `recommend_motion("book a hotel")` → Funnel and `chat_request` is null.
+Unit tests (`pytest -q`) must not require a cluster. Diagnose: 409, 401, `:9091`, 400 `invalid_req_id` / `base:1`, `060010`. Surface: typeahead → `rt.data.search` + `direct.interactive`; multi_step does not recommend Direct `pipeline`. Verb lint: `where.abv.$gt` fails; unknown field fails when schema provided; `suggest_verb_call` does not POST. Compat: `:9091` rejected; 0.7.5 lacks semantic cache; never a fake COMPAT row. Bind: placeholder hash refused; stamped hash copied only. Config lint: Hub port error; secret values redacted from output. Support pack: no prompt/body in markdown; Detective URLs only. `describe_scope`: names only. `recommend_motion("book a hotel")` → Funnel and `chat_request` is null. `suggest_hooks` has `executed=false`. `semantic_cache_status` recommends enabled=false; 404 → too old or flag off.
