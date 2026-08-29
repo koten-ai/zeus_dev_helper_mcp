@@ -1,5 +1,7 @@
 # Developer Helper MCP — product design (ZDH-2)
 
+**Post-MVP:** [`DESIGN-0.6.md`](DESIGN-0.6.md) (runtime coach increment). This file remains the frozen MVP record (ZDH-2).
+
 **Status:** Implemented (MVP 0.4.x+) — design frozen post-implementation for the board.  
 **Epic:** [ZDH-1](https://kotenai.atlassian.net/browse/ZDH-1)  
 **Repo:** https://github.com/koten-ai/zeus_dev_helper_mcp  

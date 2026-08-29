@@ -12,7 +12,7 @@
 
 > Not a data-plane MCP. Coaches: checklist → templates → live readiness & smoke → handoffs.
 
-**Design:** [`docs/DESIGN.md`](docs/DESIGN.md) (ZDH-2)
+**Design:** [`docs/DESIGN.md`](docs/DESIGN.md) (ZDH-2, frozen MVP) · [`docs/DESIGN-0.6.md`](docs/DESIGN-0.6.md) (runtime coach)
 
 ## Stack
 
@@ -81,7 +81,7 @@ Add to MCP servers config (example):
 
 Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the same env vars.
 
-## Implemented tools (0.5.0)
+## Implemented tools (0.6.0)
 
 | Tool | Status |
 | --- | --- |
@@ -92,7 +92,8 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 | `bootstrap_scope` | **ZDH-5** live bootstrap + chat_request summary |
 | `scaffold_app` / `use_sample` / `write_env` / `verify_local_setup` | **ZDH-6** |
 | `travel_golden_path` | **ZDH-10** travel sample golden path |
-| `smoke_test_zeus` / `smoke_test_agent` / `diagnose_error` | **ZDH-7** |
+| `smoke_test_zeus` / `smoke_test_agent` / `diagnose_error` | **ZDH-7** / **ZDH-19** ErrorCode + 0.7 classes |
+| `recommend_surface` / `explain_verb` / `lint_verb_args` / `suggest_verb_call` | **ZDH-18** Direct vs agent + V2 verb lint (does not POST; no Runtime scaffold rewrite) |
 | `list_catalog_modes` / `fetch_chat_request` | **ZDH-14** |
 | `explain` / `suggest_demo_prompts` | **ZDH-13** glossary + prompts |
 | `handoff_to_multi` | **ZDH-11** multi-agent graduation (gated) |
@@ -105,6 +106,7 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 start_project → set_prereq → validate_env → readiness_check
   → use_sample | travel_golden_path | scaffold_app
   → bootstrap_scope / fetch_chat_request
+  → recommend_surface / explain_verb / lint_verb_args
   → smoke_test_zeus → smoke_test_agent → gap_report
   → (optional) recommend_data_plane_mcp | handoff_to_multi
 ```

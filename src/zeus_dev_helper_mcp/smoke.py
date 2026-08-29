@@ -19,7 +19,9 @@ def _base(cfg: HelperConfig) -> str:
     return (cfg.zeus_url or "").strip().rstrip("/")
 
 
-def _auth(cfg: HelperConfig) -> tuple[str, str] | None:
+def request_auth(cfg: HelperConfig | None = None) -> tuple[str, str] | None:
+    """Basic auth from env (values never logged). cfg unused; signature matches callers."""
+    _ = cfg
     user = (os.environ.get("ZEUS_USERNAME") or os.environ.get("ZEUS_USER") or "").strip()
     password = (os.environ.get("ZEUS_PASSWORD") or "").strip()
     if user and password:
@@ -27,12 +29,30 @@ def _auth(cfg: HelperConfig) -> tuple[str, str] | None:
     return None
 
 
-def _headers() -> dict[str, str]:
+def request_headers() -> dict[str, str]:
     h = {"User-Agent": "zeus-dev-helper-mcp", "Accept": "application/json", "Content-Type": "application/json"}
     token = (os.environ.get("ZEUS_BEARER_TOKEN") or os.environ.get("ZEUS_TOKEN") or "").strip()
     if token:
         h["Authorization"] = f"Bearer {token}"
     return h
+
+
+def describe_scope_url(cfg: HelperConfig) -> str | None:
+    """POST /v2/{bucket}/{scope}/describe — no Hub, no document bodies."""
+    base = _base(cfg)
+    bucket = cfg.default_bucket
+    scope = cfg.default_scope
+    if not base or not bucket or not scope:
+        return None
+    return f"{base}/v2/{bucket}/{scope}/describe"
+
+
+def _auth(cfg: HelperConfig) -> tuple[str, str] | None:
+    return request_auth(cfg)
+
+
+def _headers() -> dict[str, str]:
+    return request_headers()
 
 
 def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict[str, Any]:
@@ -79,7 +99,7 @@ def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict
         return out
 
     # Scope-level describe (V2)
-    url = f"{base}/v2/{bucket}/{scope}/describe"
+    url = describe_scope_url(cfg) or f"{base}/v2/{bucket}/{scope}/describe"
     body: dict[str, Any] = {}  # server defaults
     status = 0
     req_id = ""

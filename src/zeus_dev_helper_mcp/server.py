@@ -21,6 +21,12 @@ from zeus_dev_helper_mcp.checklist import (
 from zeus_dev_helper_mcp.config import HelperConfig, reload_config
 from zeus_dev_helper_mcp.diagnose import diagnose_error as diagnose_error_impl
 from zeus_dev_helper_mcp.explain import explain_topic
+from zeus_dev_helper_mcp.surface import recommend_surface as recommend_surface_impl
+from zeus_dev_helper_mcp.verbs import (
+    explain_verb as explain_verb_impl,
+    lint_verb_args as lint_verb_args_impl,
+    suggest_verb_call as suggest_verb_call_impl,
+)
 from zeus_dev_helper_mcp.prereqs import public_prereqs, save_prereqs
 from zeus_dev_helper_mcp.readiness import run_readiness_check
 from zeus_dev_helper_mcp.scaffold import (
@@ -49,6 +55,8 @@ mcp = FastMCP(
         "Prefer live Zeus for stamps; use zeus_chat_request for min templates. "
         "Never invent contract hashes. Public API is :8080 not Hub :9091. "
         "Use readiness_check for platform gates; fetch_chat_request for templates. "
+        "Use recommend_surface / explain_verb / lint_verb_args for Zeus 0.7 + Client 2.3 "
+        "(ZeusRuntime / Direct vs agent). Do not treat this as a Runtime scaffold rewrite. "
         "After smoke green: recommend_data_plane_mcp / handoff_to_multi (handoffs only). "
         "Docs: koten_docs agent-index.yaml + using-zeus-client.md."
     ),
@@ -468,8 +476,12 @@ def diagnose_error(
     req_id: str = "",
     session_id: str = "",
     zeus_url: str = "",
+    error_code: str = "",
+    error_class: str = "",
+    chat_id: str = "",
+    turn_id: str = "",
 ) -> dict[str, Any]:
-    """Map error signals to failure_class + errors.md anchor (ZDH-7)."""
+    """Map error signals to failure_class + errors.md anchor (ZDH-7 / ZDH-19)."""
     return diagnose_error_impl(
         _cfg(),
         status=status,
@@ -478,6 +490,56 @@ def diagnose_error(
         req_id=req_id,
         session_id=session_id,
         zeus_url=zeus_url,
+        error_code=error_code,
+        error_class=error_class,
+        chat_id=chat_id,
+        turn_id=turn_id,
+    )
+
+
+@mcp.tool()
+def recommend_surface(
+    intent: str,
+    qps: float = 0,
+    needs_llm: bool | None = None,
+) -> dict[str, Any]:
+    """Pick Direct vs agent surface + Trace-Class (ZDH-18). Does not call Zeus."""
+    return recommend_surface_impl(
+        _cfg(),
+        intent=intent,
+        qps=qps if qps else None,
+        needs_llm=needs_llm,
+    )
+
+
+@mcp.tool()
+def explain_verb(name: str) -> dict[str, Any]:
+    """V2 verb encyclopedia: path class, demux, Direct vs pipeline (ZDH-18)."""
+    return explain_verb_impl(_cfg(), name=name)
+
+
+@mcp.tool()
+def lint_verb_args(
+    verb: str,
+    body: str = "{}",
+    mini_schema: str = "",
+) -> dict[str, Any]:
+    """Lint a would-be V2 verb JSON body (MINI-SCHEMA / equality / pipeline). Does not POST."""
+    return lint_verb_args_impl(
+        _cfg(),
+        verb=verb,
+        body=body,
+        mini_schema=mini_schema or None,
+    )
+
+
+@mcp.tool()
+def suggest_verb_call(goal: str, mini_schema: str = "") -> dict[str, Any]:
+    """Draft a legal V2 verb JSON body from a goal. Guidance only — does not POST."""
+    return suggest_verb_call_impl(
+        _cfg(),
+        goal=goal,
+        mini_schema=mini_schema or None,
     )
 
 

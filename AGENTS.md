@@ -20,7 +20,9 @@
 
 ## Tools to use first
 
-`doctor` → `start_project` → `list_catalog_modes` → `fetch_chat_request` → `explain` → `next_step`
+`doctor` → `start_project` → `list_catalog_modes` → `fetch_chat_request` → `explain` → `recommend_surface` → `next_step`
+
+Coach (0.6): `recommend_surface` / `explain_verb` / `lint_verb_args` / `suggest_verb_call` / `diagnose_error`. Does **not** rewrite V1 `scaffold_app` / `smoke_test_agent`.
 
 Travel sample: `use_sample` / `travel_golden_path` (set `DEMO_TRAVEL_SAMPLE_DIR` if cloned).
 

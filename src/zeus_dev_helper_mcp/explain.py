@@ -140,6 +140,72 @@ TOPICS: dict[str, dict[str, str]] = {
         "summary": "GET bootstrap for a scope returns what Zeus knows (collections, chat_request summary, etc.).",
         "doc": "zeus-client/using-zeus-client.md",
     },
+    "zeus_runtime": {
+        "summary": (
+            "ZeusRuntime is the kotenai-zeus-client ≥2.3 default (V1 ZeusClient/run_agent lives under "
+            "zeus_client.compat.v1). from_config() loads config and may set catalog_remote; apps still "
+            "assign rt.services.zeus = HttpxZeusPort(...) and rt.services.llm = OpenAICompatibleLlmClient(...)."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "turn_result": {
+        "summary": (
+            "await rt.agent.run_turn(...) returns TurnResult (answer, debug, session). "
+            "Do not expect the V1 (answer, trace, turns, session_meta) tuple on the default import."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "cheap_path": {
+        "summary": (
+            "Cheap agent path: ClientSettings(ai_process_result=False) — default. "
+            "Skip extra LLM post-processing of Zeus tool results."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "semantic_cache": {
+        "summary": (
+            "Semantic cache / agent_memory is a Zeus ≥0.7.6 flag and defaults OFF. "
+            "Leave enabled=false in configs and scaffolds. Direct/typeahead must not call agent_memory."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "req_id_policy": {
+        "summary": (
+            "One opaque UUID per HTTP hop (X-Zeus-Req-Id). Never base:1 / uuid:2 composites "
+            "(400 invalid_req_id). Group hops with X-Zeus-Chat-Id and X-Zeus-Turn-Id. "
+            "Open Detective/Rewind on the tool hop, never POST /v2/session/{id}/turn."
+        ),
+        "doc": "zeus-client/errors.md",
+    },
+    "trace_class": {
+        "summary": (
+            "X-Zeus-Trace-Class: agent (run_turn hops), session (/v2/session*), "
+            "direct.interactive (typeahead search), direct.read (rt.data.* verbs). "
+            "Do not invent a jobs Trace-Class."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "direct": {
+        "summary": (
+            "Direct data plane is rt.data.* with no LLM. Typeahead → rt.data.search "
+            "(direct.interactive); single verb → rt.data.verb (direct.read). pipeline is not on Direct."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "typeahead": {
+        "summary": (
+            "As-you-type suggest is rt.data.search with Trace-Class direct.interactive. "
+            "Do not call rt.agent.run_turn per keystroke; do not pipeline on Direct."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "pipeline": {
+        "summary": (
+            "pipeline is a server-side read-only DAG of V2 verbs. It is rejected on Direct "
+            "(ErrorCode 060010). Use recommend_surface(intent=multi_step) → agent-for-pipeline."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
 }
 
 
@@ -170,6 +236,23 @@ def explain_topic(cfg: HelperConfig, topic: str) -> dict:
         "single": "single_agent",
         "tools_v2": "v2_verbs",
         "tools_v1": "v1_tools",
+        "runtime": "zeus_runtime",
+        "zeusruntime": "zeus_runtime",
+        "run_turn": "turn_result",
+        "turnresult": "turn_result",
+        "ai_process_result": "cheap_path",
+        "cheap": "cheap_path",
+        "cache": "semantic_cache",
+        "agent_memory": "semantic_cache",
+        "correlation": "req_id_policy",
+        "reqid": "req_id_policy",
+        "trace": "trace_class",
+        "traceclass": "trace_class",
+        "direct_path": "direct",
+        "rt_data": "direct",
+        "suggest": "typeahead",
+        "autocomplete": "typeahead",
+        "dag": "pipeline",
     }
     key = aliases.get(key, key)
     entry = TOPICS.get(key)

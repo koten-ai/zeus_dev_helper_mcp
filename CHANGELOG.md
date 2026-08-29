@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0
+
+### Added
+- **ZDH-18** Surface router + V2 verb coach: `recommend_surface`, `explain_verb`, `lint_verb_args`, `suggest_verb_call`
+- **ZDH-19** `diagnose_error` ErrorCode / Zeus `error_class` plus 0.7 failure classes (`invalid_req_id`, `composite_req_id`, `pipeline_not_on_direct`, …); Detective URL templates only
+- `explain` topics: `zeus_runtime`, `turn_result`, `cheap_path`, `semantic_cache`, `req_id_policy`, `trace_class`, `direct`, `typeahead`, `pipeline`
+- `docs/DESIGN-0.6.md` increment (frozen `docs/DESIGN.md` pointer only)
+- Optional extra `[agent]` floor `kotenai-zeus-client>=2.3.0`
+
+### Notes
+- V1 `scaffold_app` / `smoke_test_agent` are **not** rewritten in this release ([ZDH-17](https://kotenai.atlassian.net/browse/ZDH-17) Cancelled)
+- Bootstrap/auth/catalog probes stay on existing `/v1` ([ZDH-20](https://kotenai.atlassian.net/browse/ZDH-20) Cancelled)
+- Verb tools never POST; they explain, lint, and draft
+
 ## 0.5.0
 
 ### Added
