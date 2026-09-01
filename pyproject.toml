@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = { text = "Proprietary" }
 authors = [{ name = "Koten AI" }]
 dependencies = [
-  "mcp>=1.8.0",
+  "mcp>=1.8.0,<3",
   "httpx>=0.27.0",
 ]
 

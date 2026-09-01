@@ -17,7 +17,7 @@
 ## Stack
 
 - **Python 3.11+**
-- Official **`mcp`** SDK (`FastMCP`, stdio)
+- Official **`mcp`** SDK (`FastMCP` on 1.x / `MCPServer` on 2.x, stdio)
 
 ## Install (dev)
 
@@ -50,13 +50,34 @@ python -m zeus_dev_helper_mcp
 
 ### Grok Build
 
+`grok mcp add` treats flags like `-m` as its own unless they come **after `--`**. Point `command` at this repo’s venv so Grok can start the server even when the TUI was launched without the venv activated:
+
 ```bash
-grok mcp add zeus-dev-helper -- \
-  env ZEUS_CHAT_REQUEST_DIR=/absolute/path/to/zeus_chat_request \
-  python -m zeus_dev_helper_mcp
+# from this repo, after `pip install -e ".[dev]"`
+grok mcp add zeus-dev-helper \
+  -e ZEUS_CHAT_REQUEST_DIR=/absolute/path/to/zeus_chat_request \
+  -e ZEUS_URL=http://localhost:8080 \
+  -- "$(pwd)/.venv/bin/python" -m zeus_dev_helper_mcp
 ```
 
-(Adjust to your host’s MCP config format if `grok mcp add` differs.)
+Equivalent `~/.grok/config.toml` (or `.grok/config.toml` with `--scope project`):
+
+```toml
+[mcp_servers.zeus-dev-helper]
+command = "/absolute/path/to/zeus_dev_helper_mcp/.venv/bin/python"
+args = ["-m", "zeus_dev_helper_mcp"]
+cwd = "/absolute/path/to/zeus_dev_helper_mcp"
+env = { ZEUS_CHAT_REQUEST_DIR = "/absolute/path/to/zeus_chat_request", ZEUS_URL = "http://localhost:8080" }
+enabled = true
+```
+
+Then `/mcps` → `r` to refresh, or `grok mcp doctor zeus-dev-helper`.
+
+Common failures:
+
+- `unexpected argument '-m'` — missing `--` before the python command
+- `No module named 'zeus_dev_helper_mcp'` / `python: No such file or directory` — Grok did not inherit the venv; use the `.venv/bin/python` path above
+- `No module named 'mcp.server.fastmcp'` — mcp 2.x renamed FastMCP; use Helper **0.6.0+** (`mcp>=1.8.0,<3`)
 
 ### Claude Code / Claude Desktop
 

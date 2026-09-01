@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+try:
+    # mcp 2.x: FastMCP was renamed (https://py.sdk.modelcontextprotocol.io/v2/migration/)
+    from mcp.server.mcpserver import MCPServer as FastMCP
+except ModuleNotFoundError:  # mcp 1.x
+    from mcp.server.fastmcp import FastMCP
 
 from zeus_dev_helper_mcp import __version__
 from zeus_dev_helper_mcp.catalog import (

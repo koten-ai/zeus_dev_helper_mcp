@@ -2,6 +2,10 @@
 
 ## 0.6.0
 
+### Fixed
+- Server import on **mcp 2.x** (`FastMCP` renamed to `MCPServer`). Supports 1.x and 2.x; pin is now `mcp>=1.8.0,<3`.
+- Grok host install: `grok mcp add` must pass `--` before `python -m` (otherwise Grok errors `unexpected argument '-m'`), and `command` must be the repo venv interpreter so the TUI can spawn the server without an activated venv.
+
 ### Added
 - **ZDH-18** Surface router + V2 verb coach: `recommend_surface`, `explain_verb`, `lint_verb_args`, `suggest_verb_call`
 - **ZDH-19** `diagnose_error` ErrorCode / Zeus `error_class` plus 0.7 failure classes (`invalid_req_id`, `composite_req_id`, `pipeline_not_on_direct`, …); Detective URL templates only
