@@ -1,0 +1,85 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.koten-ai/zeus-dev-helper",
+  "title": "Zeus Dev Helper",
+  "description": "Coach first Zeus Client app to green (stdio MCP).",
+  "version": "0.6.0",
+  "websiteUrl": "https://docs.koten.ai/zeus-client/dev-helper-mcp",
+  "repository": {
+    "url": "https://github.com/koten-ai/zeus_dev_helper_mcp",
+    "source": "github",
+    "id": "1303398895"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "zeus-dev-helper-mcp",
+      "version": "0.6.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "ZEUS_URL",
+          "description": "Public Zeus API base URL (port 8080, never Hub :9091).",
+          "format": "string",
+          "isRequired": false,
+          "placeholder": "http://localhost:8080"
+        },
+        {
+          "name": "ZEUS_BUCKET",
+          "description": "Default bucket for bootstrap and auth probes.",
+          "format": "string",
+          "isRequired": false
+        },
+        {
+          "name": "ZEUS_SCOPE",
+          "description": "Default scope for bootstrap and auth probes.",
+          "format": "string",
+          "isRequired": false
+        },
+        {
+          "name": "ZEUS_USERNAME",
+          "description": "Zeus basic-auth username (presence only; never logged).",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "ZEUS_PASSWORD",
+          "description": "Zeus basic-auth password (presence only; never logged).",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "ZEUS_BEARER_TOKEN",
+          "description": "Zeus bearer token (presence only; never logged).",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "ZEUS_CHAT_REQUEST_DIR",
+          "description": "Local clone of zeus_chat_request for offline min templates.",
+          "format": "filepath",
+          "isRequired": false
+        },
+        {
+          "name": "GITHUB_TOKEN",
+          "description": "GitHub token to fetch private zeus_chat_request catalogs.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "DEMO_TRAVEL_SAMPLE_DIR",
+          "description": "Local clone of demo_travel_sample for travel_golden_path.",
+          "format": "filepath",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

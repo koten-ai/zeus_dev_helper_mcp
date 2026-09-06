@@ -21,6 +21,7 @@
 - **ZDH-27** `suggest_hooks` — tenant pin / deny pipeline / output_schema / OCR snippets (not executed)
 - **ZDH-28** `semantic_cache_status` — default off; optional `/v2/agent_memory/status` probe
 - Helper tool catalog: [`docs/TOOLS.md`](docs/TOOLS.md) (when / args / side effects / do-not; not a Zeus OpenAPI dump)
+- PyPI + official MCP Registry distribution: `server.json` (`io.github.koten-ai/zeus-dev-helper`), README `mcp-name` marker, tag-driven [`.github/workflows/release.yml`](.github/workflows/release.yml)
 
 ### Notes
 - V1 `scaffold_app` / `smoke_test_agent` are **not** rewritten in this release ([ZDH-17](https://kotenai.atlassian.net/browse/ZDH-17) Cancelled)
