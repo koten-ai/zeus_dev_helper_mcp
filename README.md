@@ -1,5 +1,7 @@
 # zeus_dev_helper_mcp
 
+<!-- mcp-name: io.github.koten-ai/zeus-dev-helper -->
+
 **Developer Helper MCP** — first Zeus-powered app onboarding coach.
 
 | | |
@@ -12,12 +14,30 @@
 
 > Not a data-plane MCP. Coaches: checklist → templates → live readiness & smoke → handoffs.
 
-**Design:** [`docs/DESIGN.md`](docs/DESIGN.md) (ZDH-2)
+**Design:** [`docs/DESIGN.md`](docs/DESIGN.md) (ZDH-2, frozen MVP) · [`docs/DESIGN-0.6.md`](docs/DESIGN-0.6.md) (runtime coach)  
+**Tool catalog:** [`docs/TOOLS.md`](docs/TOOLS.md) — when to call, args, side effects, do-not
 
 ## Stack
 
 - **Python 3.11+**
-- Official **`mcp`** SDK (`FastMCP`, stdio)
+- Official **`mcp`** SDK (`FastMCP` on 1.x / `MCPServer` on 2.x, stdio)
+- Registry name: `io.github.koten-ai/zeus-dev-helper` (PyPI: `zeus-dev-helper-mcp`)
+
+## Install
+
+```bash
+pip install zeus-dev-helper-mcp
+# or
+uvx zeus-dev-helper-mcp
+```
+
+Optional agent-smoke extra (needs `kotenai-zeus-client` on PyPI):
+
+```bash
+pip install "zeus-dev-helper-mcp[agent]"
+```
+
+Live Zeus on `:8080` is the preferred catalog stamp. Offline min templates need a local `zeus_chat_request` clone (`ZEUS_CHAT_REQUEST_DIR`) or `GITHUB_TOKEN` for the private GitHub repo. Travel golden path needs `DEMO_TRAVEL_SAMPLE_DIR` when that sample is cloned.
 
 ## Install (dev)
 
@@ -48,15 +68,45 @@ python -m zeus_dev_helper_mcp
 
 ## Host install
 
+Prefer the published console script (`uvx` / `pip install`) so hosts do not need a repo checkout.
+
 ### Grok Build
 
+`grok mcp add` treats flags like `-m` as its own unless they come **after `--`**.
+
 ```bash
-grok mcp add zeus-dev-helper -- \
-  env ZEUS_CHAT_REQUEST_DIR=/absolute/path/to/zeus_chat_request \
-  python -m zeus_dev_helper_mcp
+grok mcp add zeus-dev-helper \
+  -e ZEUS_URL=http://localhost:8080 \
+  -- uvx zeus-dev-helper-mcp
 ```
 
-(Adjust to your host’s MCP config format if `grok mcp add` differs.)
+From a local checkout, point `command` at this repo’s venv so Grok can start the server even when the TUI was launched without the venv activated:
+
+```bash
+# from this repo, after `pip install -e ".[dev]"`
+grok mcp add zeus-dev-helper \
+  -e ZEUS_CHAT_REQUEST_DIR=/absolute/path/to/zeus_chat_request \
+  -e ZEUS_URL=http://localhost:8080 \
+  -- "$(pwd)/.venv/bin/python" -m zeus_dev_helper_mcp
+```
+
+Equivalent `~/.grok/config.toml` (or `.grok/config.toml` with `--scope project`):
+
+```toml
+[mcp_servers.zeus-dev-helper]
+command = "uvx"
+args = ["zeus-dev-helper-mcp"]
+env = { ZEUS_URL = "http://localhost:8080" }
+enabled = true
+```
+
+Then `/mcps` → `r` to refresh, or `grok mcp doctor zeus-dev-helper`.
+
+Common failures:
+
+- `unexpected argument '-m'` — missing `--` before the python command
+- `No module named 'zeus_dev_helper_mcp'` / `python: No such file or directory` — Grok did not inherit the venv; use the `.venv/bin/python` path above
+- `No module named 'mcp.server.fastmcp'` — mcp 2.x renamed FastMCP; use Helper **0.6.0+** (`mcp>=1.8.0,<3`)
 
 ### Claude Code / Claude Desktop
 
@@ -66,10 +116,9 @@ Add to MCP servers config (example):
 {
   "mcpServers": {
     "zeus-dev-helper": {
-      "command": "python",
-      "args": ["-m", "zeus_dev_helper_mcp"],
+      "command": "uvx",
+      "args": ["zeus-dev-helper-mcp"],
       "env": {
-        "ZEUS_CHAT_REQUEST_DIR": "/absolute/path/to/zeus_chat_request",
         "ZEUS_URL": "http://localhost:8080"
       }
     }
@@ -79,9 +128,11 @@ Add to MCP servers config (example):
 
 ### Hermes / OpenClaw
 
-Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the same env vars.
+Point the host’s MCP stdio entry at `uvx zeus-dev-helper-mcp` (or `python -m zeus_dev_helper_mcp` from a venv) with the same env vars.
 
-## Implemented tools (0.5.0)
+## Implemented tools (0.6.0)
+
+Per-tool when / args / side effects: [`docs/TOOLS.md`](docs/TOOLS.md). Status inventory:
 
 | Tool | Status |
 | --- | --- |
@@ -92,7 +143,16 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 | `bootstrap_scope` | **ZDH-5** live bootstrap + chat_request summary |
 | `scaffold_app` / `use_sample` / `write_env` / `verify_local_setup` | **ZDH-6** |
 | `travel_golden_path` | **ZDH-10** travel sample golden path |
-| `smoke_test_zeus` / `smoke_test_agent` / `diagnose_error` | **ZDH-7** |
+| `smoke_test_zeus` / `smoke_test_agent` / `diagnose_error` | **ZDH-7** / **ZDH-19** ErrorCode + 0.7 classes |
+| `recommend_surface` / `explain_verb` / `lint_verb_args` / `suggest_verb_call` | **ZDH-18** Direct vs agent + V2 verb lint (does not POST; no Runtime scaffold rewrite) |
+| `compat_check` | **ZDH-21** version/feature gates on `:8080` (not a COMPAT row) |
+| `lint_chat_request` / `bind_contract` / `explain_hash_boundary` / `catalog_diff` | **ZDH-22** catalog coach — extract stamp only |
+| `lint_runtime_config` / `lint_app_code` | **ZDH-24** config + anti-example scan (secrets redacted) |
+| `explain_req_id_policy` / `detective_links` / `support_pack_from_turn` | **ZDH-23** correlation + redacted support pack |
+| `describe_scope` | **ZDH-25** schema-only live describe |
+| `recommend_motion` | **ZDH-26** 13 motions; no custom chat_request |
+| `suggest_hooks` | **ZDH-27** policy snippets (not a policy engine) |
+| `semantic_cache_status` | **ZDH-28** leave enabled=false; optional status probe |
 | `list_catalog_modes` / `fetch_chat_request` | **ZDH-14** |
 | `explain` / `suggest_demo_prompts` | **ZDH-13** glossary + prompts |
 | `handoff_to_multi` | **ZDH-11** multi-agent graduation (gated) |
@@ -104,7 +164,9 @@ Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the s
 ```text
 start_project → set_prereq → validate_env → readiness_check
   → use_sample | travel_golden_path | scaffold_app
-  → bootstrap_scope / fetch_chat_request
+  → bootstrap_scope / fetch_chat_request / bind_contract / catalog_diff
+  → recommend_surface / explain_verb / lint_verb_args / compat_check
+  → lint_runtime_config / lint_app_code
   → smoke_test_zeus → smoke_test_agent → gap_report
   → (optional) recommend_data_plane_mcp | handoff_to_multi
 ```
@@ -152,6 +214,25 @@ pytest -q
 ```
 
 Requires sibling `../zeus_chat_request` with `manifest.json` for catalog tests.
+
+## PyPI and MCP Registry
+
+Official registry name: `io.github.koten-ai/zeus-dev-helper`. Metadata lives in [`server.json`](server.json). The registry hosts metadata only; the install artifact is the public PyPI package `zeus-dev-helper-mcp`.
+
+Releases are tag-driven (`vX.Y.Z`). [`.github/workflows/release.yml`](.github/workflows/release.yml) tests, builds, creates a GitHub Release, publishes to PyPI (Trusted Publisher, environment `pypi`), then runs `mcp-publisher` against the official MCP Registry.
+
+Before the first tag:
+
+1. Create the GitHub Actions environment `pypi` on this repo.
+2. On [PyPI trusted publishing](https://pypi.org/manage/account/publishing/) add a **pending** GitHub publisher:
+   - Owner: `koten-ai`
+   - Repository: `zeus_dev_helper_mcp`
+   - Workflow name: `release.yml`
+   - Environment name: `pypi`
+3. Align versions in `pyproject.toml`, `src/zeus_dev_helper_mcp/__init__.py`, and `server.json` with the tag.
+4. Merge to `main`, then `git tag v0.6.0 && git push origin v0.6.0`.
+
+The GitHub source repo may stay private; PyPI and the MCP Registry require a **public** install path (`pip` / `uvx`). Keep `repository` in `server.json` only if you want clients to see the GitHub URL.
 
 ## Related
 

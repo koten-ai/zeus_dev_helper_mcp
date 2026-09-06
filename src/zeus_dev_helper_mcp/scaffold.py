@@ -84,6 +84,7 @@ ZEUS_MODE={cfg.default_mode or "analytics"}
 LLM_BASE_URL=https://api.x.ai/v1
 LLM_API_KEY=
 LLM_MODEL=grok-4-1-fast-non-reasoning
+# session.semantic_cache.enabled stays false unless you opt in (Zeus >= 0.7.6)
 """
     path.write_text(content)
     return {"ok": True, "path": str(path), "note": "No secrets written — placeholders only"}

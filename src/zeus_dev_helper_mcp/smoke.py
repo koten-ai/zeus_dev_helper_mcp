@@ -19,7 +19,9 @@ def _base(cfg: HelperConfig) -> str:
     return (cfg.zeus_url or "").strip().rstrip("/")
 
 
-def _auth(cfg: HelperConfig) -> tuple[str, str] | None:
+def request_auth(cfg: HelperConfig | None = None) -> tuple[str, str] | None:
+    """Basic auth from env (values never logged). cfg unused; signature matches callers."""
+    _ = cfg
     user = (os.environ.get("ZEUS_USERNAME") or os.environ.get("ZEUS_USER") or "").strip()
     password = (os.environ.get("ZEUS_PASSWORD") or "").strip()
     if user and password:
@@ -27,12 +29,30 @@ def _auth(cfg: HelperConfig) -> tuple[str, str] | None:
     return None
 
 
-def _headers() -> dict[str, str]:
+def request_headers() -> dict[str, str]:
     h = {"User-Agent": "zeus-dev-helper-mcp", "Accept": "application/json", "Content-Type": "application/json"}
     token = (os.environ.get("ZEUS_BEARER_TOKEN") or os.environ.get("ZEUS_TOKEN") or "").strip()
     if token:
         h["Authorization"] = f"Bearer {token}"
     return h
+
+
+def describe_scope_url(cfg: HelperConfig) -> str | None:
+    """POST /v2/{bucket}/{scope}/describe — no Hub, no document bodies."""
+    base = _base(cfg)
+    bucket = cfg.default_bucket
+    scope = cfg.default_scope
+    if not base or not bucket or not scope:
+        return None
+    return f"{base}/v2/{bucket}/{scope}/describe"
+
+
+def _auth(cfg: HelperConfig) -> tuple[str, str] | None:
+    return request_auth(cfg)
+
+
+def _headers() -> dict[str, str]:
+    return request_headers()
 
 
 def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict[str, Any]:
@@ -79,7 +99,7 @@ def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict
         return out
 
     # Scope-level describe (V2)
-    url = f"{base}/v2/{bucket}/{scope}/describe"
+    url = describe_scope_url(cfg) or f"{base}/v2/{bucket}/{scope}/describe"
     body: dict[str, Any] = {}  # server defaults
     status = 0
     req_id = ""
@@ -329,6 +349,18 @@ def smoke_test_agent(
                 failure = failure or "dispatch_failed"
                 next_action = "Empty answer — inspect trace notes and LLM config"
 
+            hops: list[dict[str, Any]] = []
+            if isinstance(tool_calls, list):
+                for tc in tool_calls:
+                    if not isinstance(tc, dict):
+                        continue
+                    hops.append(
+                        {
+                            "name": tc.get("name") or tc.get("verb") or tc.get("tool"),
+                            "status": tc.get("status"),
+                            "req_id": tc.get("req_id") or tc.get("zeus_req_id"),
+                        }
+                    )
             return {
                 "ok": ok,
                 "failure_class": failure,
@@ -338,6 +370,7 @@ def smoke_test_agent(
                 "round": (session_meta or {}).get("round"),
                 "tool_call_count": n_tools,
                 "req_ids": req_ids[:5],
+                "hops": hops[:20],
                 "notes_preview": [str(n)[:200] for n in (notes if isinstance(notes, list) else [])][:5],
                 "bucket": bucket,
                 "scope": scope,
@@ -391,6 +424,21 @@ def smoke_test_agent(
             from zeus_dev_helper_mcp.handoff import record_metric
 
             record_metric(cfg, "smoke_test_agent_ok")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            cfg.state_dir.mkdir(parents=True, exist_ok=True)
+            artifact = {
+                "session_id": result.get("session_id"),
+                "req_ids": result.get("req_ids") or [],
+                "hops": result.get("hops") or [],
+                "bucket": result.get("bucket"),
+                "scope": result.get("scope"),
+                "mode": result.get("mode"),
+            }
+            (cfg.state_dir / "last_smoke_agent.json").write_text(
+                json.dumps(artifact) + "\n", encoding="utf-8"
+            )
         except Exception:  # noqa: BLE001
             pass
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.docs_links import docs_url
+from zeus_dev_helper_mcp.motion import MOTIONS, motion_doc
 
 # Short answers; deep-links to koten_docs. Expand only after glossary.md updates.
 TOPICS: dict[str, dict[str, str]] = {
@@ -100,8 +101,15 @@ TOPICS: dict[str, dict[str, str]] = {
         "doc": "zeus-client/glossary.md#detective",
     },
     "motion": {
-        "summary": "How an agent works a problem (e.g. detective / exploratory). Guidance, not a Zeus server type.",
+        "summary": (
+            "Motions are interaction shapes, not Zeus modes. The 13 motions: Funnel, Explore, "
+            "Verify, Compare, Monitor, Explain, Compose, Simulate, Triage, Route, Refine, "
+            "Remember, Custom. A Zeus mode (analytics, tenant, regulated, …) is a deployment "
+            "control for tools on a scope. Use recommend_motion(user_job) — it does not generate "
+            "a chat_request."
+        ),
         "doc": "zeus-client/glossary.md#motion",
+        "external": "https://github.com/koten-ai/Zeus/blob/main/docs/public/motions/ZEUS_MOTIONS_GUIDE.md",
     },
     "single_agent": {
         "summary": "One middle-man agent loop to first green. Helper MVP track before multi-agent graduation.",
@@ -140,7 +148,94 @@ TOPICS: dict[str, dict[str, str]] = {
         "summary": "GET bootstrap for a scope returns what Zeus knows (collections, chat_request summary, etc.).",
         "doc": "zeus-client/using-zeus-client.md",
     },
+    "zeus_runtime": {
+        "summary": (
+            "ZeusRuntime is the kotenai-zeus-client ≥2.3 default (V1 ZeusClient/run_agent lives under "
+            "zeus_client.compat.v1). from_config() loads config and may set catalog_remote; apps still "
+            "assign rt.services.zeus = HttpxZeusPort(...) and rt.services.llm = OpenAICompatibleLlmClient(...)."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "turn_result": {
+        "summary": (
+            "await rt.agent.run_turn(...) returns TurnResult (answer, debug, session). "
+            "Do not expect the V1 (answer, trace, turns, session_meta) tuple on the default import."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "cheap_path": {
+        "summary": (
+            "Cheap agent path: ClientSettings(ai_process_result=False) — default. "
+            "Skip extra LLM post-processing of Zeus tool results."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "semantic_cache": {
+        "summary": (
+            "Semantic cache is POST/GET /v2/agent_memory/* (not the graph tool agent_memory.read). "
+            "Client session.semantic_cache.enabled defaults OFF — leave it false in start_project and "
+            "scaffolds. Needs Zeus ≥ 0.7.6; GET /v2/agent_memory/status 404 means engine too old or flag off. "
+            "Direct/typeahead must not call agent_memory. Use semantic_cache_status to probe."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "req_id_policy": {
+        "summary": (
+            "One opaque UUID per HTTP hop (X-Zeus-Req-Id). Never base:1 / uuid:2 composites "
+            "(400 invalid_req_id). Group hops with X-Zeus-Chat-Id and X-Zeus-Turn-Id. "
+            "Open Detective/Rewind on the tool hop, never POST /v2/session/{id}/turn."
+        ),
+        "doc": "zeus-client/errors.md",
+    },
+    "trace_class": {
+        "summary": (
+            "X-Zeus-Trace-Class: agent (run_turn hops), session (/v2/session*), "
+            "direct.interactive (typeahead search), direct.read (rt.data.* verbs). "
+            "Do not invent a jobs Trace-Class."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "direct": {
+        "summary": (
+            "Direct data plane is rt.data.* with no LLM. Typeahead → rt.data.search "
+            "(direct.interactive); single verb → rt.data.verb (direct.read). pipeline is not on Direct."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "typeahead": {
+        "summary": (
+            "As-you-type suggest is rt.data.search with Trace-Class direct.interactive. "
+            "Do not call rt.agent.run_turn per keystroke; do not pipeline on Direct."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "pipeline": {
+        "summary": (
+            "pipeline is a server-side read-only DAG of V2 verbs. It is rejected on Direct "
+            "(ErrorCode 060010). Use recommend_surface(intent=multi_step) → agent-for-pipeline."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
+    "hash_boundary": {
+        "summary": (
+            "MINI-SCHEMA and SCOPE BRIEF are excluded from contract_hash and injected at call time. "
+            "guidance, contract metadata, and _* roots are also excluded. Never compute production hashes."
+        ),
+        "doc": "zeus-client/contracts-and-catalog.md",
+    },
 }
+
+for _mname, _mrow in MOTIONS.items():
+    _key = "explain_motion" if _mname == "explain" else _mname
+    TOPICS[_key] = {
+        "summary": (
+            f"{_mname.title()} motion: {_mrow['user_shape']} "
+            f"Typical verbs: {', '.join(_mrow['typical_verbs'])}. "
+            f"Modes that often support it: {', '.join(_mrow['modes'])}."
+        ),
+        "doc": "zeus-client/glossary.md#motion",
+        "external": motion_doc(_mname),
+    }
 
 
 def explain_topic(cfg: HelperConfig, topic: str) -> dict:
@@ -170,6 +265,42 @@ def explain_topic(cfg: HelperConfig, topic: str) -> dict:
         "single": "single_agent",
         "tools_v2": "v2_verbs",
         "tools_v1": "v1_tools",
+        "runtime": "zeus_runtime",
+        "zeusruntime": "zeus_runtime",
+        "run_turn": "turn_result",
+        "turnresult": "turn_result",
+        "ai_process_result": "cheap_path",
+        "cheap": "cheap_path",
+        "cache": "semantic_cache",
+        "agent_memory": "semantic_cache",
+        "correlation": "req_id_policy",
+        "reqid": "req_id_policy",
+        "trace": "trace_class",
+        "traceclass": "trace_class",
+        "direct_path": "direct",
+        "rt_data": "direct",
+        "suggest": "typeahead",
+        "autocomplete": "typeahead",
+        "dag": "pipeline",
+        "hash_boundary": "hash_boundary",
+        "mini_schema": "hash_boundary",
+        "compat": "zeus_runtime",
+        "funnel": "funnel",
+        "explore": "explore",
+        "investigate": "explore",
+        "verify": "verify",
+        "compare": "compare",
+        "monitor": "monitor",
+        "explain_motion": "explain_motion",
+        "why": "explain_motion",
+        "compose": "compose",
+        "simulate": "simulate",
+        "triage": "triage",
+        "route": "route",
+        "refine": "refine",
+        "remember": "remember",
+        "custom_motion": "custom",
+        "motions": "motion",
     }
     key = aliases.get(key, key)
     entry = TOPICS.get(key)

@@ -9,7 +9,7 @@ from zeus_dev_helper_mcp.config import HelperConfig
 
 # Recommended Helper tool(s) per checklist item
 TOOL_HINTS: dict[str, list[str]] = {
-    "0.1": ["start_project", "explain"],
+    "0.1": ["start_project", "explain", "recommend_motion"],
     "0.2": ["use_sample", "travel_golden_path", "scaffold_app"],
     "1.1": ["doctor", "verify_local_setup"],
     "1.2": ["set_prereq", "validate_env"],
@@ -19,11 +19,17 @@ TOOL_HINTS: dict[str, list[str]] = {
     "3.1": ["scaffold_app", "use_sample", "travel_golden_path"],
     "3.2": ["write_env", "scaffold_app"],
     "4.1": ["fetch_chat_request", "list_catalog_modes", "bootstrap_scope"],
-    "4.2": ["explain", "bootstrap_scope"],  # stamp is ops/Hub
-    "5.1": ["smoke_test_zeus"],
+    "4.2": ["bind_contract", "catalog_diff", "explain_hash_boundary"],
+    "5.1": ["smoke_test_zeus", "describe_scope"],
     "5.2": ["smoke_test_agent", "suggest_demo_prompts"],
-    "6.1": ["explain", "suggest_demo_prompts", "recommend_data_plane_mcp"],
-    "7.1": ["diagnose_error", "gap_report", "recommend_data_plane_mcp"],
+    "6.1": ["suggest_hooks", "explain", "suggest_demo_prompts"],
+    "7.1": [
+        "diagnose_error",
+        "suggest_hooks",
+        "support_pack_from_turn",
+        "detective_links",
+        "gap_report",
+    ],
 }
 
 

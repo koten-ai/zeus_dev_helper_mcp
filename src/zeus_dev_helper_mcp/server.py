@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+try:
+    # mcp 2.x: FastMCP was renamed (https://py.sdk.modelcontextprotocol.io/v2/migration/)
+    from mcp.server.mcpserver import MCPServer as FastMCP
+except ModuleNotFoundError:  # mcp 1.x
+    from mcp.server.fastmcp import FastMCP
 
 from zeus_dev_helper_mcp import __version__
 from zeus_dev_helper_mcp.catalog import (
@@ -21,6 +25,32 @@ from zeus_dev_helper_mcp.checklist import (
 from zeus_dev_helper_mcp.config import HelperConfig, reload_config
 from zeus_dev_helper_mcp.diagnose import diagnose_error as diagnose_error_impl
 from zeus_dev_helper_mcp.explain import explain_topic
+from zeus_dev_helper_mcp.cache import semantic_cache_status as semantic_cache_status_impl
+from zeus_dev_helper_mcp.compat import compat_check as compat_check_impl
+from zeus_dev_helper_mcp.hooks import suggest_hooks as suggest_hooks_impl
+from zeus_dev_helper_mcp.config_lint import (
+    lint_app_code as lint_app_code_impl,
+    lint_runtime_config as lint_runtime_config_impl,
+)
+from zeus_dev_helper_mcp.contract import (
+    bind_contract as bind_contract_impl,
+    catalog_diff as catalog_diff_impl,
+    explain_hash_boundary as explain_hash_boundary_impl,
+    lint_chat_request as lint_chat_request_impl,
+)
+from zeus_dev_helper_mcp.motion import recommend_motion as recommend_motion_impl
+from zeus_dev_helper_mcp.support import (
+    detective_links as detective_links_impl,
+    explain_req_id_policy as explain_req_id_policy_impl,
+    support_pack_from_turn as support_pack_from_turn_impl,
+)
+from zeus_dev_helper_mcp.surface import recommend_surface as recommend_surface_impl
+from zeus_dev_helper_mcp.verbs import (
+    describe_scope as describe_scope_impl,
+    explain_verb as explain_verb_impl,
+    lint_verb_args as lint_verb_args_impl,
+    suggest_verb_call as suggest_verb_call_impl,
+)
 from zeus_dev_helper_mcp.prereqs import public_prereqs, save_prereqs
 from zeus_dev_helper_mcp.readiness import run_readiness_check
 from zeus_dev_helper_mcp.scaffold import (
@@ -49,6 +79,9 @@ mcp = FastMCP(
         "Prefer live Zeus for stamps; use zeus_chat_request for min templates. "
         "Never invent contract hashes. Public API is :8080 not Hub :9091. "
         "Use readiness_check for platform gates; fetch_chat_request for templates. "
+        "Use recommend_surface / explain_verb / lint_verb_args for Zeus 0.7 + Client 2.3 "
+        "(ZeusRuntime / Direct vs agent). Use compat_check, lint_chat_request, bind_contract, "
+        "lint_runtime_config. Do not treat this as a Runtime scaffold rewrite. "
         "After smoke green: recommend_data_plane_mcp / handoff_to_multi (handoffs only). "
         "Docs: koten_docs agent-index.yaml + using-zeus-client.md."
     ),
@@ -169,6 +202,13 @@ def start_project(
             docs_url("zeus-client/for-ai-agents.md"),
             docs_url("zeus-client/using-zeus-client.md"),
         ],
+        "semantic_cache": {
+            "enabled": False,
+            "note": (
+                "Leave session.semantic_cache.enabled=false. start_project never turns it on. "
+                "Direct/typeahead must not call agent_memory."
+            ),
+        },
     }
     if wants_multi:
         out["track"] = "multi-agent"
@@ -468,8 +508,12 @@ def diagnose_error(
     req_id: str = "",
     session_id: str = "",
     zeus_url: str = "",
+    error_code: str = "",
+    error_class: str = "",
+    chat_id: str = "",
+    turn_id: str = "",
 ) -> dict[str, Any]:
-    """Map error signals to failure_class + errors.md anchor (ZDH-7)."""
+    """Map error signals to failure_class + errors.md anchor (ZDH-7 / ZDH-19)."""
     return diagnose_error_impl(
         _cfg(),
         status=status,
@@ -478,7 +522,160 @@ def diagnose_error(
         req_id=req_id,
         session_id=session_id,
         zeus_url=zeus_url,
+        error_code=error_code,
+        error_class=error_class,
+        chat_id=chat_id,
+        turn_id=turn_id,
     )
+
+
+@mcp.tool()
+def recommend_surface(
+    intent: str,
+    qps: float = 0,
+    needs_llm: bool | None = None,
+) -> dict[str, Any]:
+    """Pick Direct vs agent surface + Trace-Class (ZDH-18). Does not call Zeus."""
+    return recommend_surface_impl(
+        _cfg(),
+        intent=intent,
+        qps=qps if qps else None,
+        needs_llm=needs_llm,
+    )
+
+
+@mcp.tool()
+def explain_verb(name: str) -> dict[str, Any]:
+    """V2 verb encyclopedia: path class, demux, Direct vs pipeline (ZDH-18)."""
+    return explain_verb_impl(_cfg(), name=name)
+
+
+@mcp.tool()
+def lint_verb_args(
+    verb: str,
+    body: str = "{}",
+    mini_schema: str = "",
+) -> dict[str, Any]:
+    """Lint a would-be V2 verb JSON body (MINI-SCHEMA / equality / pipeline). Does not POST."""
+    return lint_verb_args_impl(
+        _cfg(),
+        verb=verb,
+        body=body,
+        mini_schema=mini_schema or None,
+    )
+
+
+@mcp.tool()
+def suggest_verb_call(goal: str, mini_schema: str = "") -> dict[str, Any]:
+    """Draft a legal V2 verb JSON body from a goal. Guidance only — does not POST."""
+    return suggest_verb_call_impl(
+        _cfg(),
+        goal=goal,
+        mini_schema=mini_schema or None,
+    )
+
+
+@mcp.tool()
+def compat_check(zeus_url: str = "") -> dict[str, Any]:
+    """Probe GET /version + /healthz on :8080 and evaluate static 0.7 feature gates (ZDH-21)."""
+    return compat_check_impl(_cfg(), zeus_url=zeus_url)
+
+
+@mcp.tool()
+def lint_chat_request(path: str = "", json_text: str = "") -> dict[str, Any]:
+    """Lint a chat_request JSON (path or pasted). Read-only; never stamps (ZDH-22)."""
+    return lint_chat_request_impl(_cfg(), path=path, json_text=json_text)
+
+
+@mcp.tool()
+def bind_contract(
+    path: str = "",
+    json_text: str = "",
+    bucket: str = "",
+    scope: str = "",
+    mode: str = "",
+) -> dict[str, Any]:
+    """Extract stamped contract.hash only. Refuse placeholders / compute_local (ZDH-22)."""
+    return bind_contract_impl(
+        _cfg(),
+        path=path,
+        json_text=json_text,
+        bucket=bucket,
+        scope=scope,
+        mode=mode,
+    )
+
+
+@mcp.tool()
+def explain_hash_boundary() -> dict[str, Any]:
+    """MINI-SCHEMA / brief are excluded from contract_hash (ZDH-22)."""
+    return explain_hash_boundary_impl(_cfg())
+
+
+@mcp.tool()
+def catalog_diff(path: str = "", json_text: str = "", bound_hash: str = "") -> dict[str, Any]:
+    """Compare live bootstrap summary vs on-disk catalog vs bound hash prefix (ZDH-22)."""
+    return catalog_diff_impl(_cfg(), path=path, json_text=json_text, bound_hash=bound_hash)
+
+
+@mcp.tool()
+def lint_runtime_config(path: str) -> dict[str, Any]:
+    """Lint client config.json (:8080, auth_mode, env names, cheap path). Secrets redacted (ZDH-24)."""
+    return lint_runtime_config_impl(_cfg(), path=path)
+
+
+@mcp.tool()
+def lint_app_code(path: str) -> dict[str, Any]:
+    """Anti-example scan of main.py / Dockerfiles (stale V1, hash literals, :9091) (ZDH-24)."""
+    return lint_app_code_impl(_cfg(), path=path)
+
+
+@mcp.tool()
+def explain_req_id_policy() -> dict[str, Any]:
+    """One UUID per hop; never base:1; never Rewind /v2/session/{id}/turn (ZDH-23)."""
+    return explain_req_id_policy_impl(_cfg())
+
+
+@mcp.tool()
+def detective_links(req_id: str = "", chat_id: str = "", zeus_url: str = "") -> dict[str, Any]:
+    """Hub Detective URL templates only — no scrape (ZDH-23)."""
+    return detective_links_impl(_cfg(), req_id=req_id, chat_id=chat_id, zeus_url=zeus_url)
+
+
+@mcp.tool()
+def support_pack_from_turn(
+    debug_json: str = "",
+    path: str = "",
+    zeus_url: str = "",
+) -> dict[str, Any]:
+    """Redacted support-pack markdown from debug JSON or last smoke artifact (ZDH-23)."""
+    return support_pack_from_turn_impl(
+        _cfg(), debug_json=debug_json, path=path, zeus_url=zeus_url
+    )
+
+
+@mcp.tool()
+def describe_scope(bucket: str = "", scope: str = "") -> dict[str, Any]:
+    """Live MINI-SCHEMA: entity types + field names only, no document samples (ZDH-25)."""
+    return describe_scope_impl(_cfg(), bucket=bucket, scope=scope)
+
+
+@mcp.tool()
+def recommend_motion(user_job: str) -> dict[str, Any]:
+    """Map a user job to a Zeus motion + typical verbs/modes. Does not generate a chat_request (ZDH-26)."""
+    return recommend_motion_impl(_cfg(), user_job=user_job)
+
+
+@mcp.tool()
+def suggest_hooks(recipe: str = "") -> dict[str, Any]:
+    """Middleware snippets (tenant pin, deny pipeline, output_schema, OCR). Not executed (ZDH-27)."""
+    return suggest_hooks_impl(_cfg(), recipe=recipe)
+
+
+@mcp.tool()
+def semantic_cache_status(zeus_url: str = "") -> dict[str, Any]:
+    """Semantic cache coach: leave enabled=false; optional GET /v2/agent_memory/status (ZDH-28)."""
+    return semantic_cache_status_impl(_cfg(), zeus_url=zeus_url)
 
 
 @mcp.tool()

@@ -1,0 +1,228 @@
+# Tag-driven PyPI + official MCP Registry publish.
+#
+# First-time setup (human):
+#   1. Create GitHub Actions environment `pypi` (this repo).
+#   2. On https://pypi.org/manage/account/publishing/ add a pending publisher:
+#        Owner: koten-ai
+#        Repository: zeus_dev_helper_mcp
+#        Workflow: release.yml
+#        Environment: pypi
+#   3. git tag vX.Y.Z && git push origin vX.Y.Z
+#
+# Versions in pyproject.toml, src/zeus_dev_helper_mcp/__init__.py, and
+# server.json must match the tag (v prefix stripped).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, e.g. v0.6.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYPI_PACKAGE: zeus-dev-helper-mcp
+  MCP_SERVER_NAME: io.github.koten-ai/zeus-dev-helper
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      tag: ${{ steps.ver.outputs.tag }}
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          pip install -e ".[dev]"
+
+      - name: Resolve tag version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          case "$TAG" in
+            v*) VER="${TAG#v}" ;;
+            *) echo "tag must start with v"; exit 1 ;;
+          esac
+          PY_VER=$(python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          IMP_VER=$(python -c "from pathlib import Path; ns={}; exec(Path('src/zeus_dev_helper_mcp/__init__.py').read_text(), ns); print(ns['__version__'])")
+          SJ_VER=$(python -c "import json,pathlib; print(json.loads(pathlib.Path('server.json').read_text())['version'])")
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag=$TAG pyproject=$PY_VER __version__=$IMP_VER server.json=$SJ_VER"
+          test "$VER" = "$PY_VER"
+          test "$VER" = "$IMP_VER"
+          test "$VER" = "$SJ_VER"
+
+      - name: Test
+        run: pytest -q
+
+      - name: Build + twine check
+        run: |
+          rm -rf dist
+          python -m build
+          twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Extract CHANGELOG section
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          ver = os.environ["VER"]
+          text = pathlib.Path("CHANGELOG.md").read_text()
+          pat = rf"(?ms)^## {re.escape(ver)}\b.*?(?=^## |\Z)"
+          m = re.search(pat, text)
+          body = m.group(0).strip() if m else f"Release {ver}"
+          pathlib.Path("release_notes_snippet.md").write_text(body + "\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release_notes_snippet.md
+          if-no-files-found: error
+
+  github-release:
+    name: GitHub release
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: .
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.test.outputs.tag }}
+          name: ${{ needs.test.outputs.tag }}
+          body_path: release_notes_snippet.md
+          files: dist/*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  pypi:
+    name: PyPI
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/zeus-dev-helper-mcp
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  mcp-registry:
+    name: MCP Registry
+    needs: [test, pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.test.outputs.tag }}
+
+      - name: Wait for PyPI ownership marker
+        env:
+          VERSION: ${{ needs.test.outputs.version }}
+        run: |
+          set -euo pipefail
+          URL="https://pypi.org/pypi/${PYPI_PACKAGE}/${VERSION}/json"
+          MARKER="mcp-name: ${MCP_SERVER_NAME}"
+          for i in $(seq 1 30); do
+            if DESC=$(curl -fsS "$URL" | python -c "import json,sys; print(json.load(sys.stdin)['info']['description'])"); then
+              if printf '%s\n' "$DESC" | grep -F "$MARKER" >/dev/null; then
+                echo "PyPI ${PYPI_PACKAGE}==${VERSION} is live with ${MARKER}"
+                exit 0
+              fi
+              echo "attempt $i: package live but README missing ${MARKER}"
+            else
+              echo "attempt $i: ${PYPI_PACKAGE}==${VERSION} not on PyPI yet"
+            fi
+            sleep 10
+          done
+          echo "timed out waiting for PyPI ${PYPI_PACKAGE}==${VERSION} with ${MARKER}"
+          exit 1
+
+      - name: Install mcp-publisher
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server.json
+        env:
+          VERSION: ${{ needs.test.outputs.version }}
+        run: |
+          set -euo pipefail
+          jq --arg v "$VERSION" \
+            '.version = $v | .packages[0].version = $v' \
+            server.json > server.tmp
+          mv server.tmp server.json
+          for i in 1 2 3 4 5 6; do
+            if ./mcp-publisher publish; then
+              exit 0
+            fi
+            echo "mcp-publisher failed (attempt $i); retrying in 20s"
+            sleep 20
+          done
+          exit 1
