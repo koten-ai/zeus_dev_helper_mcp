@@ -20,6 +20,7 @@
 - **ZDH-26** `recommend_motion` — 13 Zeus motions; does not generate a chat_request
 - **ZDH-27** `suggest_hooks` — tenant pin / deny pipeline / output_schema / OCR snippets (not executed)
 - **ZDH-28** `semantic_cache_status` — default off; optional `/v2/agent_memory/status` probe
+- Helper tool catalog: [`docs/TOOLS.md`](docs/TOOLS.md) (when / args / side effects / do-not; not a Zeus OpenAPI dump)
 
 ### Notes
 - V1 `scaffold_app` / `smoke_test_agent` are **not** rewritten in this release ([ZDH-17](https://kotenai.atlassian.net/browse/ZDH-17) Cancelled)

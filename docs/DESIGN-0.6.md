@@ -4,7 +4,8 @@
 **Product:** `zeus_dev_helper_mcp`  
 **Parent epic:** [ZDH-15](https://kotenai.atlassian.net/browse/ZDH-15) (relates [ZDH-1](https://kotenai.atlassian.net/browse/ZDH-1))  
 **Plan:** [`PLAN-runtime-coach-0.6.md`](PLAN-runtime-coach-0.6.md)  
-**Frozen MVP:** [`DESIGN.md`](DESIGN.md) (ZDH-2) — not rewritten here.
+**Frozen MVP:** [`DESIGN.md`](DESIGN.md) (ZDH-2) — not rewritten here.  
+**Tool catalog:** [`TOOLS.md`](TOOLS.md) — when / args / side effects / do-not for all Helper tools.
 
 Target stack: Zeus engine **0.7.x** + `kotenai-zeus-client` **≥ 2.3.0** (`ZeusRuntime`).
 

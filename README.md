@@ -12,7 +12,8 @@
 
 > Not a data-plane MCP. Coaches: checklist → templates → live readiness & smoke → handoffs.
 
-**Design:** [`docs/DESIGN.md`](docs/DESIGN.md) (ZDH-2, frozen MVP) · [`docs/DESIGN-0.6.md`](docs/DESIGN-0.6.md) (runtime coach)
+**Design:** [`docs/DESIGN.md`](docs/DESIGN.md) (ZDH-2, frozen MVP) · [`docs/DESIGN-0.6.md`](docs/DESIGN-0.6.md) (runtime coach)  
+**Tool catalog:** [`docs/TOOLS.md`](docs/TOOLS.md) — when to call, args, side effects, do-not
 
 ## Stack
 
@@ -103,6 +104,8 @@ Add to MCP servers config (example):
 Point the host’s MCP stdio entry at `python -m zeus_dev_helper_mcp` with the same env vars.
 
 ## Implemented tools (0.6.0)
+
+Per-tool when / args / side effects: [`docs/TOOLS.md`](docs/TOOLS.md). Status inventory:
 
 | Tool | Status |
 | --- | --- |
