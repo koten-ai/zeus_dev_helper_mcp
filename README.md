@@ -1,27 +1,29 @@
-# zeus_dev_helper_mcp
+# Zeus Dev Helper MCP
 
 <!-- mcp-name: io.github.koten-ai/zeus-dev-helper -->
 
-**Developer Helper MCP** — first Zeus-powered app onboarding coach.
+Stdio MCP server that coaches a coding agent and a human to a first successful Zeus Client app turn.
+
+This is not a data-plane MCP. It does not run Explore/Verify verbs on your behalf, invent contract hashes, or perform Hub admin mutations. After the first-green smokes pass, data-plane and multi-agent work are **handoffs only**.
 
 | | |
 | --- | --- |
-| **Board** | [ZDH](https://kotenai.atlassian.net/jira/software/projects/ZDH/boards/45) |
-| **Epic** | [ZDH-1](https://kotenai.atlassian.net/browse/ZDH-1) |
-| **Skeleton** | [ZDH-3](https://kotenai.atlassian.net/browse/ZDH-3) |
-| **Catalogs** | [ZDH-14](https://kotenai.atlassian.net/browse/ZDH-14) → [zeus_chat_request](https://github.com/koten-ai/zeus_chat_request) |
-| **Docs** | [docs.koten.ai](https://docs.koten.ai/) · [Dev Helper MCP](https://docs.koten.ai/zeus-client/dev-helper-mcp) |
+| **Package** | `zeus-dev-helper-mcp` |
+| **Registry name** | `io.github.koten-ai/zeus-dev-helper` |
+| **Transport** | stdio |
+| **Python** | 3.11+ |
+| **MCP SDK** | `mcp` (`FastMCP` on 1.x / `MCPServer` on 2.x) |
 
-> Not a data-plane MCP. Coaches: checklist → templates → live readiness & smoke → handoffs.
+## What it does
 
-**Design:** [`docs/DESIGN.md`](docs/DESIGN.md) (ZDH-2, frozen MVP) · [`docs/DESIGN-0.6.md`](docs/DESIGN-0.6.md) (runtime coach)  
-**Tool catalog:** [`docs/TOOLS.md`](docs/TOOLS.md) — when to call, args, side effects, do-not
+The server walks a first-app checklist: prereqs, live readiness on the public Zeus API, catalog templates, contract bind (copy a stamped hash only), surface/verb coaching, config lint, and smoke tests. Prefer a live Zeus stamp for catalogs. `fetch_chat_request` is always **template only**.
 
-## Stack
+Hard constraints the tools enforce:
 
-- **Python 3.11+**
-- Official **`mcp`** SDK (`FastMCP` on 1.x / `MCPServer` on 2.x, stdio)
-- Registry name: `io.github.koten-ai/zeus-dev-helper` (PyPI: `zeus-dev-helper-mcp`)
+- Public Zeus API on port **8080** only (never Hub **9091** from the app path)
+- Never invent `contract_hash`
+- No secrets in tool results, checklist evidence, or support packs
+- Semantic cache stays off
 
 ## Install
 
@@ -31,31 +33,10 @@ pip install zeus-dev-helper-mcp
 uvx zeus-dev-helper-mcp
 ```
 
-Optional agent-smoke extra (needs `kotenai-zeus-client` on PyPI):
+Optional extra for `smoke_test_agent` (pulls the Zeus Client package):
 
 ```bash
 pip install "zeus-dev-helper-mcp[agent]"
-```
-
-Live Zeus on `:8080` is the preferred catalog stamp. Offline min templates need a local `zeus_chat_request` clone (`ZEUS_CHAT_REQUEST_DIR`) or `GITHUB_TOKEN` for the private GitHub repo. Travel golden path needs `DEMO_TRAVEL_SAMPLE_DIR` when that sample is cloned.
-
-## Install (dev)
-
-```bash
-git clone https://github.com/koten-ai/zeus_dev_helper_mcp.git
-cd zeus_dev_helper_mcp
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-# Agent smoke (optional):
-pip install -e ".[agent]"   # pulls kotenai-zeus-client
-
-# Recommended: local catalog repo (private GH needs this or GITHUB_TOKEN)
-export ZEUS_CHAT_REQUEST_DIR=../zeus_chat_request   # sibling clone
-# or: export GITHUB_TOKEN=...   # Contents API for private zeus_chat_request
-export ZEUS_URL=http://localhost:8080
-export ZEUS_BUCKET=beer-sample ZEUS_SCOPE=_default
-# Optional travel golden path (private sample):
-# export DEMO_TRAVEL_SAMPLE_DIR=/path/to/demo_travel_sample
 ```
 
 ## Run
@@ -66,9 +47,9 @@ zeus-dev-helper-mcp
 python -m zeus_dev_helper_mcp
 ```
 
-## Host install
+Prefer the published console script (`uvx` / `pip install`) so hosts do not need a source checkout.
 
-Prefer the published console script (`uvx` / `pip install`) so hosts do not need a repo checkout.
+## Host install
 
 ### Grok Build
 
@@ -80,17 +61,15 @@ grok mcp add zeus-dev-helper \
   -- uvx zeus-dev-helper-mcp
 ```
 
-From a local checkout, point `command` at this repo’s venv so Grok can start the server even when the TUI was launched without the venv activated:
+From a local checkout after `pip install -e ".[dev]"`, point `command` at this tree’s venv so the host can start the server even when it was launched without the venv activated:
 
 ```bash
-# from this repo, after `pip install -e ".[dev]"`
 grok mcp add zeus-dev-helper \
-  -e ZEUS_CHAT_REQUEST_DIR=/absolute/path/to/zeus_chat_request \
   -e ZEUS_URL=http://localhost:8080 \
   -- "$(pwd)/.venv/bin/python" -m zeus_dev_helper_mcp
 ```
 
-Equivalent `~/.grok/config.toml` (or `.grok/config.toml` with `--scope project`):
+Equivalent config:
 
 ```toml
 [mcp_servers.zeus-dev-helper]
@@ -100,17 +79,15 @@ env = { ZEUS_URL = "http://localhost:8080" }
 enabled = true
 ```
 
-Then `/mcps` → `r` to refresh, or `grok mcp doctor zeus-dev-helper`.
+Then refresh MCP servers, or `grok mcp doctor zeus-dev-helper`.
 
 Common failures:
 
 - `unexpected argument '-m'` — missing `--` before the python command
-- `No module named 'zeus_dev_helper_mcp'` / `python: No such file or directory` — Grok did not inherit the venv; use the `.venv/bin/python` path above
+- `No module named 'zeus_dev_helper_mcp'` / `python: No such file or directory` — the host did not inherit the venv; use the `.venv/bin/python` path above
 - `No module named 'mcp.server.fastmcp'` — mcp 2.x renamed FastMCP; use Helper **0.6.0+** (`mcp>=1.8.0,<3`)
 
 ### Claude Code / Claude Desktop
-
-Add to MCP servers config (example):
 
 ```json
 {
@@ -126,120 +103,170 @@ Add to MCP servers config (example):
 }
 ```
 
-### Hermes / OpenClaw
+### Other stdio hosts
 
 Point the host’s MCP stdio entry at `uvx zeus-dev-helper-mcp` (or `python -m zeus_dev_helper_mcp` from a venv) with the same env vars.
 
-## Implemented tools (0.6.0)
-
-Per-tool when / args / side effects: [`docs/TOOLS.md`](docs/TOOLS.md). Status inventory:
-
-| Tool | Status |
-| --- | --- |
-| `doctor` | Config + catalog reachability |
-| `start_project` / `get_checklist` / `next_step` / `gap_report` | **ZDH-8** coach walkthrough |
-| `mark_done` / `mark_blocked` | Checklist updates |
-| `set_prereq` / `validate_env` / `readiness_check` | **ZDH-4** |
-| `bootstrap_scope` | **ZDH-5** live bootstrap + chat_request summary |
-| `scaffold_app` / `use_sample` / `write_env` / `verify_local_setup` | **ZDH-6** |
-| `travel_golden_path` | **ZDH-10** travel sample golden path |
-| `smoke_test_zeus` / `smoke_test_agent` / `diagnose_error` | **ZDH-7** / **ZDH-19** ErrorCode + 0.7 classes |
-| `recommend_surface` / `explain_verb` / `lint_verb_args` / `suggest_verb_call` | **ZDH-18** Direct vs agent + V2 verb lint (does not POST; no Runtime scaffold rewrite) |
-| `compat_check` | **ZDH-21** version/feature gates on `:8080` (not a COMPAT row) |
-| `lint_chat_request` / `bind_contract` / `explain_hash_boundary` / `catalog_diff` | **ZDH-22** catalog coach — extract stamp only |
-| `lint_runtime_config` / `lint_app_code` | **ZDH-24** config + anti-example scan (secrets redacted) |
-| `explain_req_id_policy` / `detective_links` / `support_pack_from_turn` | **ZDH-23** correlation + redacted support pack |
-| `describe_scope` | **ZDH-25** schema-only live describe |
-| `recommend_motion` | **ZDH-26** 13 motions; no custom chat_request |
-| `suggest_hooks` | **ZDH-27** policy snippets (not a policy engine) |
-| `semantic_cache_status` | **ZDH-28** leave enabled=false; optional status probe |
-| `list_catalog_modes` / `fetch_chat_request` | **ZDH-14** |
-| `explain` / `suggest_demo_prompts` | **ZDH-13** glossary + prompts |
-| `handoff_to_multi` | **ZDH-11** multi-agent graduation (gated) |
-| `recommend_data_plane_mcp` / `emit_mcp_config` | **ZDH-12** data-plane handoff |
-| `helper_metrics` | Local time-to-green (privacy-safe) |
-
-### Day-one coach path
+## Day-one coach path
 
 ```text
-start_project → set_prereq → validate_env → readiness_check
+doctor → start_project → set_prereq → validate_env → readiness_check
+  → list_catalog_modes → fetch_chat_request → explain → recommend_surface
   → use_sample | travel_golden_path | scaffold_app
-  → bootstrap_scope / fetch_chat_request / bind_contract / catalog_diff
+  → bootstrap_scope / bind_contract / catalog_diff / explain_hash_boundary
   → recommend_surface / explain_verb / lint_verb_args / compat_check
   → lint_runtime_config / lint_app_code
   → smoke_test_zeus → smoke_test_agent → gap_report
-  → (optional) recommend_data_plane_mcp | handoff_to_multi
+  → (optional) recommend_data_plane_mcp | emit_mcp_config | handoff_to_multi
 ```
 
-## Catalog rules (never invent hashes)
+Prefer `next_step` over dumping the full checklist.
 
-1. Live Zeus stamp + `sync_chat_requests` for production.  
-2. [zeus_chat_request](https://github.com/koten-ai/zeus_chat_request) `v2/min/*` for offline templates.  
-3. `fetch_chat_request` always returns **TEMPLATE ONLY** warning.
+## Tools
 
-## Env
+Live `tools/list` is the call contract. Names below are the coach surface.
+
+### Start and health
+
+| Tool | Job |
+| --- | --- |
+| `doctor` | Version, public config (no secrets), catalog reachability |
+| `start_project` | Init or reset the first-app checklist |
+| `helper_metrics` | Local time-to-green (never leaves the machine) |
+
+### Checklist
+
+| Tool | Job |
+| --- | --- |
+| `get_checklist` | Full checklist JSON |
+| `next_step` | Current item plus recommended tools |
+| `gap_report` | Open items and progress |
+| `mark_done` | Mark an item done (evidence must not include secrets) |
+| `mark_blocked` | Mark an item blocked |
+
+### Env and platform
+
+| Tool | Job |
+| --- | --- |
+| `set_prereq` | Store non-secret prereqs (presence flags only for secrets) |
+| `validate_env` | Shape check: URL port, key presence, bucket/scope, templates |
+| `readiness_check` | Live gates: healthz / readyz / version, auth, bootstrap |
+| `compat_check` | Version and feature gates on `:8080` |
+| `bootstrap_scope` | Live bootstrap plus chat_request summary |
+
+### Catalogs and contracts
+
+| Tool | Job |
+| --- | --- |
+| `list_catalog_modes` | List min catalog modes from local templates |
+| `fetch_chat_request` | Fetch a min template by mode (**TEMPLATE ONLY**) |
+| `lint_chat_request` | Read-only lint of a chat_request |
+| `bind_contract` | Copy a stamped `contract.hash` only; refuses empty / local compute |
+| `explain_hash_boundary` | What is excluded from the hash |
+| `catalog_diff` | Live bootstrap summary vs on-disk vs bound hash prefix |
+
+### Project on disk
+
+| Tool | Job |
+| --- | --- |
+| `use_sample` | Point at a local travel sample (or gate other samples) |
+| `travel_golden_path` | Travel sample phases plus optional layout check |
+| `scaffold_app` | Minimal app files (`main.py`, requirements, `.env.example`) |
+| `write_env` | Write `.env.example` from prereqs (never secret values) |
+| `verify_local_setup` | Import check plus optional scaffold files |
+| `lint_runtime_config` | Lint runtime config: `:8080`, auth mode, env names, cache off |
+| `lint_app_code` | Anti-example scan (stale V1, hash literals, Hub port) |
+
+### Surface and verbs (coach only; does not POST find/search/get/pipeline)
+
+| Tool | Job |
+| --- | --- |
+| `recommend_surface` | Intent → Client surface + do-not list |
+| `explain_verb` | Static V2 verb encyclopedia |
+| `lint_verb_args` | Lint a would-be JSON body (`posted=false`) |
+| `suggest_verb_call` | Draft a legal JSON body from a goal (does not POST) |
+
+### Smoke and diagnose
+
+| Tool | Job |
+| --- | --- |
+| `smoke_test_zeus` | No LLM: readiness plus a read-only describe |
+| `smoke_test_agent` | One Client agent turn (needs `[agent]` extra and an LLM key) |
+| `suggest_demo_prompts` | Advice-shaped starter questions |
+| `describe_scope` | Live schema-only describe (entity types and field names; no document samples) |
+| `diagnose_error` | Map HTTP / body / error codes to a failure class |
+
+### Correlation and support
+
+| Tool | Job |
+| --- | --- |
+| `explain_req_id_policy` | One UUID per hop; never composite hop ids |
+| `detective_links` | Hub Detective URL templates only (does not fetch) |
+| `support_pack_from_turn` | Redacted markdown from debug JSON or last smoke artifact |
+
+### Motion, hooks, cache, glossary
+
+| Tool | Job |
+| --- | --- |
+| `recommend_motion` | User job → one of 13 motions; does not generate a catalog |
+| `suggest_hooks` | Middleware snippets (`executed=false`; Helper is not a policy engine) |
+| `semantic_cache_status` | Leave enabled=false; optional status probe |
+| `explain` | Short glossary answer |
+
+### Post-green handoffs
+
+Gated on smoke **5.1 + 5.2** unless forced.
+
+| Tool | Job |
+| --- | --- |
+| `recommend_data_plane_mcp` | Hand off to a future scope-bound data-plane MCP |
+| `emit_mcp_config` | Safe-by-default MCP config fragment (placeholder command/args) |
+| `handoff_to_multi` | Multi-agent graduation guidance (does not run jobs) |
+
+## Environment
+
+Secrets stay in the process environment. `set_prereq` stores presence flags only. Tool results redact secret values.
 
 | Variable | Purpose |
 | --- | --- |
-| `ZEUS_URL` | Public Zeus API (`:8080`) |
-| `ZEUS_BUCKET` / `ZEUS_SCOPE` / `ZEUS_COLLECTION` | Scope for bootstrap/auth probes |
-| `ZEUS_MODE` | default `analytics` |
-| `ZEUS_USERNAME` / `ZEUS_PASSWORD` | basic auth (not stored by set_prereq) |
-| `ZEUS_BEARER_TOKEN` | bearer auth |
-| `ZEUS_CHAT_REQUEST_DIR` | Local clone of zeus_chat_request |
-| `GITHUB_TOKEN` / `GH_TOKEN` | Private GitHub fetch |
-| `ZEUS_CHAT_REQUEST_REPO` | default `koten-ai/zeus_chat_request` |
-| `ZEUS_CHAT_REQUEST_BRANCH` | default `main` |
-| `DEMO_TRAVEL_SAMPLE_DIR` | Local clone of demo_travel_sample (ZDH-10) |
-| `KOTEN_DOCS_BASE_URL` | default `https://docs.koten.ai` |
-| `ZEUS_DEV_HELPER_STATE_DIR` | checklist / prereqs / local metrics |
+| `ZEUS_URL` | Public Zeus API base URL (port 8080) |
+| `ZEUS_BUCKET` / `ZEUS_SCOPE` / `ZEUS_COLLECTION` | Scope for bootstrap and auth probes |
+| `ZEUS_MODE` | Default catalog mode (`analytics`) |
+| `ZEUS_AUTH_MODE` | Auth mode (`none`, basic, bearer) |
+| `ZEUS_USERNAME` / `ZEUS_PASSWORD` | Basic auth (never logged) |
+| `ZEUS_BEARER_TOKEN` | Bearer auth (never logged) |
+| `LLM_API_KEY` / `OPENAI_API_KEY` | Presence checked by `validate_env`; required for `smoke_test_agent` |
+| `ZEUS_CHAT_REQUEST_DIR` | Local directory of min catalog templates (offline `list_catalog_modes` / `fetch_chat_request`) |
+| `DEMO_TRAVEL_SAMPLE_DIR` | Local sample directory for `use_sample` / `travel_golden_path` |
+| `ZEUS_DEV_HELPER_STATE_DIR` | Checklist, prereqs, and local metrics (default `~/.config/zeus_dev_helper`) |
 
 ## Boundaries
 
-| This Helper | Not this Helper |
+| This MCP | Not this MCP |
 | --- | --- |
 | Onboarding coach to first green | Data-plane Explore/Verify tools |
-| Catalog **templates** + readiness/smoke | Inventing `contract_hash` |
-| Multi / data-plane **handoffs** | ZJA job runtime / Hub admin mutations |
-| `KOTEN_DOCS_BASE_URL` | default `https://docs.koten.ai` (published site) |
-| `KOTEN_DOCS_BRANCH` | default `zeus-v1.0.0` (source branch for machine files) |
-| `ZEUS_DEV_HELPER_STATE_DIR` | checklist + prereqs state (default `~/.config/zeus_dev_helper`) |
-| `LLM_API_KEY` / `OPENAI_API_KEY` | presence checked by `validate_env` |
+| Catalog **templates** plus readiness and smoke | Inventing or locally computing `contract_hash` |
+| Verb explain / lint / draft (`posted=false`) | POSTing `find` / `search` / `get` / `pipeline` |
+| Detective **URL templates** | Hub scrape or Hub admin mutations |
+| Multi / data-plane **handoffs** | Multi-agent job runtime |
+| Local checklist and metrics | Shipping secrets in evidence or support packs |
 
-## Tests
+## Dev install
+
+From a local checkout:
 
 ```bash
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
+# optional agent smoke:
+pip install -e ".[agent]"
+export ZEUS_URL=http://localhost:8080
+```
+
+```bash
 pytest -q
 ```
 
-Requires sibling `../zeus_chat_request` with `manifest.json` for catalog tests.
+## MCP Registry
 
-## PyPI and MCP Registry
-
-Official registry name: `io.github.koten-ai/zeus-dev-helper`. Metadata lives in [`server.json`](server.json). The registry hosts metadata only; the install artifact is the public PyPI package `zeus-dev-helper-mcp`.
-
-Releases are tag-driven (`vX.Y.Z`). [`.github/workflows/release.yml`](.github/workflows/release.yml) tests, builds, creates a GitHub Release, publishes to PyPI (Trusted Publisher, environment `pypi`), then runs `mcp-publisher` against the official MCP Registry.
-
-Before the first tag:
-
-1. Create the GitHub Actions environment `pypi` on this repo.
-2. On [PyPI trusted publishing](https://pypi.org/manage/account/publishing/) add a **pending** GitHub publisher:
-   - Owner: `koten-ai`
-   - Repository: `zeus_dev_helper_mcp`
-   - Workflow name: `release.yml`
-   - Environment name: `pypi`
-3. Align versions in `pyproject.toml`, `src/zeus_dev_helper_mcp/__init__.py`, and `server.json` with the tag.
-4. Merge to `main`, then `git tag v0.6.0 && git push origin v0.6.0`.
-
-The GitHub source repo may stay private; PyPI and the MCP Registry require a **public** install path (`pip` / `uvx`). Keep `repository` in `server.json` only if you want clients to see the GitHub URL.
-
-## Related
-
-| Repo | Role |
-| --- | --- |
-| [zeus_client_python](https://github.com/koten-ai/zeus_client_python) | SDK |
-| [zeus_chat_request](https://github.com/koten-ai/zeus_chat_request) | Min catalogs |
-| [docs.koten.ai](https://docs.koten.ai/) | Published platform docs |
-| [koten_docs](https://github.com/koten-ai/koten_docs) | Docs source + agent-index.yaml |
-| [Zeus](https://github.com/koten-ai/Zeus) | Engine |
+Official registry name: `io.github.koten-ai/zeus-dev-helper`. The registry hosts metadata only; the install artifact is the PyPI package `zeus-dev-helper-mcp`.
