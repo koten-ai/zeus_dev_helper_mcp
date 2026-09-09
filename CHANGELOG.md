@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+### Changed
+- Public README: install, host config, tools, and env only (no Jira / sibling-repo links)
+
 ## 0.6.0
 
 ### Fixed
