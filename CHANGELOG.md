@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1
+
+### Added
+- **ZDH-40** First-green eval suite (`eval_suite`): ~20 prompts from `guides/LIST_OF_PROMPT_SAMPLES.md`; trace check that `doctor` / `next_step` precede `scaffold_app`.
+- **ZDH-40** `helper_metrics` records tool **ids** only (`tool_call` events; no payloads/tokens/prompts).
+- **ZDH-40** `docs/HOST-MATRIX.md` — Grok / Claude / Cursor measurement notes (do not assume one host’s tool picking).
+
 ## 0.7.0
 
 ### Added

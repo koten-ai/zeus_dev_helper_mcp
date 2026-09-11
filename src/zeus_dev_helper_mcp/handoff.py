@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from zeus_dev_helper_mcp.checklist import load_checklist
@@ -180,13 +179,19 @@ def emit_mcp_config(
     }
 
 
-def record_metric(cfg: HelperConfig, event: str) -> None:
-    """Append a privacy-safe local metric event (no PII)."""
+def record_metric(cfg: HelperConfig, event: str, *, tool: str = "") -> None:
+    """Append a privacy-safe local metric event (ids only — no payloads)."""
     path = cfg.state_dir / "metrics.jsonl"
     cfg.state_dir.mkdir(parents=True, exist_ok=True)
     import time
 
-    line = json.dumps({"ts": time.time(), "event": event}) + "\n"
+    row: dict[str, Any] = {"ts": time.time(), "event": event}
+    if event == "tool_call":
+        name = (tool or "").strip()[:80]
+        if not name:
+            return
+        row["tool"] = name
+    line = json.dumps(row) + "\n"
     with path.open("a") as f:
         f.write(line)
 
@@ -194,10 +199,11 @@ def record_metric(cfg: HelperConfig, event: str) -> None:
 def metrics_summary(cfg: HelperConfig) -> dict[str, Any]:
     path = cfg.state_dir / "metrics.jsonl"
     if not path.is_file():
-        return {"events": 0, "time_to_green_seconds": None}
+        return {"events": 0, "time_to_green_seconds": None, "tool_calls": []}
     starts = []
     zeus_ok = []
     agent_ok = []
+    tool_calls: list[str] = []
     for line in path.read_text().splitlines():
         try:
             ev = json.loads(line)
@@ -211,15 +217,25 @@ def metrics_summary(cfg: HelperConfig) -> dict[str, Any]:
             zeus_ok.append(ts)
         if e == "smoke_test_agent_ok" and ts:
             agent_ok.append(ts)
+        if e == "tool_call":
+            name = str(ev.get("tool") or "").strip()
+            if name:
+                tool_calls.append(name)
     t0 = min(starts) if starts else None
     t1 = min(agent_ok) if agent_ok else None
     ttg = (t1 - t0) if t0 and t1 and t1 >= t0 else None
+    from zeus_dev_helper_mcp.eval_suite import check_trace
+
+    sequence = check_trace(tool_calls)
     return {
         "events": sum(1 for _ in path.read_text().splitlines() if _.strip()),
         "start_project_count": len(starts),
         "smoke_zeus_ok_count": len(zeus_ok),
         "smoke_agent_ok_count": len(agent_ok),
         "time_to_green_seconds": round(ttg, 1) if ttg is not None else None,
+        "tool_calls": tool_calls[-80:],
+        "tool_call_count": len(tool_calls),
+        "sequence": sequence,
         "path": str(path),
-        "note": "Local only — not shipped off-machine",
+        "note": "Local only — tool ids, no payloads/tokens/prompts",
     }

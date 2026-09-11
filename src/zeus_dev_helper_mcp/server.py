@@ -774,6 +774,10 @@ def suggest_demo_prompts() -> dict[str, Any]:
 def _wrap_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
     @wraps(fn)
     def wrapped(*args: Any, **kwargs: Any) -> Any:
+        try:
+            record_metric(_cfg(), "tool_call", tool=fn.__name__)
+        except Exception:  # noqa: BLE001, S110 — metrics must not break tools
+            pass
         result = fn(*args, **kwargs)
         if not isinstance(result, dict):
             return result

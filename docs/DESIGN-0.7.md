@@ -104,3 +104,5 @@ Name-folding ([ZDH-35](https://kotenai.atlassian.net/browse/ZDH-35)): `doctor(de
 ## 8. Verification
 
 Unit tests (`pytest -q`) do not require a cluster. Protocol tests assert default `tools/list` ≤ 15, annotations on every default tool, `resources/list`+`read`, `prompts/list`+`get`, and `ToolError` on failed `bind_contract` / `readiness_check`.
+
+First-green eval (ZDH-40): `eval_suite` + `helper_metrics.tool_calls` (ids only). Host notes: [`HOST-MATRIX.md`](HOST-MATRIX.md).
