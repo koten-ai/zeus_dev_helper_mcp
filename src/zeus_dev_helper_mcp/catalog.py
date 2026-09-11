@@ -174,7 +174,7 @@ def fetch_chat_request(
         "warning": STAMP_WARNING,
         "next_action": (
             "Stamp this catalog on your Zeus (Hub Catalog → Verify/Stamp), "
-            "then sync with Zeus Client sync_chat_requests and pin scope_contracts."
+            "then rt.catalog.sync / load and pin scope_contracts."
         ),
         "docs": {
             "contracts": (

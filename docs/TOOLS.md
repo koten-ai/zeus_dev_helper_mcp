@@ -1,16 +1,20 @@
-# Helper tool reference (0.6)
+# Helper tool reference (0.7)
 
 Coach map for the Developer Helper MCP: **when** to call each tool, **args that matter**, **side effects**, and **do-not**.
+
+Default `tools/list` is the **`core`** toolset (≤15). Extra tools are static opt-in via `ZEUS_DEV_HELPER_TOOLSETS` (`catalog`, `lint`, `travel`, `support`, `handoff`, or `all`). This file still documents the full catalog.
+
+Knowledge (glossary, verbs, checklist, policies, catalog modes) is MCP **resources** under `zeus-helper://`. Walkthroughs are MCP **prompts** (`first_green`, `smoke_question`, `support_pack`).
 
 This is not Zeus public API documentation (`find` / `search` / `describe` live in Zeus `docs/API`). Helper does not expose those verbs as MCP tools.
 
 | Layer | Role |
 | --- | --- |
-| Live MCP `tools/list` | Call contract (names, JSON schema). Trust the running server if this file disagrees. |
-| This file | Coach map for agents and humans. |
+| Live MCP `tools/list` | Call contract (names, JSON schema, annotations). Trust the running server if this file disagrees. |
+| This file | Coach map for agents and humans (full catalog). |
 | [`AGENTS.md`](../AGENTS.md) | Load order + hard constraints. |
 | [`README.md`](../README.md) | Install + host config. |
-| [`DESIGN.md`](DESIGN.md) / [`DESIGN-0.6.md`](DESIGN-0.6.md) | Frozen product design. |
+| [`DESIGN.md`](DESIGN.md) / [`DESIGN-0.6.md`](DESIGN-0.6.md) / [`DESIGN-0.7.md`](DESIGN-0.7.md) | Frozen product design + increments. |
 | [`guides/LIST_OF_PROMPT_SAMPLES.md`](../guides/LIST_OF_PROMPT_SAMPLES.md) | How a human should *ask*. |
 
 ---
@@ -33,15 +37,13 @@ Prefer `next_step` over dumping the full checklist.
 ## Day-one path
 
 ```text
-doctor → start_project → set_prereq → validate_env → readiness_check
-  → list_catalog_modes → fetch_chat_request → explain → recommend_surface
-  → use_sample | travel_golden_path | scaffold_app
-  → bootstrap_scope / bind_contract / catalog_diff / explain_hash_boundary
-  → recommend_surface / explain_verb / lint_verb_args / compat_check
-  → lint_runtime_config / lint_app_code
-  → smoke_test_zeus → smoke_test_agent → gap_report
-  → (optional) recommend_data_plane_mcp | emit_mcp_config | handoff_to_multi
+doctor → start_project → next_step
+  → set_prereq → validate_env → readiness_check
+  → use_sample | scaffold_app → bind_contract → recommend_surface
+  → smoke_test_zeus → smoke_test_agent → diagnose_error
 ```
+
+Resources (not default tools): `zeus-helper://checklist` / `glossary/{topic}` / `verbs/{name}` / `policy/*` / `catalog/modes`. Extra tools: `ZEUS_DEV_HELPER_TOOLSETS=core,lint,catalog` (or `all`).
 
 ---
 
@@ -124,13 +126,13 @@ Prefer a **live Zeus stamp**. `zeus_chat_request` is min templates only.
 | --- | --- | --- | --- | --- |
 | `use_sample` | Point at `demo_travel_sample` (or block Yelp/multi) | `sample=travel`, `sample_dir` | `state` if travel layout validates | Preferred sample path. Set `DEMO_TRAVEL_SAMPLE_DIR` if cloned. Yelp/multi → `handoff_to_multi` gate. |
 | `travel_golden_path` | Travel phases + optional layout check | `sample_dir` | `state` if layout ok (marks 0.2 / 3.1) | Same track as `use_sample` for travel. Then readiness + smokes with the sample’s bucket/scope. |
-| `scaffold_app` | Minimal middle-man (`main.py`, requirements, `.env.example`) | `target_dir` (required), `project_name=zeus_first_app`, `force=false` | `disk`, `state` | Fallback when the travel sample is unavailable. **Not** rewritten to `ZeusRuntime` in 0.6. |
+| `scaffold_app` | Minimal ZeusRuntime middle-man (`main.py`, `config.json`, requirements, `.env.example`) | `target_dir` (required), `project_name=zeus_first_app`, `force=false` | `disk`, `state` | Fallback when the travel sample is unavailable. Emits `ZeusRuntime.from_config()` + `HttpxZeusPort` + `OpenAICompatibleLlmClient` (`kotenai-zeus-client>=2.3.0`). |
 | `write_env` | Write `.env.example` from prereqs | `target_dir` | `disk` | After scaffold/sample. Never writes secret values. |
 | `verify_local_setup` | `zeus_client` import + optional scaffold files | `target_dir` | none | After files exist, before smokes. |
 | `lint_runtime_config` | Lint `config.json`: `:8080`, `auth_mode`, env **names**, cheap path, cache off | `path` | none (redacts secrets) | Before agent smoke. Hub port is an error. |
 | `lint_app_code` | Anti-example scan of `main.py` / Dockerfiles (stale V1, hash literals, `:9091`) | `path` (file or dir) | none | Before calling the path “production-ish”. |
 
-**Do not:** commit `.env`. Do not claim `scaffold_app` is a 2.3 `ZeusRuntime` rewrite.
+**Do not:** commit `.env`. Do not emit V1 `ZeusClient` / `run_agent` from `scaffold_app`.
 
 ---
 
@@ -165,7 +167,7 @@ Verbs Helper can explain (not call): `explain`, `return`, `describe`, `analyze`,
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
 | `smoke_test_zeus` | No LLM: readiness + `POST /v2/{bucket}/{scope}/describe` | `update_checklist=true` | `live GET` + `live POST`, optional `state` | Checklist **5.1**. Returns `req_id`. Then `smoke_test_agent`. |
-| `smoke_test_agent` | One Client `run_agent` turn | `question` (advice-shaped), `update_checklist=true` | `LLM` + Zeus HTTP, `state` (`last_smoke_agent.json` ids/hops only) | Checklist **5.2**. Needs `[agent]` extra + LLM key. Still V1 `run_agent` (not a Runtime rewrite). |
+| `smoke_test_agent` | One Client `rt.agent.run_turn` | `question` (advice-shaped), `update_checklist=true` | `LLM` + Zeus HTTP, `state` (`last_smoke_agent.json` ids/hops only) | Checklist **5.2**. Needs `[agent]` extra (`kotenai-zeus-client>=2.3.0`) + LLM key. Returns `TurnResult` (`session_id` / `req_id`). |
 | `suggest_demo_prompts` | Advice-shaped starter questions | — | none | Before 5.2. Prefer NL over raw SQL. |
 | `describe_scope` | Live MINI-SCHEMA: entity types + field names | `bucket`, `scope` (else env) | `live POST` | Schema for lint / UI. **No document samples.** Cap applied. |
 | `diagnose_error` | Map HTTP / body / ErrorCode / `error_class` → `failure_class` + docs anchor | `status`, `body`, `message`, `error_code`, `error_class`, `req_id`, `session_id`, `chat_id`, `turn_id`, `zeus_url` | none (Detective **URLs only**) | On any red path. Does not import `zeus_client` on the default extra. |

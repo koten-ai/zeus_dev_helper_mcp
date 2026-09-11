@@ -141,7 +141,7 @@ def bootstrap_scope(
         "warning": "Production still needs stamped contract_hash — never invent hashes",
         "next_action": (
             "Configure middle-man with scope_url/tools; stamp catalog; "
-            "sync_chat_requests; then smoke_test_agent"
+            "rt.catalog.sync / load; then smoke_test_agent"
         ),
         "docs": {
             "contracts": (

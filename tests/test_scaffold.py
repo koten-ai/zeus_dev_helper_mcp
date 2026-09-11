@@ -1,10 +1,13 @@
+import inspect
 from pathlib import Path
 
 from zeus_dev_helper_mcp.config import HelperConfig
+from zeus_dev_helper_mcp.config_lint import lint_app_code, lint_runtime_config
 from zeus_dev_helper_mcp.scaffold import scaffold_app, use_sample, verify_local_setup
+from zeus_dev_helper_mcp.smoke import smoke_test_agent
 
 
-def test_scaffold_writes_files(tmp_path: Path) -> None:
+def test_scaffold_writes_runtime_files(tmp_path: Path) -> None:
     cfg = HelperConfig(
         zeus_url="http://localhost:8080",
         default_bucket="beer-sample",
@@ -15,11 +18,53 @@ def test_scaffold_writes_files(tmp_path: Path) -> None:
     assert out["ok"] is True
     root = Path(out["target_dir"])
     assert (root / "main.py").is_file()
+    assert (root / "config.json").is_file()
     assert (root / "requirements.txt").is_file()
     assert (root / ".env.example").is_file()
     text = (root / "main.py").read_text()
-    assert "run_agent" in text
-    assert "beer-sample" in text
+    reqs = (root / "requirements.txt").read_text()
+    assert "ZeusRuntime" in text
+    assert "from_config" in text
+    assert "HttpxZeusPort" in text
+    assert "OpenAICompatibleLlmClient" in text
+    assert "run_turn" in text
+    assert "run_agent" not in text
+    assert "ZeusClient" not in text
+    assert "sync_chat_requests" not in text
+    assert "kotenai-zeus-client>=2.3.0" in reqs
+    assert "beer-sample" in (root / "config.json").read_text()
+
+
+def test_scaffold_agrees_with_linters(tmp_path: Path) -> None:
+    cfg = HelperConfig(
+        zeus_url="http://localhost:8080",
+        zeus_auth_mode="none",
+        default_bucket="beer-sample",
+        default_scope="_default",
+        default_collection="_default",
+        state_dir=tmp_path / "state",
+    )
+    out = scaffold_app(cfg, str(tmp_path / "app"), project_name="demo_app")
+    root = Path(out["target_dir"])
+    app = lint_app_code(cfg, path=str(root))
+    assert app["ok"] is True
+    blob = " ".join(i["message"] for i in app["issues"]).lower()
+    assert "zeusclient" not in blob
+    assert "run_agent" not in blob
+    cfg_lint = lint_runtime_config(cfg, path=str(root / "config.json"))
+    assert cfg_lint["ok"] is True
+
+
+def test_helper_does_not_emit_v1_client_api() -> None:
+    from zeus_dev_helper_mcp import scaffold as scaffold_mod
+    from zeus_dev_helper_mcp import smoke as smoke_mod
+
+    for src in (inspect.getsource(scaffold_mod.scaffold_app), inspect.getsource(smoke_test_agent)):
+        assert "ZeusClient" not in src
+        assert "run_agent" not in src
+        assert "sync_chat_requests" not in src
+    assert "ZeusRuntime" in inspect.getsource(scaffold_mod)
+    assert "run_turn" in inspect.getsource(smoke_mod.smoke_test_agent)
 
 
 def test_use_sample_travel(tmp_path: Path) -> None:

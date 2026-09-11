@@ -1,10 +1,11 @@
 # Developer Helper MCP 0.6 — ZeusRuntime coach
 
-**Status:** Waves 0–3 implemented (0.6.0).  
+**Status:** Waves 0–3 implemented (0.6.0). Runtime scaffold/smoke rewrite landed later in **0.6.2** (ZDH-32).  
 **Product:** `zeus_dev_helper_mcp`  
 **Parent epic:** [ZDH-15](https://kotenai.atlassian.net/browse/ZDH-15) (relates [ZDH-1](https://kotenai.atlassian.net/browse/ZDH-1))  
 **Plan:** [`PLAN-runtime-coach-0.6.md`](PLAN-runtime-coach-0.6.md)  
 **Frozen MVP:** [`DESIGN.md`](DESIGN.md) (ZDH-2) — not rewritten here.  
+**Next increment:** [`DESIGN-0.7.md`](DESIGN-0.7.md) (MCP quality — default toolset, resources, prompts).  
 **Tool catalog:** [`TOOLS.md`](TOOLS.md) — when / args / side effects / do-not for all Helper tools.
 
 Target stack: Zeus engine **0.7.x** + `kotenai-zeus-client` **≥ 2.3.0** (`ZeusRuntime`).
@@ -15,7 +16,7 @@ Target stack: Zeus engine **0.7.x** + `kotenai-zeus-client` **≥ 2.3.0** (`Zeus
 
 First green middle-man turn — `session_id` / `req_id` — on public **`:8080`**.
 
-This increment coaches the **current** client surface (`ZeusRuntime`, `TurnResult`, Direct vs agent) without rewriting V1 `scaffold_app` / `smoke_test_agent` ([ZDH-17](https://kotenai.atlassian.net/browse/ZDH-17) Cancelled) and without switching bootstrap probes to `/v2` ([ZDH-20](https://kotenai.atlassian.net/browse/ZDH-20) Cancelled).
+This increment coaches the **current** client surface (`ZeusRuntime`, `TurnResult`, Direct vs agent). 0.6.0 deferred the V1 `scaffold_app` / `smoke_test_agent` rewrite ([ZDH-17](https://kotenai.atlassian.net/browse/ZDH-17)); **0.6.2 shipped it** (ZDH-32). Bootstrap probes stay on `/v1` ([ZDH-20](https://kotenai.atlassian.net/browse/ZDH-20) Cancelled).
 
 ---
 
@@ -124,7 +125,7 @@ Match order: explicit `error_code` / `error_class` → HTTP status → needles. 
 
 ## 7. Out of this increment
 
-- Rewriting V1 `scaffold_app` / `smoke_test_agent` to `ZeusRuntime`.
+- Rewriting V1 `scaffold_app` / `smoke_test_agent` to `ZeusRuntime` (done in 0.6.2 / ZDH-32).
 - Switching bootstrap/auth/catalog probes to `/v2`.
 - (none remaining in this train).
 

@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.7.0
+
+### Added
+- **ZDH-29 / 0.7 MCP quality** — default `core` toolset (≤15 tools), static opt-in `catalog` / `lint` / `travel` / `support` / `handoff` via `ZEUS_DEV_HELPER_TOOLSETS` (no dynamic `enable_toolset`).
+- MCP resources: `zeus-helper://checklist`, `glossary/{topic}`, `verbs/{name}`, `policy/hash-boundary`, `policy/req-id`, `catalog/modes`.
+- MCP prompts: `first_green`, `smoke_question`, `support_pack`.
+- Tool annotations (`readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`) on every exposed tool.
+- Shared result envelope (`ok`, `failure_class`, `next_action`, `recommended_tools`, `docs`).
+- Execution failures raise MCP `ToolError` (`isError: true` on mcp 2.x) for `readiness_check` / `bind_contract` / catalog fetch / scaffold / smoke.
+- `docs/DESIGN-0.7.md` increment. Frozen `docs/DESIGN.md` is unchanged.
+
+### Changed
+- Server `instructions` cover order + hard constraints, not a tool-name dump.
+- `next_step` returns `resource_links` for checklist / glossary / policies.
+- Deleted leftover `_stub()` (ZDH-36).
+
+### Notes
+- Full 45-tool catalog remains available with `ZEUS_DEV_HELPER_TOOLSETS=all`.
+- Name-folding (`doctor(detail=…)`, `lint_app`) is still ZDH-35 follow-up; overlapping tools are already off the default surface.
+
+## 0.6.2
+
+### Changed
+- **ZDH-32** `scaffold_app` emits `ZeusRuntime.from_config()` + `HttpxZeusPort` + `OpenAICompatibleLlmClient` (`config.json` + `main.py`). Floor `kotenai-zeus-client>=2.3.0`.
+- **ZDH-32** `smoke_test_agent` uses `rt.agent.run_turn` → `TurnResult` (ids/hops only in `last_smoke_agent.json`).
+- Checklist 5.2 / tool docs no longer coach V1 `ZeusClient` / `run_agent` as the generated path. `lint_app_code` still flags leftover V1 in caller code.
+
 ## 0.6.1
 
 ### Changed

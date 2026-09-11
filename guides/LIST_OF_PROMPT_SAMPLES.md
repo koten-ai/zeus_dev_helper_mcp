@@ -11,16 +11,16 @@ Hard constraints the prompts assume:
 - No secrets in checklist evidence or support packs.
 - Coach only: this MCP does not run data-plane verbs, Hub admin mutations, or ZJA jobs.
 
-Day-one order (for chaining, not required per prompt):
+Day-one order (for chaining, not required per prompt). Default MCP surface is `core`; encyclopedia tools need `ZEUS_DEV_HELPER_TOOLSETS` or `zeus-helper://` resources:
 
 ```text
-doctor → start_project → set_prereq → validate_env → readiness_check
-  → list_catalog_modes → fetch_chat_request → explain → recommend_surface
-  → use_sample | travel_golden_path | scaffold_app
-  → bootstrap_scope / bind_contract / catalog_diff
-  → smoke_test_zeus → smoke_test_agent → gap_report
-  → (optional) recommend_data_plane_mcp | handoff_to_multi
+doctor → start_project → next_step
+  → set_prereq → validate_env → readiness_check
+  → use_sample | scaffold_app → bind_contract → recommend_surface
+  → smoke_test_zeus → smoke_test_agent → diagnose_error
 ```
+
+MCP prompts: `first_green`, `smoke_question`, `support_pack`. Resources: `zeus-helper://checklist`, `glossary/{topic}`, `verbs/{name}`, `policy/hash-boundary`, `policy/req-id`, `catalog/modes`.
 
 ---
 
@@ -163,7 +163,7 @@ Fetch a V2 min chat_request template by mode. Always **TEMPLATE ONLY**. Prefer l
 Explain a Zeus/Client concept (glossary) with a docs deep-link.
 
 1. Explain `contract_hash`. Stress that we never invent production hashes.
-2. Explain `zeus_runtime` vs V1 `run_agent`, and link the Client docs.
+2. Explain `zeus_runtime` vs the retired V1 `run_agent` path, and link the Client docs.
 3. Explain `motion` versus Zeus `mode`. List the 13 motions and tell me to use `recommend_motion` instead of generating a catalog.
 
 ### `explain_hash_boundary`
@@ -196,7 +196,7 @@ Starter advice-shaped prompts for smoke / demos (not raw SQL).
 
 ### `scaffold_app`
 
-Write a minimal Zeus Client middle-man project (`main.py`, requirements, `.env.example`). V1 scaffold is not rewritten for Runtime.
+Write a minimal ZeusRuntime middle-man project (`main.py`, `config.json`, requirements, `.env.example`).
 
 1. Scaffold a first Zeus app into `./zeus_first_app` named `zeus_first_app`. Don't overwrite unless needed.
 2. Create a middle-man project at `/tmp/zeus_first_app` with `force=true` so we can start from a clean tree.
@@ -248,7 +248,7 @@ Smoke Zeus without LLM: readiness + `POST /v2/{bucket}/{scope}/describe`.
 
 ### `smoke_test_agent`
 
-One Zeus Client `run_agent` turn (needs `kotenai-zeus-client` + LLM key).
+One Zeus Client `rt.agent.run_turn` (needs `kotenai-zeus-client>=2.3.0` + LLM key).
 
 1. Run one agent smoke turn: "In one short sentence, what data is available in this scope?"
 2. Smoke the agent with "A fun beach destination in Mexico, in April, under $300." Capture `session_id` / `req_id` only — no secrets.
@@ -465,7 +465,7 @@ Emit a safe-by-default MCP config fragment for a future data-plane server.
 | `write_env` | Write `.env.example` with no secrets. |
 | `verify_local_setup` | Can we import Zeus Client? |
 | `smoke_test_zeus` | Describe-scope smoke, no LLM. |
-| `smoke_test_agent` | One `run_agent` turn to first green. |
+| `smoke_test_agent` | One `run_turn` to first green. |
 | `diagnose_error` | Map 401 / `060010` / `base:1` to classes. |
 | `recommend_surface` | Typeahead vs NL question vs pipeline. |
 | `explain_verb` | Explain `find` / `pipeline` / `get`. |

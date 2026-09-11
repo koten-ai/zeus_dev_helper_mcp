@@ -1,90 +1,133 @@
-"""Developer Helper MCP server — first-app coach (ZDH MVP tools)."""
+"""Developer Helper MCP server — first-app coach (ZDH)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
+from functools import wraps
 from typing import Any
 
-try:
-    # mcp 2.x: FastMCP was renamed (https://py.sdk.modelcontextprotocol.io/v2/migration/)
-    from mcp.server.mcpserver import MCPServer as FastMCP
-except ModuleNotFoundError:  # mcp 1.x
-    from mcp.server.fastmcp import FastMCP
-
 from zeus_dev_helper_mcp import __version__
+from zeus_dev_helper_mcp.bootstrap import bootstrap_scope as bootstrap_scope_impl
+from zeus_dev_helper_mcp.cache import (
+    semantic_cache_status as semantic_cache_status_impl,
+)
 from zeus_dev_helper_mcp.catalog import (
     CatalogError,
-    fetch_chat_request as fetch_catalog_template,
     list_modes,
     resolve_local_repo_hint,
 )
-from zeus_dev_helper_mcp.bootstrap import bootstrap_scope as bootstrap_scope_impl
+from zeus_dev_helper_mcp.catalog import (
+    fetch_chat_request as fetch_catalog_template,
+)
 from zeus_dev_helper_mcp.checklist import (
     load_checklist,
     set_item_status,
 )
-from zeus_dev_helper_mcp.config import HelperConfig, reload_config
-from zeus_dev_helper_mcp.diagnose import diagnose_error as diagnose_error_impl
-from zeus_dev_helper_mcp.explain import explain_topic
-from zeus_dev_helper_mcp.cache import semantic_cache_status as semantic_cache_status_impl
 from zeus_dev_helper_mcp.compat import compat_check as compat_check_impl
-from zeus_dev_helper_mcp.hooks import suggest_hooks as suggest_hooks_impl
+from zeus_dev_helper_mcp.config import HelperConfig, reload_config
 from zeus_dev_helper_mcp.config_lint import (
     lint_app_code as lint_app_code_impl,
+)
+from zeus_dev_helper_mcp.config_lint import (
     lint_runtime_config as lint_runtime_config_impl,
 )
 from zeus_dev_helper_mcp.contract import (
     bind_contract as bind_contract_impl,
+)
+from zeus_dev_helper_mcp.contract import (
     catalog_diff as catalog_diff_impl,
+)
+from zeus_dev_helper_mcp.contract import (
     explain_hash_boundary as explain_hash_boundary_impl,
+)
+from zeus_dev_helper_mcp.contract import (
     lint_chat_request as lint_chat_request_impl,
 )
+from zeus_dev_helper_mcp.diagnose import diagnose_error as diagnose_error_impl
+from zeus_dev_helper_mcp.docs_links import docs_url
+from zeus_dev_helper_mcp.envelope import (
+    as_envelope,
+    is_execution_failure,
+    raise_tool_error,
+)
+from zeus_dev_helper_mcp.explain import explain_topic
+from zeus_dev_helper_mcp.handoff import (
+    emit_mcp_config as emit_mcp_config_impl,
+)
+from zeus_dev_helper_mcp.handoff import (
+    handoff_to_multi as handoff_to_multi_impl,
+)
+from zeus_dev_helper_mcp.handoff import (
+    metrics_summary as metrics_summary_impl,
+)
+from zeus_dev_helper_mcp.handoff import (
+    recommend_data_plane_mcp as recommend_data_plane_impl,
+)
+from zeus_dev_helper_mcp.handoff import (
+    record_metric,
+)
+from zeus_dev_helper_mcp.hooks import suggest_hooks as suggest_hooks_impl
+from zeus_dev_helper_mcp.mcp_compat import (
+    make_fastmcp,
+    make_tool_annotations,
+    register_tool,
+)
 from zeus_dev_helper_mcp.motion import recommend_motion as recommend_motion_impl
-from zeus_dev_helper_mcp.support import (
-    detective_links as detective_links_impl,
-    explain_req_id_policy as explain_req_id_policy_impl,
-    support_pack_from_turn as support_pack_from_turn_impl,
-)
-from zeus_dev_helper_mcp.surface import recommend_surface as recommend_surface_impl
-from zeus_dev_helper_mcp.verbs import (
-    describe_scope as describe_scope_impl,
-    explain_verb as explain_verb_impl,
-    lint_verb_args as lint_verb_args_impl,
-    suggest_verb_call as suggest_verb_call_impl,
-)
 from zeus_dev_helper_mcp.prereqs import public_prereqs, save_prereqs
+from zeus_dev_helper_mcp.prompts import register_prompts
 from zeus_dev_helper_mcp.readiness import run_readiness_check
+from zeus_dev_helper_mcp.resources import register_resources
 from zeus_dev_helper_mcp.scaffold import (
     scaffold_app as scaffold_app_impl,
+)
+from zeus_dev_helper_mcp.scaffold import (
     use_sample as use_sample_impl,
+)
+from zeus_dev_helper_mcp.scaffold import (
     verify_local_setup as verify_local_setup_impl,
+)
+from zeus_dev_helper_mcp.scaffold import (
     write_env_example,
 )
 from zeus_dev_helper_mcp.smoke import smoke_test_agent as smoke_agent_impl
 from zeus_dev_helper_mcp.smoke import smoke_test_zeus as smoke_zeus_impl
-from zeus_dev_helper_mcp.walkthrough import build_gap_report, enriched_next_step
-from zeus_dev_helper_mcp.docs_links import docs_url
-from zeus_dev_helper_mcp.travel import travel_golden_path as travel_golden_path_impl
-from zeus_dev_helper_mcp.handoff import (
-    emit_mcp_config as emit_mcp_config_impl,
-    handoff_to_multi as handoff_to_multi_impl,
-    metrics_summary as metrics_summary_impl,
-    recommend_data_plane_mcp as recommend_data_plane_impl,
-    record_metric,
+from zeus_dev_helper_mcp.support import (
+    detective_links as detective_links_impl,
 )
+from zeus_dev_helper_mcp.support import (
+    explain_req_id_policy as explain_req_id_policy_impl,
+)
+from zeus_dev_helper_mcp.support import (
+    support_pack_from_turn as support_pack_from_turn_impl,
+)
+from zeus_dev_helper_mcp.surface import recommend_surface as recommend_surface_impl
+from zeus_dev_helper_mcp.toolsets import TOOL_REGISTRY, parse_toolsets
+from zeus_dev_helper_mcp.travel import travel_golden_path as travel_golden_path_impl
+from zeus_dev_helper_mcp.verbs import (
+    describe_scope as describe_scope_impl,
+)
+from zeus_dev_helper_mcp.verbs import (
+    explain_verb as explain_verb_impl,
+)
+from zeus_dev_helper_mcp.verbs import (
+    lint_verb_args as lint_verb_args_impl,
+)
+from zeus_dev_helper_mcp.verbs import (
+    suggest_verb_call as suggest_verb_call_impl,
+)
+from zeus_dev_helper_mcp.walkthrough import build_gap_report, enriched_next_step
 
-mcp = FastMCP(
-    "zeus-dev-helper",
-    instructions=(
-        "Developer Helper MCP: coach first Zeus Client app to green. "
-        "Prefer live Zeus for stamps; use zeus_chat_request for min templates. "
-        "Never invent contract hashes. Public API is :8080 not Hub :9091. "
-        "Use readiness_check for platform gates; fetch_chat_request for templates. "
-        "Use recommend_surface / explain_verb / lint_verb_args for Zeus 0.7 + Client 2.3 "
-        "(ZeusRuntime / Direct vs agent). Use compat_check, lint_chat_request, bind_contract, "
-        "lint_runtime_config. Do not treat this as a Runtime scaffold rewrite. "
-        "After smoke green: recommend_data_plane_mcp / handoff_to_multi (handoffs only). "
-        "Docs: koten_docs agent-index.yaml + using-zeus-client.md."
-    ),
+INSTRUCTIONS = (
+    "Developer Helper MCP coaches a first Zeus Client app to green "
+    "(session_id / req_id on public :8080). "
+    "Order: doctor → next_step, then only the recommended tool. "
+    "Hard constraints: public API is :8080 not Hub :9091; never invent contract_hash; "
+    "fetch_chat_request / catalog resources are TEMPLATE ONLY (prefer a live Zeus stamp); "
+    "no secrets in results or checklist evidence; semantic cache stays off. "
+    "scaffold_app / smoke_test_agent emit ZeusRuntime + run_turn, not V1 ZeusClient / run_agent. "
+    "Knowledge is resources under zeus-helper:// (checklist, glossary, verbs, policies, catalog modes). "
+    "Walkthroughs are prompts: first_green, smoke_question, support_pack. "
+    "After 5.1+5.2 green: data-plane and multi-agent are handoffs only."
 )
 
 
@@ -92,24 +135,6 @@ def _cfg() -> HelperConfig:
     return reload_config()
 
 
-def _stub(tool: str, phase: str) -> dict[str, Any]:
-    return {
-        "implemented": False,
-        "tool": tool,
-        "phase": phase,
-        "message": f"{tool} is not implemented yet (scheduled {phase}).",
-        "next_action": "Continue with implemented tools: doctor, readiness_check, set_prereq, "
-        "get_checklist, next_step, list_catalog_modes, fetch_chat_request, explain.",
-        "docs": {
-            "dev_helper_mcp": (
-                docs_url("zeus-client/dev-helper-mcp.md")
-            ),
-            "zdh_board": "https://kotenai.atlassian.net/jira/software/projects/ZDH/boards/45",
-        },
-    }
-
-
-@mcp.tool()
 def doctor() -> dict[str, Any]:
     """Health / doctor: version, config (no secrets), catalog source readiness."""
     cfg = _cfg()
@@ -147,7 +172,6 @@ def doctor() -> dict[str, Any]:
     }
 
 
-@mcp.tool()
 def start_project(
     goal: str = "single-agent",
     sample: str = "travel",
@@ -189,7 +213,7 @@ def start_project(
     save_checklist(cfg, data)
     try:
         record_metric(cfg, "start_project")
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110
         pass
     nxt = enriched_next_step(cfg)
     out: dict[str, Any] = {
@@ -217,39 +241,33 @@ def start_project(
     return out
 
 
-@mcp.tool()
 def get_checklist() -> dict[str, Any]:
     """Return the current first-app checklist state."""
     return load_checklist(_cfg())
 
 
-@mcp.tool()
 def next_step() -> dict[str, Any]:
     """Return the single current checklist blocker + recommended Helper tools (coach)."""
     return enriched_next_step(_cfg())
 
 
-@mcp.tool()
 def gap_report() -> dict[str, Any]:
     """What's left for single-agent / production-ish path (phases 4–7 focus)."""
     return build_gap_report(_cfg())
 
 
-@mcp.tool()
 def mark_done(item_id: str, evidence: str = "") -> dict[str, Any]:
     """Mark a checklist item done (optional evidence string, no secrets)."""
     data = set_item_status(_cfg(), item_id, "done", evidence=evidence or None)
     return {"updated": item_id, "status": "done", "next_step": enriched_next_step(_cfg()), "checklist": data}
 
 
-@mcp.tool()
 def mark_blocked(item_id: str, reason: str = "") -> dict[str, Any]:
     """Mark a checklist item blocked with a reason."""
     data = set_item_status(_cfg(), item_id, "blocked", evidence=reason or None)
     return {"updated": item_id, "status": "blocked", "next_step": enriched_next_step(_cfg()), "checklist": data}
 
 
-@mcp.tool()
 def validate_env() -> dict[str, Any]:
     """Validate Helper env + stored prereqs shape (presence only — no secret values)."""
     cfg = _cfg()
@@ -320,7 +338,6 @@ def validate_env() -> dict[str, Any]:
     }
 
 
-@mcp.tool()
 def set_prereq(
     zeus_url: str = "",
     auth_mode: str = "",
@@ -374,7 +391,6 @@ def set_prereq(
     }
 
 
-@mcp.tool()
 def readiness_check(update_checklist: bool = True) -> dict[str, Any]:
     """Live Zeus platform gates: healthz/readyz/version, auth, bootstrap, chat_request.
 
@@ -384,7 +400,6 @@ def readiness_check(update_checklist: bool = True) -> dict[str, Any]:
     return run_readiness_check(cfg, update_checklist=update_checklist)
 
 
-@mcp.tool()
 def list_catalog_modes() -> dict[str, Any]:
     """List V2 min chat_request modes from zeus_chat_request (ZDH-14)."""
     cfg = _cfg()
@@ -402,7 +417,6 @@ def list_catalog_modes() -> dict[str, Any]:
         }
 
 
-@mcp.tool()
 def fetch_chat_request(mode: str = "analytics", detail: str = "summary") -> dict[str, Any]:
     """Fetch a V2 min chat_request template by mode from zeus_chat_request.
 
@@ -426,13 +440,11 @@ def fetch_chat_request(mode: str = "analytics", detail: str = "summary") -> dict
         }
 
 
-@mcp.tool()
 def explain(topic: str) -> dict[str, Any]:
     """Explain a Zeus/Client concept (glossary) with docs deep-link."""
     return explain_topic(_cfg(), topic)
 
 
-@mcp.tool()
 def bootstrap_scope(
     bucket: str = "",
     scope: str = "",
@@ -451,56 +463,48 @@ def bootstrap_scope(
     )
 
 
-@mcp.tool()
 def scaffold_app(
     target_dir: str,
     project_name: str = "zeus_first_app",
     force: bool = False,
 ) -> dict[str, Any]:
-    """Write a minimal Zeus Client middle-man project (main.py, requirements, .env.example)."""
+    """Write a minimal ZeusRuntime middle-man (main.py, config.json, requirements, .env.example)."""
     return scaffold_app_impl(_cfg(), target_dir, project_name=project_name, force=force)
 
 
-@mcp.tool()
 def use_sample(sample: str = "travel", sample_dir: str = "") -> dict[str, Any]:
     """Point at demo_travel_sample (or block multi until single-agent green)."""
     return use_sample_impl(_cfg(), sample=sample, sample_dir=sample_dir)
 
 
-@mcp.tool()
 def travel_golden_path(sample_dir: str = "") -> dict[str, Any]:
     """ZDH-10: demo_travel_sample golden path phases + optional layout validation."""
     return travel_golden_path_impl(_cfg(), sample_dir=sample_dir)
 
 
-@mcp.tool()
 def write_env(target_dir: str) -> dict[str, Any]:
     """Write .env.example from prereqs (no secrets)."""
     return write_env_example(_cfg(), target_dir)
 
 
-@mcp.tool()
 def verify_local_setup(target_dir: str = "") -> dict[str, Any]:
     """Check zeus_client import and optional scaffold files."""
     return verify_local_setup_impl(_cfg(), target_dir=target_dir)
 
 
-@mcp.tool()
 def smoke_test_zeus(update_checklist: bool = True) -> dict[str, Any]:
     """Smoke Zeus without LLM: readiness + POST /v2/{bucket}/{scope}/describe."""
     return smoke_zeus_impl(_cfg(), update_checklist=update_checklist)
 
 
-@mcp.tool()
 def smoke_test_agent(
     question: str = "In one short sentence, what data is available in this scope?",
     update_checklist: bool = True,
 ) -> dict[str, Any]:
-    """One Zeus Client run_agent turn (requires kotenai-zeus-client + LLM key)."""
+    """One ZeusRuntime run_turn (requires kotenai-zeus-client>=2.3.0 + LLM key)."""
     return smoke_agent_impl(_cfg(), question=question, update_checklist=update_checklist)
 
 
-@mcp.tool()
 def diagnose_error(
     status: str = "",
     body: str = "",
@@ -529,7 +533,6 @@ def diagnose_error(
     )
 
 
-@mcp.tool()
 def recommend_surface(
     intent: str,
     qps: float = 0,
@@ -544,13 +547,11 @@ def recommend_surface(
     )
 
 
-@mcp.tool()
 def explain_verb(name: str) -> dict[str, Any]:
     """V2 verb encyclopedia: path class, demux, Direct vs pipeline (ZDH-18)."""
     return explain_verb_impl(_cfg(), name=name)
 
 
-@mcp.tool()
 def lint_verb_args(
     verb: str,
     body: str = "{}",
@@ -565,7 +566,6 @@ def lint_verb_args(
     )
 
 
-@mcp.tool()
 def suggest_verb_call(goal: str, mini_schema: str = "") -> dict[str, Any]:
     """Draft a legal V2 verb JSON body from a goal. Guidance only — does not POST."""
     return suggest_verb_call_impl(
@@ -575,19 +575,16 @@ def suggest_verb_call(goal: str, mini_schema: str = "") -> dict[str, Any]:
     )
 
 
-@mcp.tool()
 def compat_check(zeus_url: str = "") -> dict[str, Any]:
     """Probe GET /version + /healthz on :8080 and evaluate static 0.7 feature gates (ZDH-21)."""
     return compat_check_impl(_cfg(), zeus_url=zeus_url)
 
 
-@mcp.tool()
 def lint_chat_request(path: str = "", json_text: str = "") -> dict[str, Any]:
     """Lint a chat_request JSON (path or pasted). Read-only; never stamps (ZDH-22)."""
     return lint_chat_request_impl(_cfg(), path=path, json_text=json_text)
 
 
-@mcp.tool()
 def bind_contract(
     path: str = "",
     json_text: str = "",
@@ -606,43 +603,36 @@ def bind_contract(
     )
 
 
-@mcp.tool()
 def explain_hash_boundary() -> dict[str, Any]:
     """MINI-SCHEMA / brief are excluded from contract_hash (ZDH-22)."""
     return explain_hash_boundary_impl(_cfg())
 
 
-@mcp.tool()
 def catalog_diff(path: str = "", json_text: str = "", bound_hash: str = "") -> dict[str, Any]:
     """Compare live bootstrap summary vs on-disk catalog vs bound hash prefix (ZDH-22)."""
     return catalog_diff_impl(_cfg(), path=path, json_text=json_text, bound_hash=bound_hash)
 
 
-@mcp.tool()
 def lint_runtime_config(path: str) -> dict[str, Any]:
     """Lint client config.json (:8080, auth_mode, env names, cheap path). Secrets redacted (ZDH-24)."""
     return lint_runtime_config_impl(_cfg(), path=path)
 
 
-@mcp.tool()
 def lint_app_code(path: str) -> dict[str, Any]:
     """Anti-example scan of main.py / Dockerfiles (stale V1, hash literals, :9091) (ZDH-24)."""
     return lint_app_code_impl(_cfg(), path=path)
 
 
-@mcp.tool()
 def explain_req_id_policy() -> dict[str, Any]:
     """One UUID per hop; never base:1; never Rewind /v2/session/{id}/turn (ZDH-23)."""
     return explain_req_id_policy_impl(_cfg())
 
 
-@mcp.tool()
 def detective_links(req_id: str = "", chat_id: str = "", zeus_url: str = "") -> dict[str, Any]:
     """Hub Detective URL templates only — no scrape (ZDH-23)."""
     return detective_links_impl(_cfg(), req_id=req_id, chat_id=chat_id, zeus_url=zeus_url)
 
 
-@mcp.tool()
 def support_pack_from_turn(
     debug_json: str = "",
     path: str = "",
@@ -654,43 +644,36 @@ def support_pack_from_turn(
     )
 
 
-@mcp.tool()
 def describe_scope(bucket: str = "", scope: str = "") -> dict[str, Any]:
     """Live MINI-SCHEMA: entity types + field names only, no document samples (ZDH-25)."""
     return describe_scope_impl(_cfg(), bucket=bucket, scope=scope)
 
 
-@mcp.tool()
 def recommend_motion(user_job: str) -> dict[str, Any]:
     """Map a user job to a Zeus motion + typical verbs/modes. Does not generate a chat_request (ZDH-26)."""
     return recommend_motion_impl(_cfg(), user_job=user_job)
 
 
-@mcp.tool()
 def suggest_hooks(recipe: str = "") -> dict[str, Any]:
     """Middleware snippets (tenant pin, deny pipeline, output_schema, OCR). Not executed (ZDH-27)."""
     return suggest_hooks_impl(_cfg(), recipe=recipe)
 
 
-@mcp.tool()
 def semantic_cache_status(zeus_url: str = "") -> dict[str, Any]:
     """Semantic cache coach: leave enabled=false; optional GET /v2/agent_memory/status (ZDH-28)."""
     return semantic_cache_status_impl(_cfg(), zeus_url=zeus_url)
 
 
-@mcp.tool()
 def handoff_to_multi(force: bool = False) -> dict[str, Any]:
     """ZDH-11: graduate to multi-agent guidance after single-agent green (or force)."""
     return handoff_to_multi_impl(_cfg(), force=force)
 
 
-@mcp.tool()
 def recommend_data_plane_mcp() -> dict[str, Any]:
     """ZDH-12: hand off to a future scope-bound Data Plane MCP (Helper stays coach)."""
     return recommend_data_plane_impl(_cfg())
 
 
-@mcp.tool()
 def emit_mcp_config(
     server_name: str = "zeus-data-plane",
     read_only: bool = True,
@@ -705,16 +688,13 @@ def emit_mcp_config(
     )
 
 
-@mcp.tool()
 def helper_metrics() -> dict[str, Any]:
     """Local privacy-safe success metrics (time-to-green heuristic; never leaves machine)."""
     return metrics_summary_impl(_cfg())
 
 
-@mcp.tool()
 def suggest_demo_prompts() -> dict[str, Any]:
     """Starter advice-shaped prompts for smoke / demos."""
-    cfg = _cfg()
     return {
         "prompts": [
             "What kinds of entities exist in this dataset?",
@@ -729,8 +709,53 @@ def suggest_demo_prompts() -> dict[str, Any]:
     }
 
 
+def _wrap_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
+    @wraps(fn)
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        result = fn(*args, **kwargs)
+        if not isinstance(result, dict):
+            return result
+        payload = as_envelope(result)
+        if is_execution_failure(fn.__name__, payload):
+            raise_tool_error(payload)
+        return payload
+
+    return wrapped
+
+
+def create_mcp_server(toolsets: Iterable[str] | None = None) -> Any:
+    """Build an MCP server with static toolsets, resources, and prompts."""
+    raw = None if toolsets is None else ",".join(toolsets)
+    enabled = parse_toolsets(raw)
+    mcp_server = make_fastmcp(
+        name="zeus-dev-helper",
+        instructions=INSTRUCTIONS,
+        version=__version__,
+    )
+    g = globals()
+    for meta in TOOL_REGISTRY:
+        if not meta.enabled_for(enabled):
+            continue
+        fn = g.get(meta.name)
+        if fn is None or not callable(fn):
+            continue
+        annotations = make_tool_annotations(
+            read_only=meta.read_only,
+            destructive=meta.destructive,
+            idempotent=meta.idempotent,
+            open_world=meta.open_world,
+            title=meta.name,
+        )
+        register_tool(mcp_server, _wrap_tool(fn), annotations=annotations)
+    register_resources(mcp_server)
+    register_prompts(mcp_server)
+    return mcp_server
+
+
+mcp = create_mcp_server()
+
+
 def main() -> None:
-    # stdio transport for Claude / Grok / etc.
     mcp.run(transport="stdio")
 
 

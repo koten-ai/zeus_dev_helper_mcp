@@ -1,10 +1,10 @@
 # Plan: Helper MCP 0.7 — MCP server quality (then Runtime first-green)
 
-**Product:** `zeus_dev_helper_mcp` (current **0.6.0**)  
+**Product:** `zeus_dev_helper_mcp` (current **0.7.0**)  
 **Promise (unchanged):** first green middle-man turn — `session_id` / `req_id` — on public **`:8080`**.  
 **Not this MCP:** data-plane verbs as tools, Hub mutations, ZJA jobs, invented `contract_hash`.
 
-**Status:** Draft roadmap after 0.6 runtime-coach. No Jira epic yet.  
+**Status:** 0.7 MCP quality implemented (ZDH-29). Name-folding (ZDH-35) and Inspector-in-CI remain follow-up. Epic: [ZDH-29](https://kotenai.atlassian.net/browse/ZDH-29).  
 **Date:** 2026-09-04  
 **Board:** [ZDH](https://kotenai.atlassian.net/jira/software/projects/ZDH/boards/45)  
 **Parent:** [ZDH-15](https://kotenai.atlassian.net/browse/ZDH-15) (0.6, still In Progress at time of writing) relates [ZDH-1](https://kotenai.atlassian.net/browse/ZDH-1)  
@@ -58,11 +58,11 @@ Until Jira matches the repo, a 0.7 epic will fork on unfinished review.
 | No annotations | No `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`. Hosts cannot tell `doctor` from `scaffold_app(force=true)`. |
 | No output schemas | Tools return free-form dicts. Spec wants `outputSchema` + `structuredContent`. |
 | Soft errors | Failures are `{"error": ...}` JSON. Spec wants `isError: true` so the model can self-correct. |
-| Tools fight each other | `scaffold_app` / `smoke_test_agent` still emit V1 `ZeusClient` + `run_agent`; `lint_app_code` flags that as stale. Agents copy the scaffold, then get scolded. |
+| Tools fight each other | **Resolved (0.6.2):** `scaffold_app` / `smoke_test_agent` emit `ZeusRuntime` + `run_turn`; `lint_app_code` still flags leftover V1 in *user* code. |
 | No protocol tests | `tests/test_server_import.py` only checks the module imports. No Inspector / `tools/list` / annotation / resource tests. |
 | Dead code | `_stub()` in `server.py` is leftover from the MVP skeleton. |
 
-The last product hole is the real first-green risk: 0.6 **teaches** ZeusRuntime and **generates** V1.
+The remaining product hole after the Runtime scaffold patch is MCP interface quality (tool count, annotations, resources), not first-green generation.
 
 ---
 
@@ -92,8 +92,8 @@ References (external):
 ## Recommended sequence
 
 ```text
-Close 0.6  →  0.7 MCP quality  →  0.8 Runtime first-green  →  evals / hosts
-                 (this plan)         (reopen ZDH-17)
+Close 0.6  →  Runtime scaffold (0.6.2 / ZDH-32, done)  →  0.7 MCP quality  →  evals / hosts
+                                    (this plan)
 ```
 
 Do not grow the 0.6 catalog in parallel with 0.7.
@@ -170,7 +170,7 @@ Keep only what tool descriptions cannot say:
 
 - Order: `doctor` → `next_step` → …
 - Hard constraints: public `:8080`, never invent `contract_hash`, templates are TEMPLATE ONLY
-- Until 0.8: do not treat `scaffold_app` as a ZeusRuntime generator
+- `scaffold_app` / `smoke_test_agent` already emit ZeusRuntime (0.6.2 / ZDH-32 pulled forward)
 
 Cut the tool-name dump. It duplicates `tools/list` and burns context.
 
@@ -200,15 +200,13 @@ Unit tests still must not require a cluster.
 
 ## Phase 2 — Helper 0.8: Runtime first-green (reopen ZDH-17)
 
-Only after 0.7. Otherwise the rewrite lands in a 45-tool server.
+**Pulled forward into 0.6.2** (ZDH-32 AC) so Helper no longer generates the V1 anti-example it lints. Remaining 0.8 work is MCP quality (Phase 1), not the Runtime rewrite.
 
 - `scaffold_app` emits `ZeusRuntime.from_config()` + `HttpxZeusPort` + `OpenAICompatibleLlmClient` (cite `zeus_client_python/examples/minimal_agent.py`).
 - `smoke_test_agent` uses `rt.agent.run_turn` → `TurnResult`.
 - Floor stays `kotenai-zeus-client>=2.3.0` on the `[agent]` extra.
 - `lint_app_code` and scaffold **agree**.
 - Checklist 5.2 text stops saying `run_agent`.
-
-This is the one remaining product increment that still serves the mission. 0.6 cancelled it to ship the coach tables; leaving it cancelled permanently means the helper **generates the anti-example it lints**.
 
 `/v2` bootstrap (old ZDH-20) is lower priority: dual `/v1` probes still work. Do it when the engine drops v1, not as a catalog-expanding story.
 
@@ -315,7 +313,7 @@ If only one thing happens after merging 0.6: **cut the default tool list and mov
 | Resources | Glossary topic and checklist readable without a tool call |
 | Errors | A failed `readiness_check` / `bind_contract` path sets `isError` (or documented SDK equivalent) |
 | Secrets | No password/token in fixtures or tool-return fixtures |
-| Scaffold (0.8 only) | Generated `main.py` uses `ZeusRuntime`; `lint_app_code` is clean on it |
+| Scaffold | Generated `main.py` uses `ZeusRuntime`; `lint_app_code` is clean on it (landed 0.6.2) |
 
 **Manual (0.7 exit):** against a lab Zeus 0.7.x with only `core` enabled: `doctor` → `next_step` → `readiness_check`. Confirm `tools/list` does not include `explain_hash_boundary` / `detective_links` / `semantic_cache_status`. Confirm probes never hit `:9091`.
 

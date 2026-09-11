@@ -1,6 +1,6 @@
 # Day in the life — developer using Helper MCP
 
-Narrative of how a developer and their coding agent actually use **zeus-dev-helper**. Specs stay in [`DESIGN.md`](DESIGN.md) (MVP) and [`DESIGN-0.6.md`](DESIGN-0.6.md) (runtime coach). Prompt phrasing: [`guides/LIST_OF_PROMPT_SAMPLES.md`](../guides/LIST_OF_PROMPT_SAMPLES.md).
+Narrative of how a developer and their coding agent actually use **zeus-dev-helper**. Specs stay in [`DESIGN.md`](DESIGN.md) (MVP), [`DESIGN-0.6.md`](DESIGN-0.6.md) (runtime coach), and [`DESIGN-0.7.md`](DESIGN-0.7.md) (MCP quality / default surface). Prompt phrasing: [`guides/LIST_OF_PROMPT_SAMPLES.md`](../guides/LIST_OF_PROMPT_SAMPLES.md).
 
 ---
 
@@ -20,7 +20,7 @@ MCP is wired in the host (`grok mcp add`, Claude config, etc.) with:
 - `ZEUS_BUCKET` / `ZEUS_SCOPE` (e.g. `travel-sample` / `inventory`)
 - Auth in env only (`ZEUS_USERNAME` / `ZEUS_PASSWORD` or bearer) — Helper never stores secret values
 - `ZEUS_CHAT_REQUEST_DIR` (or `GITHUB_TOKEN`) so catalog templates resolve
-- Optional: `DEMO_TRAVEL_SAMPLE_DIR`, LLM key for agent smoke
+- Optional: `DEMO_TRAVEL_SAMPLE_DIR`, LLM key for agent smoke, `ZEUS_DEV_HELPER_TOOLSETS` (default `core`)
 
 State lives locally: `~/.config/zeus_dev_helper/checklist.json` (override: `ZEUS_DEV_HELPER_STATE_DIR`). The day is a walk down that checklist, one blocker at a time.
 
@@ -79,7 +79,7 @@ Meanwhile they pick a **surface**, not “just call the LLM”:
 
 1. `smoke_test_zeus` — no LLM; describe on `:8080` → checklist **5.1**
 2. `suggest_demo_prompts` — advice-shaped questions, not SQL
-3. `smoke_test_agent` — one `run_agent` turn → `session_id` / `req_id`, Zeus tools used → **5.2**
+3. `smoke_test_agent` — one `rt.agent.run_turn` → `session_id` / `req_id`, Zeus tools used → **5.2**
 
 If it blows up: paste status / body / `ErrorCode` into `diagnose_error`. They get a class, a docs anchor, and Detective **URL templates** (`/hub/debug/req/<id>`) — Helper does not scrape Hub.
 

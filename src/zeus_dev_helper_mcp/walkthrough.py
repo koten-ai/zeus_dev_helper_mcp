@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from zeus_dev_helper_mcp.checklist import load_checklist, next_step as base_next_step
+from zeus_dev_helper_mcp.checklist import load_checklist
+from zeus_dev_helper_mcp.checklist import next_step as base_next_step
 from zeus_dev_helper_mcp.config import HelperConfig
 
 # Recommended Helper tool(s) per checklist item
@@ -32,6 +33,19 @@ TOOL_HINTS: dict[str, list[str]] = {
     ],
 }
 
+# Knowledge that should be read as resources instead of encyclopedia tools (ZDH-33).
+RESOURCE_HINTS: dict[str, list[str]] = {
+    "0.1": [
+        "zeus-helper://glossary/single_agent",
+        "zeus-helper://glossary/motion",
+    ],
+    "1.2": ["zeus-helper://checklist"],
+    "4.1": ["zeus-helper://catalog/modes"],
+    "4.2": ["zeus-helper://policy/hash-boundary"],
+    "5.2": ["zeus-helper://glossary/turn_result"],
+    "7.1": ["zeus-helper://policy/req-id", "zeus-helper://checklist"],
+}
+
 
 def _smokes_green(cfg: HelperConfig) -> bool:
     data = load_checklist(cfg)
@@ -48,12 +62,22 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
     base = base_next_step(cfg)
     item = base.get("item") or {}
     item_id = item.get("id") if isinstance(item, dict) else None
-    tools = list(TOOL_HINTS.get(item_id or "", ["get_checklist", "doctor"]))
+    tools = list(TOOL_HINTS.get(item_id or "", ["next_step", "doctor"]))
     base["recommended_tools"] = tools
+    uris = ["zeus-helper://checklist", *RESOURCE_HINTS.get(item_id or "", [])]
+    seen: set[str] = set()
+    links: list[dict[str, str]] = []
+    for uri in uris:
+        if uri in seen:
+            continue
+        seen.add(uri)
+        links.append({"type": "resource_link", "uri": uri, "name": uri.rsplit("/", 1)[-1]})
+    base["resource_links"] = links
     base["coach"] = {
         "do_not": "Do not dump entire checklist unless asked; do not invent contract hashes",
         "ports": "Public Zeus :8080 only for app path",
         "catalogs": "Live stamp preferred; zeus_chat_request for templates",
+        "resources": "Read zeus-helper:// checklist / glossary / verbs / policies instead of encyclopedia tools",
     }
     if item_id == "4.2":
         base["ops_note"] = (

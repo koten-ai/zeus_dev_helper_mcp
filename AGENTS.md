@@ -21,15 +21,17 @@
 
 ## Tools to use first
 
-`doctor` → `start_project` → `list_catalog_modes` → `fetch_chat_request` → `explain` → `recommend_surface` → `next_step`
+Default surface (`core`): `doctor` → `start_project` → `next_step` → `set_prereq` / `validate_env` / `readiness_check` → `use_sample` | `scaffold_app` → `bind_contract` → `recommend_surface` → `smoke_test_zeus` / `smoke_test_agent` → `diagnose_error`.
 
-Coach (0.6): `recommend_surface` / `explain_verb` / `lint_verb_args` / `suggest_verb_call` / `diagnose_error` / `compat_check` / `bind_contract` / `lint_runtime_config` / `describe_scope` / `recommend_motion` / `support_pack_from_turn` / `suggest_hooks` / `semantic_cache_status`. Does **not** rewrite V1 `scaffold_app` / `smoke_test_agent`. Semantic cache stays **off**.
+Knowledge is resources: `zeus-helper://checklist`, `zeus-helper://glossary/{topic}`, `zeus-helper://verbs/{name}`, `zeus-helper://policy/hash-boundary`, `zeus-helper://policy/req-id`, `zeus-helper://catalog/modes`. Prompts: `first_green`, `smoke_question`, `support_pack`.
 
-Travel sample: `use_sample` / `travel_golden_path` (set `DEMO_TRAVEL_SAMPLE_DIR` if cloned).
+`scaffold_app` / `smoke_test_agent` emit **ZeusRuntime** + `rt.agent.run_turn` (not V1 `ZeusClient` / `run_agent`). Semantic cache stays **off**.
 
-After 5.1+5.2 green: `recommend_data_plane_mcp`, `emit_mcp_config`, `handoff_to_multi` — **handoffs only**.
+Opt-in toolsets (`ZEUS_DEV_HELPER_TOOLSETS=core,lint,catalog` or `all`): catalog / lint / travel / support / handoff. Travel sample: `use_sample` (core) / `travel_golden_path` (travel toolset; set `DEMO_TRAVEL_SAMPLE_DIR` if cloned).
 
-Design freeze: `docs/DESIGN.md`. Tool catalog: `docs/TOOLS.md`. Glossary: `explain(topic)`.
+After 5.1+5.2 green: `recommend_data_plane_mcp`, `emit_mcp_config`, `handoff_to_multi` — **handoffs only** (handoff toolset).
+
+Design freeze: `docs/DESIGN.md`. 0.7 increment: `docs/DESIGN-0.7.md`. Tool catalog: `docs/TOOLS.md`.
 
 ## Not this MCP
 

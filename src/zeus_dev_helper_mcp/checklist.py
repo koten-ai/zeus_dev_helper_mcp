@@ -167,6 +167,6 @@ def _hint_for(item_id: str, cfg: HelperConfig) -> str:
         "1.2": "Set ZEUS_URL (port 8080) and LLM key; run validate_env.",
         "2.1": "curl $ZEUS_URL/healthz — not Hub :9091.",
         "4.1": "list_catalog_modes / fetch_chat_request from zeus_chat_request; then stamp on Zeus.",
-        "5.2": "run_agent one turn; log session_id; see recipe 01.",
+        "5.2": "rt.agent.run_turn one turn; log session_id; see recipe 01.",
     }
     return hints.get(item_id, "See for-ai-agents.md and next_step docs links.")

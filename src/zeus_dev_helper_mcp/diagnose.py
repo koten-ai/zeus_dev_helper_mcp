@@ -82,7 +82,7 @@ _NEXT: dict[str, str] = {
     "network_timeout": "curl $ZEUS_URL/healthz; check TOOL_TIMEOUT / network",
     "llm_key_missing": "Set LLM_API_KEY / provider api_key in client config",
     "llm_rate_limit": "Backoff/retry; ErrorCode 050010 is rate/quota, not a missing key",
-    "empty_tool_catalog": "sync_chat_requests + stamp; check mode",
+    "empty_tool_catalog": "rt.catalog.sync / load + stamp; check mode",
     "scope_not_enabled": "Enable scope in Hub or fix bucket/scope names",
     "collection_not_registered": "Align collection with enabled map",
     "contract_required": "Bind scope_contracts from stamped catalog",

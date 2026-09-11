@@ -205,59 +205,67 @@ def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict
     }
 
 
+def _turn_hops(result: Any) -> list[dict[str, Any]]:
+    debug = getattr(result, "debug", None)
+    raw: list[Any] = list(getattr(debug, "hops", ()) or ())
+    if not raw:
+        raw = list(getattr(result, "tool_trail", ()) or ())
+    hops: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        hops.append(
+            {
+                "name": item.get("name") or item.get("verb") or item.get("tool"),
+                "status": item.get("status"),
+                "req_id": item.get("req_id") or item.get("zeus_req_id"),
+            }
+        )
+        if len(hops) >= 20:
+            break
+    return hops
+
+
 def smoke_test_agent(
     cfg: HelperConfig,
     *,
     question: str = "In one short sentence, what data is available in this scope?",
     update_checklist: bool = True,
 ) -> dict[str, Any]:
-    """One Zeus Client run_agent turn if kotenai-zeus-client is installed."""
-    # Prefer optional dependency
+    """One ZeusRuntime run_turn if kotenai-zeus-client >= 2.3.0 is installed."""
     try:
         import asyncio
 
-        from zeus_client import (  # type: ignore
-            ZeusClient,
-            load_config,
-            resolve_llm_provider_config,
-            resolve_zeus_config,
-            run_agent,
-            sync_chat_requests,
-        )
+        from zeus_client import ClientSettings, ZeusRuntime
+        from zeus_client.adapters.catalog_fs.store import FsCatalogStore
+        from zeus_client.adapters.llm_openai_compatible import OpenAICompatibleLlmClient
+        from zeus_client.adapters.secrets_env.store import EnvSecretStore
+        from zeus_client.adapters.zeus_http import HttpxZeusPort
+        from zeus_client.adapters.zeus_http.catalog_remote import HttpxCatalogRemote
+        from zeus_client.config.loader import config_from_mapping
     except ImportError:
         return {
             "ok": False,
             "failure_class": None,
             "implemented": True,
             "next_action": (
-                "pip install kotenai-zeus-client and configure LLM + Zeus, "
-                "then retry smoke_test_agent"
+                "pip install 'kotenai-zeus-client>=2.3.0' (or zeus-dev-helper-mcp[agent]) "
+                "and configure LLM + Zeus, then retry smoke_test_agent"
             ),
             "docs": {
-                "using": (
-                    docs_url("zeus-client/using-zeus-client.md")
-                ),
-                "recipe_01": (
-                    docs_url("zeus-client/recipes/01-minimal-qa.md")
-                ),
+                "using": docs_url("zeus-client/using-zeus-client.md"),
+                "recipe_01": docs_url("zeus-client/recipes/01-minimal-qa.md"),
             },
         }
 
-    if not cfg.has_llm_key and not (
-        os.environ.get("LLM_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-        or os.environ.get("XAI_API_KEY")
+    if not cfg.has_llm_key and not any(
+        os.environ.get(k) for k in ("LLM_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY")
     ):
-        # re-check env directly — has_llm_key may be stale presence flag
-        if not any(
-            os.environ.get(k)
-            for k in ("LLM_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY")
-        ):
-            return {
-                "ok": False,
-                "failure_class": "llm_key_missing",
-                "next_action": "Set LLM_API_KEY (or provider key) for the agent smoke",
-            }
+        return {
+            "ok": False,
+            "failure_class": "llm_key_missing",
+            "next_action": "Set LLM_API_KEY (or provider key) for the agent smoke",
+        }
 
     base = _base(cfg)
     if not base:
@@ -265,116 +273,125 @@ def smoke_test_agent(
             "ok": False,
             "next_action": "Set ZEUS_URL before smoke_test_agent",
         }
+    if ":9091" in base:
+        return {
+            "ok": False,
+            "failure_class": "wrong_port_hub_vs_public",
+            "next_action": "Use public API :8080, not Hub :9091",
+        }
+
+    from zeus_dev_helper_mcp.scaffold import runtime_config_dict
+
+    mapping = runtime_config_dict(cfg)
+    if not mapping["target"].get("bucket") or not mapping["target"].get("scope"):
+        return {
+            "ok": False,
+            "failure_class": "scope_not_enabled",
+            "next_action": "Set ZEUS_BUCKET/ZEUS_SCOPE or client target in config.json",
+        }
 
     async def _run() -> dict[str, Any]:
-        async with ZeusClient():
-            zcfg_file = await load_config()
-            # Override URL from helper config when set
-            if base:
-                zcfg_file.setdefault("zeus", {})
-                if isinstance(zcfg_file["zeus"], dict):
-                    zcfg_file["zeus"]["url"] = base
-            zcfg = resolve_zeus_config(zcfg_file)
-            provider = resolve_llm_provider_config(zcfg_file)
-            try:
-                sync_result = await sync_chat_requests(zcfg_file)
-                synced = len(getattr(sync_result, "synced", None) or [])
-            except Exception as e:  # noqa: BLE001
-                synced = 0
-                sync_err = str(e)
-            else:
-                sync_err = None
-
-            bucket = cfg.default_bucket
-            scope = cfg.default_scope
-            collection = cfg.default_collection or "_default"
-            if not bucket or not scope:
-                # try sample from client config
-                samples = zcfg_file.get("samples") or {}
-                key = zcfg_file.get("default_sample")
-                sample = samples.get(key) if key else None
-                if isinstance(sample, dict):
-                    bucket = sample.get("bucket") or bucket
-                    scope = sample.get("scope") or scope
-                    collection = sample.get("collection") or collection
-            if not bucket or not scope:
-                return {
-                    "ok": False,
-                    "failure_class": "scope_not_enabled",
-                    "next_action": "Set ZEUS_BUCKET/ZEUS_SCOPE or client samples",
-                    "sync_err": sync_err,
-                }
-
-            api_version = zcfg_file.get("default_api_version", "v2")
-            mode = cfg.default_mode or zcfg_file.get("default_mode", "analytics")
-            models = provider.get("models") or ["unknown"]
-            answer, trace, turns, session_meta = await run_agent(
-                zcfg["url"],
-                zcfg,
-                provider["base_url"],
-                provider["api_key"],
-                models[0],
-                api_version,
-                mode,
-                bucket,
-                scope,
-                collection,
-                question,
-                prior_turns=[],
+        rt_cfg = config_from_mapping(mapping)
+        secrets = EnvSecretStore()
+        catalog = None
+        chat_dir = rt_cfg.chat_requests_dir or (
+            str(cfg.chat_request_dir) if cfg.chat_request_dir else None
+        )
+        if chat_dir:
+            catalog = FsCatalogStore(root=chat_dir)
+        async with ZeusRuntime(rt_cfg, secrets=secrets, catalog=catalog) as rt:
+            rt.services.zeus = HttpxZeusPort(
+                endpoint=rt.config.zeus, secrets=secrets, journal=rt.journal
             )
-            tool_calls = (trace or {}).get("tool_calls") or []
-            notes = (trace or {}).get("notes") or []
-            # count tool activity
-            n_tools = len(tool_calls) if isinstance(tool_calls, list) else 0
-            sid = (session_meta or {}).get("session_id")
-            # req_id from tool calls if present
-            req_ids = []
-            if isinstance(tool_calls, list):
-                for tc in tool_calls:
-                    if isinstance(tc, dict):
-                        rid = tc.get("req_id") or tc.get("zeus_req_id")
-                        if rid:
-                            req_ids.append(rid)
+            rt.services.llm = OpenAICompatibleLlmClient(
+                config=rt.config.llm, secrets=secrets, journal=rt.journal
+            )
+            if rt.services.catalog_remote is None:
+                rt.services.catalog_remote = HttpxCatalogRemote(
+                    endpoint=rt.config.zeus, secrets=secrets
+                )
 
+            synced = 0
+            sync_err = None
+            chat_request = None
+            try:
+                loaded = await rt.catalog.load(mode=rt.config.settings.mode)
+                chat_request = dict(loaded.body)
+            except Exception as e:  # noqa: BLE001
+                try:
+                    sync_result = await rt.catalog.sync()
+                    synced = len(getattr(sync_result, "synced", None) or [])
+                    loaded = await rt.catalog.load(mode=rt.config.settings.mode)
+                    chat_request = dict(loaded.body)
+                except Exception as sync_exc:  # noqa: BLE001
+                    sync_err = f"{e}; {sync_exc}"
+
+            result = await rt.agent.run_turn(
+                question,
+                settings=ClientSettings(
+                    ai_process_result=False,
+                    mode=rt.config.settings.mode,
+                ),
+                chat_request=chat_request,
+            )
+            debug = result.debug
+            hops = _turn_hops(result)
+            n_tools = len(hops)
+            req_ids = [str(x) for x in (getattr(debug, "req_ids", ()) or ()) if x]
+            if not req_ids:
+                req_ids = [h["req_id"] for h in hops if h.get("req_id")]
+            pref = getattr(debug, "preferred_req_id", None)
+            if pref and pref not in req_ids:
+                req_ids.insert(0, str(pref))
+            session = result.session
+            sid = getattr(session, "session_id", None) or getattr(debug, "session_id", None)
+            round_n = getattr(session, "round", None)
+            if round_n is None:
+                round_n = getattr(debug, "rounds", None)
+            notes = list(getattr(debug, "notes", ()) or ())
+            answer = result.answer or ""
+            status = str(getattr(result.status, "value", result.status)).lower()
             grounded = n_tools > 0
-            ok = bool(answer) and grounded
+            ok = bool(answer) and grounded and status in ("ok", "clarify")
+            if result.error is not None:
+                ok = False
             failure = None
             next_action = "Agent smoke green — log session_id and continue customize checklist"
-            if not grounded:
+            if result.error is not None:
+                failure = "dispatch_failed"
+                err = result.error
+                next_action = (
+                    f"Turn error {getattr(err, 'code', '')}: "
+                    f"{getattr(err, 'message', err)} — diagnose_error"
+                )
+            elif not grounded:
                 failure = "empty_tool_catalog"
                 next_action = (
-                    "No Zeus tool calls — check stamped catalog, mode, contract bind, scope enablement"
+                    "No Zeus hops — check stamped catalog, mode, contract bind, scope enablement"
                 )
-            if not answer:
+            elif not answer:
                 failure = failure or "dispatch_failed"
-                next_action = "Empty answer — inspect trace notes and LLM config"
-
-            hops: list[dict[str, Any]] = []
-            if isinstance(tool_calls, list):
-                for tc in tool_calls:
-                    if not isinstance(tc, dict):
-                        continue
-                    hops.append(
-                        {
-                            "name": tc.get("name") or tc.get("verb") or tc.get("tool"),
-                            "status": tc.get("status"),
-                            "req_id": tc.get("req_id") or tc.get("zeus_req_id"),
-                        }
-                    )
+                next_action = "Empty answer — inspect TurnResult.debug.notes and LLM config"
+            elif status not in ("ok", "clarify"):
+                failure = "dispatch_failed"
+                next_action = f"Turn status {status!r} — inspect debug hops / notes"
             return {
                 "ok": ok,
                 "failure_class": failure,
                 "next_action": next_action,
-                "answer_preview": (answer or "")[:500],
+                "answer_preview": answer[:500],
+                "status": status,
                 "session_id": sid,
-                "round": (session_meta or {}).get("round"),
+                "turn_id": getattr(debug, "turn_id", None) or None,
+                "chat_id": getattr(debug, "chat_id", None) or None,
+                "round": round_n,
                 "tool_call_count": n_tools,
                 "req_ids": req_ids[:5],
-                "hops": hops[:20],
-                "notes_preview": [str(n)[:200] for n in (notes if isinstance(notes, list) else [])][:5],
-                "bucket": bucket,
-                "scope": scope,
-                "mode": mode,
+                "hops": hops,
+                "notes_preview": [str(n)[:200] for n in notes][:5],
+                "bucket": rt.config.target.bucket,
+                "scope": rt.config.target.scope,
+                "mode": rt.config.settings.mode,
                 "catalogs_synced": synced,
                 "sync_err": sync_err,
             }
@@ -430,6 +447,8 @@ def smoke_test_agent(
             cfg.state_dir.mkdir(parents=True, exist_ok=True)
             artifact = {
                 "session_id": result.get("session_id"),
+                "turn_id": result.get("turn_id"),
+                "chat_id": result.get("chat_id"),
                 "req_ids": result.get("req_ids") or [],
                 "hops": result.get("hops") or [],
                 "bucket": result.get("bucket"),

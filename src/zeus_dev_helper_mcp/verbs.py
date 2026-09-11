@@ -150,6 +150,11 @@ _VERB_ALIASES = {
 }
 
 
+def known_verbs() -> list[str]:
+    """Sorted V2 verb names from the static encyclopedia."""
+    return sorted(_VERBS.keys())
+
+
 def _norm_verb(name: str) -> str:
     raw = (name or "").strip().lower().replace("-", "_")
     return _VERB_ALIASES.get(raw, raw)

@@ -1,14 +1,95 @@
-"""Scaffold minimal Zeus Client middle-man app (ZDH-6)."""
+"""Scaffold minimal Zeus Client middle-man app (ZDH-6 / ZDH-32)."""
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from zeus_dev_helper_mcp.checklist import set_item_status
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.docs_links import docs_url
+
+CLIENT_FLOOR = "2.3.0"
+
+_MAIN_PY = '''#!/usr/bin/env python3
+"""Minimal ZeusRuntime agent turn — scaffolded by zeus_dev_helper_mcp."""
+from __future__ import annotations
+
+import asyncio
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+_ROOT = Path(__file__).resolve().parent
+load_dotenv(_ROOT / ".env")
+
+from zeus_client import ClientSettings, ZeusRuntime  # noqa: E402
+from zeus_client.adapters.catalog_fs.store import FsCatalogStore  # noqa: E402
+from zeus_client.adapters.llm_openai_compatible import OpenAICompatibleLlmClient  # noqa: E402
+from zeus_client.adapters.zeus_http import HttpxZeusPort  # noqa: E402
+from zeus_client.adapters.zeus_http.catalog_remote import HttpxCatalogRemote  # noqa: E402
+
+
+async def main() -> None:
+    rt = ZeusRuntime.from_config(_ROOT / "config.json", profile="development")
+    secrets = rt.services.secrets
+    if rt.config.chat_requests_dir:
+        rt.services.catalog = FsCatalogStore(root=rt.config.chat_requests_dir)
+    async with rt:
+        rt.services.zeus = HttpxZeusPort(
+            endpoint=rt.config.zeus, secrets=secrets, journal=rt.journal
+        )
+        rt.services.llm = OpenAICompatibleLlmClient(
+            config=rt.config.llm, secrets=secrets, journal=rt.journal
+        )
+        if rt.services.catalog_remote is None:
+            rt.services.catalog_remote = HttpxCatalogRemote(
+                endpoint=rt.config.zeus, secrets=secrets
+            )
+
+        question = os.environ.get(
+            "ZEUS_QUESTION",
+            "In one short sentence, what data is available in this scope?",
+        )
+        chat_request = None
+        try:
+            loaded = await rt.catalog.load(mode=rt.config.settings.mode)
+            chat_request = dict(loaded.body)
+            print(f"Loaded catalog from {loaded.source}")
+        except Exception as e:
+            print(f"Catalog load warning: {e} (continuing without a local catalog)")
+
+        result = await rt.agent.run_turn(
+            question,
+            settings=ClientSettings(ai_process_result=False),
+            chat_request=chat_request,
+        )
+        print("Answer:", result.answer)
+        print("Status:", getattr(result.status, "value", result.status))
+        session = result.session
+        debug = result.debug
+        print(
+            "session_id:",
+            getattr(session, "session_id", None) or getattr(debug, "session_id", None),
+        )
+        print("round:", getattr(session, "round", None) or getattr(debug, "rounds", None))
+        hops = list(getattr(debug, "hops", ()) or ())
+        print("hops:", len(hops))
+        req_ids = list(getattr(debug, "req_ids", ()) or ())
+        if not req_ids:
+            for hop in hops:
+                if isinstance(hop, dict) and hop.get("req_id"):
+                    req_ids.append(hop["req_id"])
+        for rid in req_ids[:5]:
+            print("req_id:", rid)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+'''
 
 SAMPLE_TRAVEL = {
     "name": "demo_travel_sample",
@@ -66,6 +147,57 @@ def use_sample(cfg: HelperConfig, sample: str = "travel", sample_dir: str = "") 
     }
 
 
+def _llm_api_key_env() -> str:
+    for name in ("LLM_API_KEY", "XAI_API_KEY", "OPENAI_API_KEY"):
+        if os.environ.get(name):
+            return name
+    return "LLM_API_KEY"
+
+
+def runtime_config_dict(cfg: HelperConfig) -> dict[str, Any]:
+    """RuntimeConfig JSON shape (env *names* only — never secret values)."""
+    auth_mode = (cfg.zeus_auth_mode or "none").strip().lower()
+    if auth_mode not in {"none", "basic", "bearer", "session", "certificate"}:
+        auth_mode = "none"
+    zeus: dict[str, Any] = {
+        "url": (cfg.zeus_url or "http://localhost:8080").rstrip("/"),
+        "auth_mode": auth_mode,
+        "timeout_s": 30,
+    }
+    user = (os.environ.get("ZEUS_USERNAME") or os.environ.get("ZEUS_USER") or "").strip()
+    if user:
+        zeus["username"] = user
+    if auth_mode == "basic":
+        zeus["password_env"] = "ZEUS_PASSWORD"
+    elif auth_mode in {"bearer", "session"}:
+        zeus["token_env"] = "ZEUS_BEARER_TOKEN" if auth_mode == "bearer" else "ZEUS_SESSION_ID"
+    return {
+        "profile": "development",
+        "zeus": zeus,
+        "target": {
+            "bucket": cfg.default_bucket or "beer-sample",
+            "scope": cfg.default_scope or "_default",
+            "collection": cfg.default_collection or "_default",
+        },
+        "llm": {
+            "provider": "xai",
+            "base_url": (os.environ.get("LLM_BASE_URL") or "https://api.x.ai/v1").rstrip("/"),
+            "model": os.environ.get("LLM_MODEL") or "grok-4-1-fast-non-reasoning",
+            "api_key_env": _llm_api_key_env(),
+            "timeout_s": 120,
+        },
+        "settings": {
+            "ai_process_result": False,
+            "max_rounds": 8,
+            "force_trace": False,
+            "mode": cfg.default_mode or "analytics",
+            "durable_sessions": True,
+        },
+        "session": {"semantic_cache": {"enabled": False}},
+        "chat_requests_dir": str(cfg.chat_request_dir) if cfg.chat_request_dir else None,
+    }
+
+
 def write_env_example(cfg: HelperConfig, target_dir: str | Path) -> dict[str, Any]:
     root = Path(target_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -80,7 +212,7 @@ ZEUS_BUCKET={cfg.default_bucket or "beer-sample"}
 ZEUS_SCOPE={cfg.default_scope or "_default"}
 ZEUS_COLLECTION={cfg.default_collection or "_default"}
 ZEUS_MODE={cfg.default_mode or "analytics"}
-# OpenAI-compatible LLM
+# OpenAI-compatible LLM (config.json llm.api_key_env points at this name)
 LLM_BASE_URL=https://api.x.ai/v1
 LLM_API_KEY=
 LLM_MODEL=grok-4-1-fast-non-reasoning
@@ -97,10 +229,9 @@ def scaffold_app(
     project_name: str = "zeus_first_app",
     force: bool = False,
 ) -> dict[str, Any]:
-    """Write a minimal runnable Zeus Client script + env example."""
+    """Write a minimal ZeusRuntime middle-man (config.json + main.py + env example)."""
     root = Path(target_dir).expanduser().resolve()
     if root.exists() and any(root.iterdir()) and not force:
-        # allow if only empty or our marker
         existing = list(root.iterdir())
         if existing and not (root / "main.py").exists() and not force:
             return {
@@ -110,17 +241,22 @@ def scaffold_app(
             }
     root.mkdir(parents=True, exist_ok=True)
 
-    bucket = cfg.default_bucket or "beer-sample"
-    scope = cfg.default_scope or "_default"
-    collection = cfg.default_collection or "_default"
-    mode = cfg.default_mode or "analytics"
-    zeus_url = cfg.zeus_url or "http://localhost:8080"
+    runtime_cfg = runtime_config_dict(cfg)
+    bucket = runtime_cfg["target"]["bucket"]
+    scope = runtime_cfg["target"]["scope"]
+    collection = runtime_cfg["target"]["collection"]
+    mode = runtime_cfg["settings"]["mode"]
+    zeus_url = runtime_cfg["zeus"]["url"]
+    slug = project_name.replace(" ", "-").lower()
 
     files: dict[str, str] = {}
 
     files["README.md"] = f"""# {project_name}
 
-Minimal Zeus Client middle-man scaffolded by **zeus_dev_helper_mcp**.
+Minimal ZeusRuntime middle-man scaffolded by **zeus_dev_helper_mcp**.
+
+Requires `kotenai-zeus-client>={CLIENT_FLOOR}`. Default path is `ZeusRuntime.from_config()`
+plus `HttpxZeusPort` / `OpenAICompatibleLlmClient`. Do not import `zeus_client.compat.v1`.
 
 ## Setup
 
@@ -129,6 +265,9 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env   # fill LLM_API_KEY and Zeus auth if needed
 ```
+
+Edit `config.json` target (bucket / scope / collection) if Helper prereqs were empty.
+Never invent `contract.hash`. Public API is `:8080`, not Hub `:9091`.
 
 ## Run
 
@@ -142,108 +281,17 @@ python main.py
 - https://github.com/koten-ai/zeus_chat_request (min catalog templates)
 """
 
-    files["requirements.txt"] = "kotenai-zeus-client>=1.0.0\nhttpx>=0.27.0\npython-dotenv>=1.0.0\n"
-
-    files["main.py"] = f'''#!/usr/bin/env python3
-"""Minimal Zeus Client agent turn — scaffolded by zeus_dev_helper_mcp."""
-from __future__ import annotations
-
-import asyncio
-import os
-from zeus_dev_helper_mcp.docs_links import docs_url
-from pathlib import Path
-
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).resolve().parent / ".env")
-
-from zeus_client import (
-    ZeusClient,
-    load_config,
-    resolve_llm_provider_config,
-    resolve_zeus_config,
-    run_agent,
-    sync_chat_requests,
-)
-
-
-async def main() -> None:
-    # Optional: pin config dir next to this project
-    # os.environ.setdefault("ZEUS_CLIENT_CONFIG_DIR", str(Path(__file__).parent / ".zeus_client"))
-
-    async with ZeusClient():
-        cfg = await load_config()
-        # Prefer env overrides from Helper / .env
-        zeus_url = os.environ.get("ZEUS_URL", "{zeus_url}").rstrip("/")
-        if isinstance(cfg.get("zeus"), dict):
-            cfg["zeus"]["url"] = zeus_url
-
-        zcfg = resolve_zeus_config(cfg)
-        provider = resolve_llm_provider_config(cfg)
-
-        try:
-            result = await sync_chat_requests(cfg)
-            print(f"Synced {{len(result.synced)}} catalog(s)")
-        except Exception as e:
-            print(f"Catalog sync warning: {{e}} (continuing with local/bundled catalogs)")
-
-        bucket = os.environ.get("ZEUS_BUCKET", "{bucket}")
-        scope = os.environ.get("ZEUS_SCOPE", "{scope}")
-        collection = os.environ.get("ZEUS_COLLECTION", "{collection}")
-        mode = os.environ.get("ZEUS_MODE", "{mode}")
-        api_version = cfg.get("default_api_version", "v2")
-
-        # Prefer client samples if bucket not overridden and samples exist
-        samples = cfg.get("samples") or {{}}
-        default_sample = cfg.get("default_sample")
-        if default_sample and default_sample in samples and not os.environ.get("ZEUS_BUCKET"):
-            sample = samples[default_sample]
-            bucket = sample.get("bucket", bucket)
-            scope = sample.get("scope", scope)
-            collection = sample.get("collection", collection)
-
-        question = os.environ.get(
-            "ZEUS_QUESTION",
-            "In one short sentence, what data is available in this scope?",
-        )
-
-        answer, trace, turns, session_meta = await run_agent(
-            zcfg["url"],
-            zcfg,
-            provider["base_url"],
-            provider["api_key"],
-            provider["models"][0],
-            api_version,
-            mode,
-            bucket,
-            scope,
-            collection,
-            question,
-            prior_turns=[],
-        )
-
-        print("Answer:", answer)
-        print("session_id:", session_meta.get("session_id"))
-        print("round:", session_meta.get("round"))
-        tool_calls = (trace or {{}}).get("tool_calls") or []
-        print("tool_calls:", len(tool_calls) if isinstance(tool_calls, list) else tool_calls)
-        # Log req_ids when present for Detective
-        if isinstance(tool_calls, list):
-            for tc in tool_calls[:5]:
-                if isinstance(tc, dict) and tc.get("req_id"):
-                    print("req_id:", tc.get("req_id"))
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-'''
-
+    files["requirements.txt"] = (
+        f"kotenai-zeus-client>={CLIENT_FLOOR}\nhttpx>=0.27.0\npython-dotenv>=1.0.0\n"
+    )
+    files["main.py"] = _MAIN_PY
+    files["config.json"] = json.dumps(runtime_cfg, indent=2) + "\n"
     files["pyproject.toml"] = f"""[project]
-name = "{project_name.replace(" ", "-").lower()}"
+name = "{slug}"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-  "kotenai-zeus-client>=1.0.0",
+  "kotenai-zeus-client>={CLIENT_FLOOR}",
   "httpx>=0.27.0",
   "python-dotenv>=1.0.0",
 ]
@@ -284,7 +332,10 @@ dependencies = [
         "written": written,
         "env_example": env_info,
         "run": f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cp .env.example .env && python main.py",
-        "next_action": "Fill .env secrets, install deps, run main.py; then smoke_test_agent via Helper or locally",
+        "next_action": (
+            "Fill .env secrets, install deps, run main.py "
+            "(ZeusRuntime + run_turn); then smoke_test_agent via Helper or locally"
+        ),
         "docs": {
             "using": docs_url("zeus-client/using-zeus-client.md"),
             "recipe_01": docs_url("zeus-client/recipes/01-minimal-qa.md"),
@@ -312,7 +363,7 @@ def verify_local_setup(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
 
     root = Path(target_dir).expanduser() if target_dir else None
     if root and root.is_dir():
-        for name in ("main.py", "requirements.txt", ".env.example"):
+        for name in ("main.py", "config.json", "requirements.txt", ".env.example"):
             p = root / name
             checks.append({"name": f"file:{name}", "ok": p.is_file(), "path": str(p)})
         env_path = root / ".env"
