@@ -59,6 +59,8 @@ def test_default_core_count_within_cap() -> None:
     assert "semantic_cache_status" not in names
     assert "get_checklist" not in names
     assert "suggest_demo_prompts" not in names
+    assert "validate_env" not in names
+    assert "lint_app" not in names
 
 
 def test_module_server_uses_core_by_default() -> None:
@@ -76,6 +78,8 @@ def test_stub_removed() -> None:
 def test_all_toolset_registers_hidden_tools() -> None:
     names = set(_tool_names(create_mcp_server(["all"])))
     assert "lint_app_code" in names
+    assert "lint_app" in names
+    assert "validate_env" in names
     assert "explain_verb" in names
     assert "travel_golden_path" in names
     assert "support_pack_from_turn" in names
@@ -213,6 +217,22 @@ def test_next_step_includes_resource_links(tmp_path, monkeypatch) -> None:
     uris = {link["uri"] for link in out.get("resource_links") or []}
     assert "zeus-helper://checklist" in uris
     assert all(link.get("type") == "resource_link" for link in out["resource_links"])
+
+
+def test_doctor_detail_env(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.delenv("ZEUS_URL", raising=False)
+    from zeus_dev_helper_mcp.server import doctor
+
+    health = doctor("health")
+    assert health["ok"] is True
+    assert health["detail"] == "health"
+    env = doctor("env")
+    assert env["detail"] == "env"
+    assert "issues" in env
+    unknown = doctor("nope")
+    assert unknown["ok"] is False
+    assert "health" in unknown["known_details"]
 
 
 def test_execution_failure_helper() -> None:

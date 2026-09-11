@@ -308,3 +308,38 @@ def lint_app_code(cfg: HelperConfig, *, path: str) -> dict[str, Any]:
             "Prefer ZeusRuntime, env-before-import, no hash literals, no :9091 in app images"
         ),
     }
+
+
+def lint_app(cfg: HelperConfig, *, path: str) -> dict[str, Any]:
+    """Lint runtime config.json and app code under one path (ZDH-35)."""
+    root = Path(path).expanduser()
+    sections: dict[str, dict[str, Any]] = {}
+    if root.is_dir():
+        cfg_file = root / "config.json"
+        if cfg_file.is_file():
+            sections["runtime_config"] = lint_runtime_config(cfg, path=str(cfg_file))
+        sections["app_code"] = lint_app_code(cfg, path=str(root))
+    elif root.is_file() and root.suffix.lower() == ".json":
+        sections["runtime_config"] = lint_runtime_config(cfg, path=str(root))
+        parent = root.parent
+        if (parent / "main.py").is_file() or any(parent.glob("Dockerfile*")):
+            sections["app_code"] = lint_app_code(cfg, path=str(parent))
+    else:
+        sections["app_code"] = lint_app_code(cfg, path=str(root))
+
+    issues: list[dict[str, str]] = []
+    for name, sec in sections.items():
+        for issue in sec.get("issues") or []:
+            row = dict(issue)
+            row.setdefault("section", name)
+            issues.append(row)
+    ok = bool(sections) and all(sec.get("ok") is True for sec in sections.values())
+    return {
+        "ok": ok,
+        "sections": {k: {"ok": v.get("ok"), "issues": v.get("issues")} for k, v in sections.items()},
+        "issues": issues,
+        "docs": docs_url("zeus-client/using-zeus-client.md"),
+        "next_action": (
+            "Fix listed issues; lint_runtime_config / lint_app_code remain on the lint toolset"
+        ),
+    }

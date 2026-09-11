@@ -46,3 +46,33 @@ jobs:
           rm -rf dist
           python -m build
           twine check dist/*
+
+  inspector:
+    name: MCP Inspector smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Helper
+        run: |
+          python -m pip install -U pip
+          pip install -e ".[dev]"
+
+      - name: Inspector CLI tools/list + resources + prompts
+        env:
+          PYTHON: python
+          ZEUS_DEV_HELPER_TOOLSETS: core
+        run: |
+          chmod +x scripts/run-helper-mcp.sh
+          python scripts/inspector_smoke.py

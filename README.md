@@ -120,18 +120,17 @@ Prefer `next_step` over dumping the full checklist. Read `zeus-helper://` resour
 
 ## Default tools (`core`)
 
-Live `tools/list` is the call contract. Default surface is **13 tools** (`ZEUS_DEV_HELPER_TOOLSETS=core`).
+Live `tools/list` is the call contract. Default surface is **12 tools** (`ZEUS_DEV_HELPER_TOOLSETS=core`).
 
 | Tool | Job |
 | --- | --- |
-| `doctor` | Version, public config (no secrets), catalog reachability |
+| `doctor` | Health. `detail=health\|env\|compat\|cache\|all` (env/compat/cache fold lint-toolset checks) |
 | `start_project` | Init or reset the first-app checklist |
 | `next_step` | Current item plus recommended tools and resource links |
 | `set_prereq` | Store non-secret prereqs (presence flags only for secrets) |
-| `validate_env` | Shape check: URL port, key presence, bucket/scope, templates |
 | `readiness_check` | Live gates: healthz / readyz / version, auth, bootstrap |
 | `scaffold_app` | Minimal ZeusRuntime app (`main.py`, `config.json`, requirements, `.env.example`) |
-| `use_sample` | Point at a local travel sample (or gate other samples) |
+| `use_sample` | Travel sample plus golden-path check (or gate other samples) |
 | `bind_contract` | Copy a stamped `contract.hash` only; refuses empty / local compute |
 | `recommend_surface` | Intent → Client surface + do-not list |
 | `smoke_test_zeus` | No LLM: readiness plus a read-only describe |

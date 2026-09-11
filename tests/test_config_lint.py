@@ -3,6 +3,7 @@ from pathlib import Path
 
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.config_lint import (
+    lint_app,
     lint_app_code,
     lint_runtime_config,
     redact_public,
@@ -100,3 +101,20 @@ def test_lint_dockerfile_localhost(tmp_path: Path) -> None:
     messages = " ".join(i["message"] for i in out["issues"])
     assert "localhost:8080" in messages
     assert any(i.get("failure_class") == "wrong_port_hub_vs_public" for i in out["issues"])
+
+
+def test_lint_app_combines_config_and_code(tmp_path: Path) -> None:
+    (tmp_path / "config.json").write_text(
+        json.dumps({"zeus": {"url": "http://localhost:9091", "auth_mode": "none"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "main.py").write_text(
+        "from zeus_client import ZeusClient\n",
+        encoding="utf-8",
+    )
+    out = lint_app(HelperConfig(), path=str(tmp_path))
+    assert out["ok"] is False
+    assert "runtime_config" in out["sections"]
+    assert "app_code" in out["sections"]
+    classes = {i.get("failure_class") for i in out["issues"]}
+    assert "wrong_port_hub_vs_public" in classes

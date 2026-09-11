@@ -21,7 +21,7 @@
 
 ## Tools to use first
 
-Default surface (`core`): `doctor` → `start_project` → `next_step` → `set_prereq` / `validate_env` / `readiness_check` → `use_sample` | `scaffold_app` → `bind_contract` → `recommend_surface` → `smoke_test_zeus` / `smoke_test_agent` → `diagnose_error`.
+Default surface (`core`): `doctor` → `start_project` → `next_step` → `set_prereq` / `readiness_check` → `use_sample` | `scaffold_app` → `bind_contract` → `recommend_surface` → `smoke_test_zeus` / `smoke_test_agent` → `diagnose_error`. `doctor(detail=env|compat|cache)` covers checks that also live on the lint toolset.
 
 Knowledge is resources: `zeus-helper://checklist`, `zeus-helper://glossary/{topic}`, `zeus-helper://verbs/{name}`, `zeus-helper://policy/hash-boundary`, `zeus-helper://policy/req-id`, `zeus-helper://catalog/modes`. Prompts: `first_green`, `smoke_question`, `support_pack`.
 

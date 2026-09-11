@@ -10,15 +10,17 @@
 - Shared result envelope (`ok`, `failure_class`, `next_action`, `recommended_tools`, `docs`).
 - Execution failures raise MCP `ToolError` (`isError: true` on mcp 2.x) for `readiness_check` / `bind_contract` / catalog fetch / scaffold / smoke.
 - `docs/DESIGN-0.7.md` increment. Frozen `docs/DESIGN.md` is unchanged.
+- **ZDH-35** `doctor(detail=health|env|compat|cache|all)`; `lint_app` folds config+code linters; `use_sample` includes travel golden path; Detective URLs live on `diagnose_error` / `support_pack_from_turn`. Old names stay on opt-in toolsets.
+- **ZDH-39** MCP Inspector CLI smoke in CI (`scripts/inspector_smoke.py`).
 
 ### Changed
 - Server `instructions` cover order + hard constraints, not a tool-name dump.
 - `next_step` returns `resource_links` for checklist / glossary / policies.
 - Deleted leftover `_stub()` (ZDH-36).
+- `validate_env` moved off `core` (use `doctor(detail=env)` or the lint toolset).
 
 ### Notes
-- Full 45-tool catalog remains available with `ZEUS_DEV_HELPER_TOOLSETS=all`.
-- Name-folding (`doctor(detail=…)`, `lint_app`) is still ZDH-35 follow-up; overlapping tools are already off the default surface.
+- Full catalog remains available with `ZEUS_DEV_HELPER_TOOLSETS=all`.
 
 ## 0.6.2
 

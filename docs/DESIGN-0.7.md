@@ -26,13 +26,12 @@ Always on. `ZEUS_DEV_HELPER_TOOLSETS` defaults to `core`. Extra named sets are u
 
 | Tool | Why it stays a tool |
 | --- | --- |
-| `doctor` | Health |
+| `doctor` | Health (`detail=health\|env\|compat\|cache\|all`) |
 | `start_project` | Writes checklist |
 | `next_step` | The coach |
 | `set_prereq` | Writes state |
-| `validate_env` | Gate before live probes |
 | `readiness_check` | Live `:8080` |
-| `scaffold_app` / `use_sample` | Disk / sample |
+| `scaffold_app` / `use_sample` | Disk / sample (travel includes golden path) |
 | `bind_contract` | Stamp extract (never invent) |
 | `recommend_surface` | Direct vs agent |
 | `smoke_test_zeus` / `smoke_test_agent` | First green |
@@ -98,7 +97,7 @@ Server `instructions` cover workflows across tools, not a second catalog: order 
 
 Not this MCP: data-plane verbs as tools, Hub mutations, ZJA jobs, invented `contract_hash`, dynamic toolset meta-tools.
 
-Name-folding (`doctor(detail=…)`, `lint_app`, one sample tool) is follow-up under [ZDH-35](https://kotenai.atlassian.net/browse/ZDH-35); overlapping tools are already off the default surface via toolsets.
+Name-folding ([ZDH-35](https://kotenai.atlassian.net/browse/ZDH-35)): `doctor(detail=…)` covers env/compat/cache; `lint_app` covers config+code; `use_sample` includes travel golden path; `diagnose_error` / `support_pack_from_turn` include Detective URL templates. Old names stay on opt-in toolsets.
 
 ---
 

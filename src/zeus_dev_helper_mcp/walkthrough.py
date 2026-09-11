@@ -13,7 +13,7 @@ TOOL_HINTS: dict[str, list[str]] = {
     "0.1": ["start_project", "explain", "recommend_motion"],
     "0.2": ["use_sample", "travel_golden_path", "scaffold_app"],
     "1.1": ["doctor", "verify_local_setup"],
-    "1.2": ["set_prereq", "validate_env"],
+    "1.2": ["set_prereq", "doctor", "validate_env"],
     "2.1": ["readiness_check", "smoke_test_zeus"],
     "2.2": ["readiness_check", "set_prereq"],
     "2.3": ["bootstrap_scope", "readiness_check"],

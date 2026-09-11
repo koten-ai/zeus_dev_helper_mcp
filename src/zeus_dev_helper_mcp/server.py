@@ -26,6 +26,9 @@ from zeus_dev_helper_mcp.checklist import (
 from zeus_dev_helper_mcp.compat import compat_check as compat_check_impl
 from zeus_dev_helper_mcp.config import HelperConfig, reload_config
 from zeus_dev_helper_mcp.config_lint import (
+    lint_app as lint_app_impl,
+)
+from zeus_dev_helper_mcp.config_lint import (
     lint_app_code as lint_app_code_impl,
 )
 from zeus_dev_helper_mcp.config_lint import (
@@ -135,8 +138,10 @@ def _cfg() -> HelperConfig:
     return reload_config()
 
 
-def doctor() -> dict[str, Any]:
-    """Health / doctor: version, config (no secrets), catalog source readiness."""
+DOCTOR_DETAILS = ("health", "env", "compat", "cache", "all")
+
+
+def _doctor_health() -> dict[str, Any]:
     cfg = _cfg()
     catalog_ok = False
     catalog_error = None
@@ -169,6 +174,51 @@ def doctor() -> dict[str, Any]:
             ),
             "zeus_chat_request": f"https://github.com/{cfg.chat_request_repo}",
         },
+        "next_action": "start_project then next_step",
+    }
+
+
+def doctor(detail: str = "health") -> dict[str, Any]:
+    """Health / doctor. detail: health | env | compat | cache | all.
+
+    env/compat/cache fold validate_env, compat_check, and semantic_cache_status
+    (those names stay on the lint toolset).
+    """
+    key = (detail or "health").strip().lower()
+    if key not in DOCTOR_DETAILS:
+        return {
+            "ok": False,
+            "detail": detail,
+            "known_details": list(DOCTOR_DETAILS),
+            "next_action": "Pass detail=health|env|compat|cache|all",
+        }
+    health = _doctor_health()
+    if key == "health":
+        health["detail"] = "health"
+        return health
+    if key == "env":
+        out = validate_env()
+        out["detail"] = "env"
+        return out
+    if key == "compat":
+        out = compat_check()
+        out["detail"] = "compat"
+        return out
+    if key == "cache":
+        out = semantic_cache_status()
+        out["detail"] = "cache"
+        return out
+    env = validate_env()
+    compat = compat_check()
+    cache = semantic_cache_status()
+    return {
+        "ok": bool(health.get("ok")) and bool(env.get("ok")),
+        "detail": "all",
+        "health": health,
+        "env": env,
+        "compat": compat,
+        "cache": cache,
+        "next_action": env.get("next_action") or "next_step",
     }
 
 
@@ -473,7 +523,10 @@ def scaffold_app(
 
 
 def use_sample(sample: str = "travel", sample_dir: str = "") -> dict[str, Any]:
-    """Point at demo_travel_sample (or block multi until single-agent green)."""
+    """Point at a sample. Travel includes golden-path validation (ZDH-35).
+
+    Extra travel-only phases stay on travel_golden_path (travel toolset).
+    """
     return use_sample_impl(_cfg(), sample=sample, sample_dir=sample_dir)
 
 
@@ -517,7 +570,11 @@ def diagnose_error(
     chat_id: str = "",
     turn_id: str = "",
 ) -> dict[str, Any]:
-    """Map error signals to failure_class + errors.md anchor (ZDH-7 / ZDH-19)."""
+    """Map error signals to failure_class + errors.md anchor (ZDH-7 / ZDH-19).
+
+    Includes Detective URL templates when req_id/chat_id are present (folded
+    detective_links). Does not scrape Hub.
+    """
     return diagnose_error_impl(
         _cfg(),
         status=status,
@@ -621,6 +678,11 @@ def lint_runtime_config(path: str) -> dict[str, Any]:
 def lint_app_code(path: str) -> dict[str, Any]:
     """Anti-example scan of main.py / Dockerfiles (stale V1, hash literals, :9091) (ZDH-24)."""
     return lint_app_code_impl(_cfg(), path=path)
+
+
+def lint_app(path: str) -> dict[str, Any]:
+    """Lint config.json and app code under one path (ZDH-35)."""
+    return lint_app_impl(_cfg(), path=path)
 
 
 def explain_req_id_policy() -> dict[str, Any]:

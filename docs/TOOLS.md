@@ -38,7 +38,7 @@ Prefer `next_step` over dumping the full checklist.
 
 ```text
 doctor → start_project → next_step
-  → set_prereq → validate_env → readiness_check
+  → set_prereq → readiness_check
   → use_sample | scaffold_app → bind_contract → recommend_surface
   → smoke_test_zeus → smoke_test_agent → diagnose_error
 ```
