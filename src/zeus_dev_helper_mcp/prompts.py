@@ -15,16 +15,22 @@ Hard constraints:
 - No secrets in tool results or checklist evidence.
 - Semantic cache stays off.
 - scaffold_app / smoke_test_agent emit ZeusRuntime + rt.agent.run_turn (not V1 ZeusClient / run_agent).
+- Credentials: if the user pasted Zeus URL / username / password in chat, put secrets in the host env or a gitignored .env. Call set_prereq with zeus_url + auth_mode + has_username/has_password (booleans only). NEVER pass password/username/token values into MCP tools.
+
+App kind (important):
+- Default when the user does not say API vs UI: **UI** → start_project(sample=travel) → use_sample (clones public demo_travel_sample when missing; optional project_name for the clone directory; sets DEMO_TRAVEL_SAMPLE_DIR).
+- If the user asks for an **API** / REST / FastAPI Zeus app: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python). Output is a FastAPI app (GET /healthz, POST /turn) on kotenai-zeus-client (zeus_client_python).
+- coding_language other than python (golang, node, …): do not invent scaffolds — report unsupported and keep python or the UI sample.
 
 Order:
 1. doctor
-2. start_project (single-agent, travel sample unless the user said otherwise)
+2. start_project — sample=travel (default UI) or sample=api when the user asked for API-only
 3. next_step — then only the recommended tool
-4. set_prereq / validate_env / readiness_check as next_step directs
+4. set_prereq / validate_env / readiness_check as next_step directs (URL + presence flags; secrets in env)
 5. Read zeus-helper://checklist and zeus-helper://glossary/{topic} instead of dumping encyclopedia tools
 6. bind_contract from a Hub-stamped catalog (never compute_local)
-7. scaffold_app or use_sample
-8. smoke_test_zeus then smoke_test_agent until session_id / req_id exist
+7. use_sample (UI) OR scaffold_app(app_kind=api) (API) OR scaffold_app(app_kind=cli) as fallback
+8. smoke_test_zeus then smoke_test_agent until session_id / req_id exist (API apps can also curl POST /turn)
 
 Prefer next_step over get_checklist. Knowledge lives on zeus-helper:// resources. After 5.1+5.2 green, data-plane and multi-agent are handoffs only.
 """
@@ -40,7 +46,6 @@ SUPPORT_PACK = """Build a redacted first-green support pack.
 3. If the support toolset is on, call support_pack_from_turn with debug JSON or last_smoke_agent.json. Detective links are URL templates only — do not scrape Hub.
 4. Evidence may include session_id / req_id / hop ids. Never include passwords, tokens, prompts, or full Zeus bodies.
 """
-
 
 def register_prompts(mcp: Any) -> None:
     def first_green() -> str:

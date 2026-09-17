@@ -58,11 +58,32 @@ def _smokes_green(cfg: HelperConfig) -> bool:
     return flags["5.1"] and flags["5.2"]
 
 
+def _checklist_sample(cfg: HelperConfig) -> str:
+    data = load_checklist(cfg)
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    sample = str((meta or {}).get("sample") or "travel").lower().strip()
+    if sample in ("rest", "api_only", "api-only"):
+        return "api"
+    if sample in ("ui", "demo_travel", "demo_travel_sample", "travel_sample"):
+        return "travel"
+    return sample
+
+
 def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
     base = base_next_step(cfg)
     item = base.get("item") or {}
     item_id = item.get("id") if isinstance(item, dict) else None
     tools = list(TOOL_HINTS.get(item_id or "", ["next_step", "doctor"]))
+    sample = _checklist_sample(cfg)
+    if sample == "api" and item_id in ("0.2", "3.1"):
+        # API track: scaffold FastAPI, not travel UI sample
+        tools = ["scaffold_app", "verify_local_setup", "write_env"]
+        base["scaffold_args_hint"] = {
+            "app_kind": "api",
+            "coding_language": "python",
+            "note": "UI demos use use_sample; API-only uses scaffold_app(app_kind=api)",
+        }
+    base["app_track"] = "api" if sample == "api" else "ui"
     base["recommended_tools"] = tools
     uris = ["zeus-helper://checklist", *RESOURCE_HINTS.get(item_id or "", [])]
     seen: set[str] = set()

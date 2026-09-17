@@ -116,7 +116,14 @@ doctor → start_project → next_step
   → smoke_test_zeus → smoke_test_agent → diagnose_error
 ```
 
-Prefer `next_step` over dumping the full checklist. Read `zeus-helper://` resources for glossary, verbs, policies, and catalog modes. Hosts can pick prompts `first_green`, `smoke_question`, and `support_pack`.
+Prefer `next_step` over dumping the full checklist.
+
+- **Default (UI):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`.
+- **API-only:** user asks for an API/REST app → `start_project(sample=api)` → `scaffold_app(app_kind=api, coding_language=python)` (FastAPI `POST /turn` on `kotenai-zeus-client`). Other languages not scaffolded yet.
+- Credentials from chat → process env / gitignored `.env`; `set_prereq` presence flags only.
+- Integrating into an arbitrary existing repo is **out of scope**.
+
+Read `zeus-helper://` resources for glossary, verbs, policies, and catalog modes. Hosts can pick prompts `first_green`, `smoke_question`, and `support_pack`.
 
 ## Default tools (`core`)
 
@@ -125,12 +132,12 @@ Live `tools/list` is the call contract. Default surface is **12 tools** (`ZEUS_D
 | Tool | Job |
 | --- | --- |
 | `doctor` | Health. `detail=health\|env\|compat\|cache\|all` (env/compat/cache fold lint-toolset checks) |
-| `start_project` | Init or reset the first-app checklist |
+| `start_project` | Init checklist; `sample=travel` (UI default) or `sample=api` |
 | `next_step` | Current item plus recommended tools and resource links |
 | `set_prereq` | Store non-secret prereqs (presence flags only for secrets) |
 | `readiness_check` | Live gates: healthz / readyz / version, auth, bootstrap |
-| `scaffold_app` | Minimal ZeusRuntime app (`main.py`, `config.json`, requirements, `.env.example`) |
-| `use_sample` | Travel sample plus golden-path check (or gate other samples) |
+| `scaffold_app` | CLI or FastAPI (`app_kind=cli\|api`) ZeusRuntime app; python only |
+| `use_sample` | Travel UI sample plus golden-path check (or gate other samples) |
 | `bind_contract` | Copy a stamped `contract.hash` only; refuses empty / local compute |
 | `recommend_surface` | Intent → Client surface + do-not list |
 | `smoke_test_zeus` | No LLM: readiness plus a read-only describe |
@@ -154,7 +161,7 @@ Secrets stay in the process environment. `set_prereq` stores presence flags only
 | `ZEUS_USERNAME` / `ZEUS_PASSWORD` | Basic auth (never logged) |
 | `ZEUS_BEARER_TOKEN` | Bearer auth (never logged) |
 | `LLM_API_KEY` / `OPENAI_API_KEY` | Presence checked by `validate_env`; required for `smoke_test_agent` |
-| `ZEUS_CHAT_REQUEST_DIR` | Local directory of min catalog templates (offline `list_catalog_modes` / `fetch_chat_request`) |
+| `ZEUS_CHAT_REQUEST_DIR` | Local directory of min catalog templates; auto-set when `list_catalog_modes` / `fetch_chat_request` locate or clone public `zeus_chat_request` |
 | `DEMO_TRAVEL_SAMPLE_DIR` | Local sample directory for `use_sample` / `travel_golden_path` |
 | `ZEUS_DEV_HELPER_STATE_DIR` | Checklist, prereqs, and local metrics (default `~/.config/zeus_dev_helper`) |
 | `ZEUS_DEV_HELPER_TOOLSETS` | Static toolsets: `core` (default), plus `catalog,lint,travel,support,handoff` or `all` |

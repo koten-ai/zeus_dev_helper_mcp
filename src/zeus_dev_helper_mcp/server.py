@@ -128,6 +128,11 @@ INSTRUCTIONS = (
     "fetch_chat_request / catalog resources are TEMPLATE ONLY (prefer a live Zeus stamp); "
     "no secrets in results or checklist evidence; semantic cache stays off. "
     "scaffold_app / smoke_test_agent emit ZeusRuntime + run_turn, not V1 ZeusClient / run_agent. "
+    "Bootstrap default is UI: use_sample clones public demo_travel_sample when missing "
+    "and sets DEMO_TRAVEL_SAMPLE_DIR (optional project_name for the clone directory). "
+    "API-only: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python) "
+    "(FastAPI POST /turn). Other coding languages are not scaffolded yet. "
+    "Never pass username/password/token into MCP tools — env + set_prereq presence flags only. "
     "Knowledge is resources under zeus-helper:// (checklist, glossary, verbs, policies, catalog modes). "
     "Walkthroughs are prompts: first_green, smoke_question, support_pack. "
     "After 5.1+5.2 green: data-plane and multi-agent are handoffs only."
@@ -163,7 +168,11 @@ def _doctor_health() -> dict[str, Any]:
             "modes_count": modes_count,
             "error": catalog_error,
             "hint_local_dir": sibling or None,
-            "env": "ZEUS_CHAT_REQUEST_DIR or GITHUB_TOKEN for private repo",
+            "env": (
+                "ZEUS_CHAT_REQUEST_DIR auto-set from local/clone of public "
+                "zeus_chat_request; GITHUB_TOKEN for private fetch fallback"
+            ),
+            "local_dir": str(cfg.chat_request_dir) if cfg.chat_request_dir else None,
         },
         "docs": {
             "for_ai_agents": (
@@ -229,12 +238,23 @@ def start_project(
 ) -> dict[str, Any]:
     """Start or reset first-app coaching checklist (single-agent default).
 
+    sample:
+      - travel (default) — UI path via demo_travel_sample / use_sample
+      - api — API-only FastAPI scaffold (scaffold_app app_kind=api)
+      - yelp / multi — gated until single-agent smokes green unless force_multi
+
     Multi-agent goals (goal=multi or sample=yelp) are gated until single-agent
     smokes are green, unless force_multi=true (ZDH-11).
     """
     cfg = _cfg()
     goal_l = (goal or "single-agent").lower().strip()
     sample_l = (sample or "travel").lower().strip()
+    if sample_l in ("ui", "demo_travel", "demo_travel_sample", "travel_sample"):
+        sample_l = "travel"
+        sample = "travel"
+    if sample_l in ("rest", "api_only", "api-only"):
+        sample_l = "api"
+        sample = "api"
     wants_multi = goal_l in ("multi", "multi-agent", "multi_agent") or sample_l in (
         "yelp",
         "multi",
@@ -283,11 +303,38 @@ def start_project(
                 "Direct/typeahead must not call agent_memory."
             ),
         },
+        "secrets_note": (
+            "If the user gave Zeus username/password in chat, put them in env "
+            "(ZEUS_USERNAME / ZEUS_PASSWORD) or gitignored .env; call set_prereq with "
+            "zeus_url + has_username/has_password flags only — never secret values."
+        ),
     }
-    if wants_multi:
+    if sample_l == "api":
+        out["track"] = "api"
+        out["app_kind"] = "api"
+        out["coding_language"] = "python"
+        out["note"] = (
+            "API-only track: after prereqs/readiness, scaffold_app(app_kind=api, "
+            "coding_language=python). Default UI track is sample=travel / use_sample."
+        )
+        out["recommended_tools"] = [
+            "set_prereq",
+            "readiness_check",
+            "scaffold_app",
+            "bind_contract",
+            "smoke_test_zeus",
+            "smoke_test_agent",
+        ]
+    elif wants_multi:
         out["track"] = "multi-agent"
         out["handoff_to_multi"] = handoff_to_multi_impl(cfg, force=True)
         out["note"] = "Multi track is graduation guidance only — jobs live in ZJA."
+    else:
+        out["track"] = "ui"
+        out["app_kind"] = "ui"
+        out["note"] = (
+            "UI track (default): use_sample / demo_travel_sample for the full app look."
+        )
     return out
 
 
@@ -451,7 +498,10 @@ def readiness_check(update_checklist: bool = True) -> dict[str, Any]:
 
 
 def list_catalog_modes() -> dict[str, Any]:
-    """List V2 min chat_request modes from zeus_chat_request (ZDH-14)."""
+    """List V2 min chat_request modes from zeus_chat_request (ZDH-14).
+
+    When ZEUS_CHAT_REQUEST_DIR is unset, clones public zeus_chat_request and sets the env.
+    """
     cfg = _cfg()
     try:
         return list_modes(cfg)
@@ -460,8 +510,9 @@ def list_catalog_modes() -> dict[str, Any]:
             "error": e.message,
             "failure_class": e.failure_class,
             "next_action": (
-                "Clone https://github.com/koten-ai/zeus_chat_request and set "
-                "ZEUS_CHAT_REQUEST_DIR, or set GITHUB_TOKEN for private fetch."
+                "Helper clones public https://github.com/koten-ai/zeus_chat_request "
+                "when ZEUS_CHAT_REQUEST_DIR is unset; fix git/network or set "
+                "ZEUS_CHAT_REQUEST_DIR / GITHUB_TOKEN and retry."
             ),
             "hint_local": resolve_local_repo_hint() or None,
         }
@@ -471,6 +522,7 @@ def fetch_chat_request(mode: str = "analytics", detail: str = "summary") -> dict
     """Fetch a V2 min chat_request template by mode from zeus_chat_request.
 
     Prefer live Zeus stamp for production. detail: summary | full.
+    When ZEUS_CHAT_REQUEST_DIR is unset, clones public zeus_chat_request and sets the env.
     """
     cfg = _cfg()
     try:
@@ -481,8 +533,9 @@ def fetch_chat_request(mode: str = "analytics", detail: str = "summary") -> dict
             "failure_class": e.failure_class,
             "mode": mode,
             "next_action": (
-                "Set ZEUS_CHAT_REQUEST_DIR to a local clone of zeus_chat_request "
-                "or GITHUB_TOKEN; then retry. Still stamp on Zeus for production."
+                "Helper clones public zeus_chat_request when ZEUS_CHAT_REQUEST_DIR "
+                "is unset; fix git/network or set ZEUS_CHAT_REQUEST_DIR / GITHUB_TOKEN, "
+                "then retry. Still stamp on Zeus for production."
             ),
             "docs": (
                 docs_url("zeus-client/contracts-and-catalog.md")
@@ -517,22 +570,60 @@ def scaffold_app(
     target_dir: str,
     project_name: str = "zeus_first_app",
     force: bool = False,
+    app_kind: str = "cli",
+    coding_language: str = "python",
 ) -> dict[str, Any]:
-    """Write a minimal ZeusRuntime middle-man (main.py, config.json, requirements, .env.example)."""
-    return scaffold_app_impl(_cfg(), target_dir, project_name=project_name, force=force)
+    """Write a ZeusRuntime middle-man.
+
+    app_kind=cli (default) or api (FastAPI POST /turn). coding_language=python only today.
+    UI demos use use_sample / demo_travel_sample, not this tool.
+    """
+    return scaffold_app_impl(
+        _cfg(),
+        target_dir,
+        project_name=project_name,
+        force=force,
+        app_kind=app_kind,
+        coding_language=coding_language,
+    )
 
 
-def use_sample(sample: str = "travel", sample_dir: str = "") -> dict[str, Any]:
-    """Point at a sample. Travel includes golden-path validation (ZDH-35).
+def use_sample(
+    sample: str = "travel",
+    sample_dir: str = "",
+    project_name: str = "",
+    parent_dir: str = "",
+    clone_if_missing: bool = True,
+) -> dict[str, Any]:
+    """UI sample: locate or clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
 
+    project_name = clone directory name (default demo_travel_sample).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     """
-    return use_sample_impl(_cfg(), sample=sample, sample_dir=sample_dir)
+    return use_sample_impl(
+        _cfg(),
+        sample=sample,
+        sample_dir=sample_dir,
+        project_name=project_name,
+        parent_dir=parent_dir,
+        clone_if_missing=clone_if_missing,
+    )
 
 
-def travel_golden_path(sample_dir: str = "") -> dict[str, Any]:
-    """ZDH-10: demo_travel_sample golden path phases + optional layout validation."""
-    return travel_golden_path_impl(_cfg(), sample_dir=sample_dir)
+def travel_golden_path(
+    sample_dir: str = "",
+    project_name: str = "",
+    parent_dir: str = "",
+    clone_if_missing: bool = True,
+) -> dict[str, Any]:
+    """ZDH-10: locate/clone public demo_travel_sample + golden path validation."""
+    return travel_golden_path_impl(
+        _cfg(),
+        sample_dir=sample_dir,
+        project_name=project_name,
+        parent_dir=parent_dir,
+        clone_if_missing=clone_if_missing,
+    )
 
 
 def write_env(target_dir: str) -> dict[str, Any]:
@@ -554,7 +645,11 @@ def smoke_test_agent(
     question: str = "In one short sentence, what data is available in this scope?",
     update_checklist: bool = True,
 ) -> dict[str, Any]:
-    """One ZeusRuntime run_turn (requires kotenai-zeus-client>=2.3.0 + LLM key)."""
+    """One ZeusRuntime run_turn (requires kotenai-zeus-client>=2.3.0 + LLM key).
+
+    If the client is missing and demo_travel_sample documents Docker install,
+    returns guide-only docker compose next_action instead of only pip install.
+    """
     return smoke_agent_impl(_cfg(), question=question, update_checklist=update_checklist)
 
 

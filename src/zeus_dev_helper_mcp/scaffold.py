@@ -91,11 +91,134 @@ if __name__ == "__main__":
     asyncio.run(main())
 '''
 
+_API_MAIN_PY = '''#!/usr/bin/env python3
+"""Minimal FastAPI ZeusRuntime REST middle-man — scaffolded by zeus_dev_helper_mcp."""
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+_ROOT = Path(__file__).resolve().parent
+load_dotenv(_ROOT / ".env")
+
+from zeus_client import ClientSettings, ZeusRuntime  # noqa: E402
+from zeus_client.adapters.catalog_fs.store import FsCatalogStore  # noqa: E402
+from zeus_client.adapters.llm_openai_compatible import OpenAICompatibleLlmClient  # noqa: E402
+from zeus_client.adapters.zeus_http import HttpxZeusPort  # noqa: E402
+from zeus_client.adapters.zeus_http.catalog_remote import HttpxCatalogRemote  # noqa: E402
+
+_runtime: ZeusRuntime | None = None
+
+
+class TurnRequest(BaseModel):
+    question: str = Field(..., min_length=1, description="Advice-shaped natural language question")
+
+
+class TurnResponse(BaseModel):
+    answer: str | None = None
+    status: str | None = None
+    session_id: str | None = None
+    req_ids: list[str] = Field(default_factory=list)
+    hops: int = 0
+
+
+async def _wire_runtime(rt: ZeusRuntime) -> None:
+    secrets = rt.services.secrets
+    if rt.config.chat_requests_dir:
+        rt.services.catalog = FsCatalogStore(root=rt.config.chat_requests_dir)
+    rt.services.zeus = HttpxZeusPort(
+        endpoint=rt.config.zeus, secrets=secrets, journal=rt.journal
+    )
+    rt.services.llm = OpenAICompatibleLlmClient(
+        config=rt.config.llm, secrets=secrets, journal=rt.journal
+    )
+    if rt.services.catalog_remote is None:
+        rt.services.catalog_remote = HttpxCatalogRemote(
+            endpoint=rt.config.zeus, secrets=secrets
+        )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _runtime
+    rt = ZeusRuntime.from_config(_ROOT / "config.json", profile="development")
+    await rt.__aenter__()
+    await _wire_runtime(rt)
+    _runtime = rt
+    try:
+        yield
+    finally:
+        _runtime = None
+        await rt.__aexit__(None, None, None)
+
+
+app = FastAPI(title="Zeus first API app", lifespan=lifespan)
+
+
+@app.get("/healthz")
+async def healthz() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/turn", response_model=TurnResponse)
+async def turn(body: TurnRequest) -> TurnResponse:
+    if _runtime is None:
+        raise HTTPException(status_code=503, detail="runtime not ready")
+    chat_request = None
+    try:
+        loaded = await _runtime.catalog.load(mode=_runtime.config.settings.mode)
+        chat_request = dict(loaded.body)
+    except Exception:
+        chat_request = None
+    result = await _runtime.agent.run_turn(
+        body.question,
+        settings=ClientSettings(ai_process_result=False),
+        chat_request=chat_request,
+    )
+    session = result.session
+    debug = result.debug
+    hops = list(getattr(debug, "hops", ()) or ())
+    req_ids = list(getattr(debug, "req_ids", ()) or ())
+    if not req_ids:
+        for hop in hops:
+            if isinstance(hop, dict) and hop.get("req_id"):
+                req_ids.append(str(hop["req_id"]))
+    return TurnResponse(
+        answer=getattr(result, "answer", None),
+        status=str(getattr(result.status, "value", result.status)),
+        session_id=getattr(session, "session_id", None) or getattr(debug, "session_id", None),
+        req_ids=[str(r) for r in req_ids[:8]],
+        hops=len(hops),
+    )
+
+
+def main() -> None:
+    import uvicorn
+
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run("main:app", host=host, port=port, reload=False)
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+SUPPORTED_CODING_LANGUAGES = frozenset({"python"})
+APP_KINDS = frozenset({"cli", "api"})
+FAILURE_UNSUPPORTED_LANG = "unsupported_coding_language"
+
 SAMPLE_TRAVEL = {
     "name": "demo_travel_sample",
     "repo": "https://github.com/koten-ai/demo_travel_sample",
-    "note": "Primary single-agent demo (may be private → public). Clone when you have access.",
-    "clone": "git clone https://github.com/koten-ai/demo_travel_sample.git",
+    "note": "Primary single-agent UI demo (public). use_sample clones when no local path is set.",
+    "clone": "git clone --depth 1 https://github.com/koten-ai/demo_travel_sample.git",
     "related": [
         "https://github.com/koten-ai/zeus_client_python/tree/main/docs/demo-builder",
         "https://docs.koten.ai/zeus-client/using-zeus-client",
@@ -103,28 +226,63 @@ SAMPLE_TRAVEL = {
 }
 
 
-def use_sample(cfg: HelperConfig, sample: str = "travel", sample_dir: str = "") -> dict[str, Any]:
-    """Point at a sample path. Travel uses ZDH-10 golden-path validation."""
+def use_sample(
+    cfg: HelperConfig,
+    sample: str = "travel",
+    sample_dir: str = "",
+    project_name: str = "",
+    parent_dir: str = "",
+    clone_if_missing: bool = True,
+) -> dict[str, Any]:
+    """UI sample path: locate or clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
+
+    project_name becomes the clone directory name (default demo_travel_sample).
+    For API-only apps use scaffold_app(app_kind=api).
+    """
     sample = (sample or "travel").lower().strip()
-    if sample in ("travel", "demo_travel", "travel_sample", "demo_travel_sample"):
+    if sample in ("travel", "demo_travel", "travel_sample", "demo_travel_sample", "ui"):
         from zeus_dev_helper_mcp.travel import travel_golden_path
 
-        golden = travel_golden_path(cfg, sample_dir=sample_dir)
+        golden = travel_golden_path(
+            cfg,
+            sample_dir=sample_dir,
+            project_name=project_name,
+            parent_dir=parent_dir,
+            clone_if_missing=clone_if_missing,
+        )
         info = dict(SAMPLE_TRAVEL)
         info["sample"] = "travel"
+        info["app_kind"] = "ui"
+        info["private"] = False
         return {
-            "ok": True,
+            "ok": bool(golden.get("ok")),
             "sample": info,
+            "app_kind": "ui",
             "golden_path": golden,
             "local_dir": golden.get("local_dir"),
+            "cloned": golden.get("cloned"),
+            "project_name": golden.get("project_name"),
             "layout": golden.get("layout"),
+            "env": golden.get("env"),
             "next_action": golden.get("next_action")
             or (
-                "Clone the sample if you have access, or call scaffold_app "
+                "Set DEMO_TRAVEL_SAMPLE_DIR after clone, or scaffold_app "
                 "for a minimal middle-man without the full demo UI."
             ),
             "checklist_hint": "Mark 3.1 done after clone/scaffold succeeds",
             "sample_readme_snippet": golden.get("sample_readme_snippet"),
+        }
+    if sample in ("api", "rest", "api_only", "api-only"):
+        return {
+            "ok": False,
+            "sample": sample,
+            "app_kind": "api",
+            "next_action": (
+                "API-only apps use scaffold_app(app_kind=api, coding_language=python). "
+                "start_project(sample=api) then scaffold — not use_sample."
+            ),
+            "recommended_tools": ["scaffold_app", "start_project"],
+            "docs": {"using": docs_url("zeus-client/using-zeus-client.md")},
         }
     if sample in ("yelp", "multi"):
         from zeus_dev_helper_mcp.handoff import handoff_to_multi
@@ -228,8 +386,63 @@ def scaffold_app(
     *,
     project_name: str = "zeus_first_app",
     force: bool = False,
+    app_kind: str = "cli",
+    coding_language: str = "python",
 ) -> dict[str, Any]:
-    """Write a minimal ZeusRuntime middle-man (config.json + main.py + env example)."""
+    """Write a ZeusRuntime middle-man.
+
+    app_kind:
+      - cli — one-shot main.py (default for this tool)
+      - api — FastAPI REST (POST /turn) using kotenai-zeus-client (python only today)
+
+    Prefer use_sample / demo_travel_sample when the user wants a UI app (default bootstrap).
+    """
+    lang = (coding_language or "python").strip().lower().replace("-", "_")
+    if lang in {"py", "python3"}:
+        lang = "python"
+    kind = (app_kind or "cli").strip().lower().replace("-", "_")
+    if kind in {"rest", "api_only", "fastapi"}:
+        kind = "api"
+    if kind in {"script", "main", "middle_man", "middleman"}:
+        kind = "cli"
+
+    docs = {
+        "using": docs_url("zeus-client/using-zeus-client.md"),
+        "recipe_01": docs_url("zeus-client/recipes/01-minimal-qa.md"),
+    }
+
+    if lang not in SUPPORTED_CODING_LANGUAGES:
+        return {
+            "ok": False,
+            "failure_class": FAILURE_UNSUPPORTED_LANG,
+            "coding_language": lang,
+            "supported_coding_languages": sorted(SUPPORTED_CODING_LANGUAGES),
+            "client_packages": {
+                "python": "kotenai-zeus-client (zeus_client_python)",
+                "golang": "not scaffolded by Helper yet",
+                "node": "not scaffolded by Helper yet",
+            },
+            "app_kind": kind,
+            "next_action": (
+                "Pass coding_language=python for API/CLI scaffolds. "
+                "For a UI demo use use_sample (demo_travel_sample). "
+                "Do not invent zeus_client_golang / zeus_client_node scaffolds here yet."
+            ),
+            "recommended_tools": ["scaffold_app", "use_sample"],
+            "docs": docs,
+        }
+
+    if kind not in APP_KINDS:
+        return {
+            "ok": False,
+            "failure_class": "invalid_app_kind",
+            "app_kind": app_kind,
+            "known_app_kinds": sorted(APP_KINDS),
+            "next_action": "Pass app_kind=cli|api (UI apps use use_sample / demo_travel_sample)",
+            "recommended_tools": ["scaffold_app", "use_sample"],
+            "docs": docs,
+        }
+
     root = Path(target_dir).expanduser().resolve()
     if root.exists() and any(root.iterdir()) and not force:
         existing = list(root.iterdir())
@@ -250,13 +463,95 @@ def scaffold_app(
     slug = project_name.replace(" ", "-").lower()
 
     files: dict[str, str] = {}
+    if kind == "api":
+        default_name = project_name if project_name != "zeus_first_app" else "zeus_first_api"
+        slug = default_name.replace(" ", "-").lower()
+        files["README.md"] = f"""# {default_name}
 
-    files["README.md"] = f"""# {project_name}
+FastAPI REST middle-man for Zeus, scaffolded by **zeus_dev_helper_mcp**.
+
+Uses `kotenai-zeus-client>={CLIENT_FLOOR}` (`zeus_client_python`): `ZeusRuntime` +
+`HttpxZeusPort` + `OpenAICompatibleLlmClient`. Do not import `zeus_client.compat.v1`.
+
+This is an **API-only** app (no demo UI). For the travel planner UI use
+`demo_travel_sample` via Helper `use_sample`.
+
+## Setup
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # ZEUS_URL, ZEUS_USERNAME/ZEUS_PASSWORD or bearer, LLM_API_KEY
+```
+
+Never invent `contract.hash`. Public API is `:8080`, not Hub `:9091`.
+Secrets stay in `.env` — never commit them.
+
+## Run
+
+```bash
+uvicorn main:app --host 127.0.0.1 --port 8000
+# or: python main.py
+```
+
+## Endpoints
+
+- `GET /healthz` → `{{"status":"ok"}}`
+- `POST /turn` body `{{"question":"…"}}` → answer + `session_id` / `req_ids` / hops
+
+```bash
+curl -s http://127.0.0.1:8000/healthz
+curl -s -X POST http://127.0.0.1:8000/turn \\
+  -H 'content-type: application/json' \\
+  -d '{{"question":"In one short sentence, what data is available in this scope?"}}'
+```
+
+## Docs
+
+- https://docs.koten.ai/zeus-client/using-zeus-client
+- https://github.com/koten-ai/zeus_chat_request (min catalog templates)
+"""
+        files["requirements.txt"] = (
+            f"kotenai-zeus-client>={CLIENT_FLOOR}\n"
+            "httpx>=0.27.0\n"
+            "python-dotenv>=1.0.0\n"
+            "fastapi>=0.115.0\n"
+            "uvicorn[standard]>=0.30.0\n"
+        )
+        files["main.py"] = _API_MAIN_PY
+        files["pyproject.toml"] = f"""[project]
+name = "{slug}"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "kotenai-zeus-client>={CLIENT_FLOOR}",
+  "httpx>=0.27.0",
+  "python-dotenv>=1.0.0",
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+]
+"""
+        run_cmd = (
+            f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && "
+            "pip install -r requirements.txt && cp .env.example .env && "
+            "uvicorn main:app --host 127.0.0.1 --port 8000"
+        )
+        next_action = (
+            "Put ZEUS_URL / credentials / LLM_API_KEY in .env (never in MCP tool args), "
+            "install deps, run uvicorn; then Helper smoke_test_zeus / smoke_test_agent "
+            "or curl POST /turn"
+        )
+        project_name = default_name
+    else:
+        files["README.md"] = f"""# {project_name}
 
 Minimal ZeusRuntime middle-man scaffolded by **zeus_dev_helper_mcp**.
 
 Requires `kotenai-zeus-client>={CLIENT_FLOOR}`. Default path is `ZeusRuntime.from_config()`
 plus `HttpxZeusPort` / `OpenAICompatibleLlmClient`. Do not import `zeus_client.compat.v1`.
+
+For a **UI** demo prefer `use_sample` / `demo_travel_sample`. For a **REST API** use
+`scaffold_app(app_kind=api)`.
 
 ## Setup
 
@@ -280,13 +575,11 @@ python main.py
 - https://docs.koten.ai/zeus-client/using-zeus-client
 - https://github.com/koten-ai/zeus_chat_request (min catalog templates)
 """
-
-    files["requirements.txt"] = (
-        f"kotenai-zeus-client>={CLIENT_FLOOR}\nhttpx>=0.27.0\npython-dotenv>=1.0.0\n"
-    )
-    files["main.py"] = _MAIN_PY
-    files["config.json"] = json.dumps(runtime_cfg, indent=2) + "\n"
-    files["pyproject.toml"] = f"""[project]
+        files["requirements.txt"] = (
+            f"kotenai-zeus-client>={CLIENT_FLOOR}\nhttpx>=0.27.0\npython-dotenv>=1.0.0\n"
+        )
+        files["main.py"] = _MAIN_PY
+        files["pyproject.toml"] = f"""[project]
 name = "{slug}"
 version = "0.1.0"
 requires-python = ">=3.11"
@@ -296,6 +589,16 @@ dependencies = [
   "python-dotenv>=1.0.0",
 ]
 """
+        run_cmd = (
+            f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && "
+            "pip install -r requirements.txt && cp .env.example .env && python main.py"
+        )
+        next_action = (
+            "Fill .env secrets, install deps, run main.py "
+            "(ZeusRuntime + run_turn); then smoke_test_agent via Helper or locally"
+        )
+
+    files["config.json"] = json.dumps(runtime_cfg, indent=2) + "\n"
 
     written: list[str] = []
     for name, body in files.items():
@@ -307,13 +610,15 @@ dependencies = [
 
     env_info = write_env_example(cfg, root)
 
-    # Also write a tiny config hint JSON (no secrets)
     hint = {
         "zeus_url": zeus_url,
         "bucket": bucket,
         "scope": scope,
         "collection": collection,
         "mode": mode,
+        "app_kind": kind,
+        "coding_language": lang,
+        "client_package": "kotenai-zeus-client",
         "from": "zeus_dev_helper_mcp.scaffold_app",
     }
     hint_path = root / "scaffold_meta.json"
@@ -321,25 +626,26 @@ dependencies = [
     written.append(str(hint_path))
 
     try:
-        set_item_status(cfg, "3.1", "done", evidence=f"scaffold={root}")
+        set_item_status(cfg, "3.1", "done", evidence=f"scaffold={kind}:{root}")
         set_item_status(cfg, "3.2", "done", evidence=str(env_info.get("path")))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110
         pass
 
     return {
         "ok": True,
         "target_dir": str(root),
+        "app_kind": kind,
+        "coding_language": lang,
+        "client_package": "kotenai-zeus-client",
         "written": written,
         "env_example": env_info,
-        "run": f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cp .env.example .env && python main.py",
-        "next_action": (
-            "Fill .env secrets, install deps, run main.py "
-            "(ZeusRuntime + run_turn); then smoke_test_agent via Helper or locally"
+        "secrets_note": (
+            "Put username/password/token/LLM keys in .env or the process environment. "
+            "Never pass secret values into MCP tools — set_prereq uses presence flags only."
         ),
-        "docs": {
-            "using": docs_url("zeus-client/using-zeus-client.md"),
-            "recipe_01": docs_url("zeus-client/recipes/01-minimal-qa.md"),
-        },
+        "run": run_cmd,
+        "next_action": next_action,
+        "docs": docs,
     }
 
 

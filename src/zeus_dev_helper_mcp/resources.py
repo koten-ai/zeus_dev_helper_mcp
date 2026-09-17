@@ -105,8 +105,9 @@ def register_resources(mcp: Any) -> None:
                     "error": e.message,
                     "failure_class": e.failure_class,
                     "next_action": (
-                        "Clone zeus_chat_request and set ZEUS_CHAT_REQUEST_DIR, "
-                        "or set GITHUB_TOKEN for private fetch."
+                        "Helper clones public zeus_chat_request when "
+                        "ZEUS_CHAT_REQUEST_DIR is unset; fix git/network or set "
+                        "ZEUS_CHAT_REQUEST_DIR / GITHUB_TOKEN."
                     ),
                 }
             )

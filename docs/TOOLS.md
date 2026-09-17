@@ -43,6 +43,16 @@ doctor → start_project → next_step
   → smoke_test_zeus → smoke_test_agent → diagnose_error
 ```
 
+**Bootstrap app kind**
+
+| User intent | `start_project` | Project on disk |
+| --- | --- | --- |
+| Unspecified / UI / “show me the app” (**default**) | `sample=travel` | `use_sample` → **`demo_travel_sample`** (full UI) |
+| “API” / REST / FastAPI | `sample=api` | `scaffold_app(app_kind=api, coding_language=python)` |
+| Minimal CLI fallback | (travel unavailable) | `scaffold_app(app_kind=cli)` |
+
+Credentials in the user message → env / gitignored `.env` + `set_prereq` **presence flags** only (never password values in MCP args). Existing-repo integration is **out of scope**.
+
 Resources (not default tools): `zeus-helper://checklist` / `glossary/{topic}` / `verbs/{name}` / `policy/*` / `catalog/modes`. Extra tools: `ZEUS_DEV_HELPER_TOOLSETS=core,lint,catalog` (or `all`).
 
 ---
@@ -56,7 +66,7 @@ Resources (not default tools): `zeus-helper://checklist` / `glossary/{topic}` / 
 | `disk` | Writes under `target_dir` (never secret values) |
 | `live GET` | Public `:8080` GET (`/healthz`, `/readyz`, `/version`, `/v1/ai/bootstrap/…`) |
 | `live POST` | Public `:8080` read-only POST (`/v2/{bucket}/{scope}/describe` or one agent turn) |
-| `catalog` | Local `ZEUS_CHAT_REQUEST_DIR` or GitHub Contents |
+| `catalog` | Local `ZEUS_CHAT_REQUEST_DIR` (auto-clone public repo when unset) or GitHub Contents |
 | `LLM` | Needs LLM key + optional extra `kotenai-zeus-client` |
 
 ---
@@ -66,7 +76,7 @@ Resources (not default tools): `zeus-helper://checklist` / `glossary/{topic}` / 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
 | `doctor` | Version, public config (no secrets), catalog reachability | — | `catalog` | First call. Then `start_project`. |
-| `start_project` | Init or reset the first-app checklist | `goal=single-agent`, `sample=travel`, `force_multi=false` | `state` | After doctor. Then `set_prereq`. Never turns semantic cache on. Multi / `sample=yelp` is gated until 5.1+5.2 unless `force_multi`. |
+| `start_project` | Init or reset the first-app checklist | `goal=single-agent`, `sample=travel\|api`, `force_multi=false` | `state` | After doctor. Default **`travel`** (UI). `sample=api` → API track. Then `set_prereq`. Never turns semantic cache on. Multi / `sample=yelp` gated until 5.1+5.2 unless `force_multi`. |
 | `helper_metrics` | Local time-to-green (never leaves the machine) | — | none (reads `state`) | Anytime. Events are recorded on start / smoke green. |
 
 **Do not:** treat `doctor` as a Zeus cluster health check (`readiness_check` does that). Do not pass passwords into `start_project`.
@@ -109,8 +119,8 @@ Prefer a **live Zeus stamp**. `zeus_chat_request` is min templates only.
 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
-| `list_catalog_modes` | V2 min modes from `zeus_chat_request` | — | `catalog` | Before fetching a template. Needs `ZEUS_CHAT_REQUEST_DIR` or `GITHUB_TOKEN`. |
-| `fetch_chat_request` | Fetch a min template by mode | `mode=analytics`, `detail=summary\|full` | `catalog` | After modes. Always returns **TEMPLATE ONLY**. Then Hub stamp → `bind_contract`. |
+| `list_catalog_modes` | V2 min modes from `zeus_chat_request` | — | `catalog` (+ optional `git clone`) | Before fetching a template. When `ZEUS_CHAT_REQUEST_DIR` is unset, locates or shallow-clones public `zeus_chat_request` and sets the env (`GITHUB_TOKEN` remains fallback). |
+| `fetch_chat_request` | Fetch a min template by mode | `mode=analytics`, `detail=summary\|full` | `catalog` (+ optional `git clone`) | After modes. Always returns **TEMPLATE ONLY**. Auto-clones public repo when env unset. Then Hub stamp → `bind_contract`. |
 | `lint_chat_request` | Read-only lint (`_format`, verbs, `TO_BE_FILLED`) | `path` **or** `json_text` | none | Before bind. Never stamps. |
 | `bind_contract` | Copy stamped `contract.hash` only | `path` or `json_text`; optional `bucket`, `scope`, `mode` | none | After a real Hub stamp. Refuses empty / `TO_BE_FILLED` / `compute_local` (`contract_hash_invent_forbidden`). Returns a `scope_contracts` snippet to paste. |
 | `explain_hash_boundary` | What is **excluded** from the hash (MINI-SCHEMA, SCOPE BRIEF, `guidance` / `contract` / `metadata` / `_*`) | — | none | Checklist 4.2. Inject schema/brief at call time; do not bake them into the stamp expecting the hash to change. |
@@ -124,15 +134,15 @@ Prefer a **live Zeus stamp**. `zeus_chat_request` is min templates only.
 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
-| `use_sample` | Point at `demo_travel_sample` (or block Yelp/multi) | `sample=travel`, `sample_dir` | `state` if travel layout validates | Preferred sample path. Set `DEMO_TRAVEL_SAMPLE_DIR` if cloned. Yelp/multi → `handoff_to_multi` gate. |
-| `travel_golden_path` | Travel phases + optional layout check | `sample_dir` | `state` if layout ok (marks 0.2 / 3.1) | Same track as `use_sample` for travel. Then readiness + smokes with the sample’s bucket/scope. |
-| `scaffold_app` | Minimal ZeusRuntime middle-man (`main.py`, `config.json`, requirements, `.env.example`) | `target_dir` (required), `project_name=zeus_first_app`, `force=false` | `disk`, `state` | Fallback when the travel sample is unavailable. Emits `ZeusRuntime.from_config()` + `HttpxZeusPort` + `OpenAICompatibleLlmClient` (`kotenai-zeus-client>=2.3.0`). |
+| `use_sample` | Locate or **clone** public `demo_travel_sample`; set `DEMO_TRAVEL_SAMPLE_DIR` | `sample=travel`, optional `sample_dir`, `project_name` (clone dir name), `parent_dir`, `clone_if_missing=true` | `state` + process env | Default UI path. Clones when no local path; `project_name` defaults to `demo_travel_sample`. Yelp/multi → `handoff_to_multi` gate. |
+| `travel_golden_path` | Same ensure/clone + golden-path phases | same as `use_sample` travel args | `state` + env if layout ok (marks 0.2 / 3.1) | Same track as `use_sample` for travel. Then readiness + smokes with the sample’s bucket/scope. |
+| `scaffold_app` | ZeusRuntime middle-man on disk | `target_dir`, `project_name`, `force=false`, `app_kind=cli\|api`, `coding_language=python` | `disk`, `state` | **`api`**: FastAPI `GET /healthz` + `POST /turn`. **`cli`**: one-shot `main.py`. Only **python** / `kotenai-zeus-client` today; other languages → `unsupported_coding_language`. UI demos use `use_sample`, not this tool. |
 | `write_env` | Write `.env.example` from prereqs | `target_dir` | `disk` | After scaffold/sample. Never writes secret values. |
 | `verify_local_setup` | `zeus_client` import + optional scaffold files | `target_dir` | none | After files exist, before smokes. |
 | `lint_runtime_config` | Lint `config.json`: `:8080`, `auth_mode`, env **names**, cheap path, cache off | `path` | none (redacts secrets) | Before agent smoke. Hub port is an error. |
 | `lint_app_code` | Anti-example scan of `main.py` / Dockerfiles (stale V1, hash literals, `:9091`) | `path` (file or dir) | none | Before calling the path “production-ish”. |
 
-**Do not:** commit `.env`. Do not emit V1 `ZeusClient` / `run_agent` from `scaffold_app`.
+**Do not:** commit `.env`. Do not emit V1 `ZeusClient` / `run_agent` from `scaffold_app`. Do not treat Helper as an existing-app integrator — point users at `demo_travel_sample`.
 
 ---
 
@@ -167,7 +177,7 @@ Verbs Helper can explain (not call): `explain`, `return`, `describe`, `analyze`,
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
 | `smoke_test_zeus` | No LLM: readiness + `POST /v2/{bucket}/{scope}/describe` | `update_checklist=true` | `live GET` + `live POST`, optional `state` | Checklist **5.1**. Returns `req_id`. Then `smoke_test_agent`. |
-| `smoke_test_agent` | One Client `rt.agent.run_turn` | `question` (advice-shaped), `update_checklist=true` | `LLM` + Zeus HTTP, `state` (`last_smoke_agent.json` ids/hops only) | Checklist **5.2**. Needs `[agent]` extra (`kotenai-zeus-client>=2.3.0`) + LLM key. Returns `TurnResult` (`session_id` / `req_id`). |
+| `smoke_test_agent` | One Client `rt.agent.run_turn` | `question` (advice-shaped), `update_checklist=true` | `LLM` + Zeus HTTP, `state` (`last_smoke_agent.json` ids/hops only) | Checklist **5.2**. Needs `[agent]` extra (`kotenai-zeus-client>=2.3.0`) + LLM key. Returns `TurnResult` (`session_id` / `req_id`). If the client package is missing **and** `demo_travel_sample` documents Docker install (`DEMO_TRAVEL_SAMPLE_DIR` / persisted path), returns guide-only `install_path=docker` (`docker compose up --build`) instead of only pip; otherwise `install_path=pip`. |
 | `suggest_demo_prompts` | Advice-shaped starter questions | — | none | Before 5.2. Prefer NL over raw SQL. |
 | `describe_scope` | Live MINI-SCHEMA: entity types + field names | `bucket`, `scope` (else env) | `live POST` | Schema for lint / UI. **No document samples.** Cap applied. |
 | `diagnose_error` | Map HTTP / body / ErrorCode / `error_class` → `failure_class` + docs anchor | `status`, `body`, `message`, `error_code`, `error_class`, `req_id`, `session_id`, `chat_id`, `turn_id`, `zeus_url` | none (Detective **URLs only**) | On any red path. Does not import `zeus_client` on the default extra. |
@@ -266,10 +276,12 @@ Returned on red paths (`failure_class` + `next_action`). Do not invent new ones 
 
 | Use Helper | Do not use Helper for |
 | --- | --- |
-| First green path, templates, readiness, smoke, lint, handoffs | Data-plane Explore/Verify tools |
+| First green path (`demo_travel_sample` preferred), templates, readiness, smoke, lint, handoffs | Data-plane Explore/Verify tools |
 | Copy a **stamped** hash | Inventing or computing `contract_hash` |
 | Detective **URL templates** | Hub scrape, Hub admin mutations, enable-wizard |
 | Multi / data-plane **guidance** | ZJA job runtime |
+| — | Integrating Zeus into an arbitrary existing app (out of scope) |
+| — | Scaffolding non-python client SDKs (golang/node) until Helper supports them |
 
 ---
 

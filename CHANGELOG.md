@@ -3,9 +3,20 @@
 ## 0.7.1
 
 ### Added
-- **ZDH-40** First-green eval suite (`eval_suite`): ~20 prompts from `guides/LIST_OF_PROMPT_SAMPLES.md`; trace check that `doctor` / `next_step` precede `scaffold_app`.
-- **ZDH-40** `helper_metrics` records tool **ids** only (`tool_call` events; no payloads/tokens/prompts).
-- **ZDH-40** `docs/HOST-MATRIX.md` — Grok / Claude / Cursor measurement notes (do not assume one host’s tool picking).
+- **`use_sample` auto-clone** ([ZDH-41](https://kotenai.atlassian.net/browse/ZDH-41)–[ZDH-45](https://kotenai.atlassian.net/browse/ZDH-45)) — public `demo_travel_sample` is shallow-cloned when no local path is found; optional `project_name` sets the clone directory (default `demo_travel_sample`); sets process env + persisted `DEMO_TRAVEL_SAMPLE_DIR`.
+- **`list_catalog_modes` / `fetch_chat_request` auto-clone** ([ZDH-47](https://kotenai.atlassian.net/browse/ZDH-47)) — when `ZEUS_CHAT_REQUEST_DIR` is unset, Helper locates a sibling `zeus_chat_request` checkout or shallow-clones the public repo, then sets process env + persisted `ZEUS_CHAT_REQUEST_DIR` (GitHub raw / `GITHUB_TOKEN` remain fallback).
+- **API-only bootstrap** ([ZDH-46](https://kotenai.atlassian.net/browse/ZDH-46)) — `start_project(sample=api)` + `scaffold_app(app_kind=api, coding_language=python)` emits a FastAPI REST middle-man (`GET /healthz`, `POST /turn` → `ZeusRuntime.run_turn`) on `kotenai-zeus-client`. Default bootstrap remains **UI** (`sample=travel` / `use_sample` / `demo_travel_sample`). Non-python `coding_language` → `unsupported_coding_language` (golang/node not scaffolded yet).
+- **[ZDH-40](https://kotenai.atlassian.net/browse/ZDH-40)** First-green eval suite (`eval_suite`): ~20 prompts from `guides/LIST_OF_PROMPT_SAMPLES.md`; trace check that `doctor` / `next_step` precede `scaffold_app`.
+- **[ZDH-40](https://kotenai.atlassian.net/browse/ZDH-40)** `helper_metrics` records tool **ids** only (`tool_call` events; no payloads/tokens/prompts).
+- **[ZDH-40](https://kotenai.atlassian.net/browse/ZDH-40)** `docs/HOST-MATRIX.md` — Grok / Claude / Cursor measurement notes (do not assume one host’s tool picking).
+- **smoke_test_agent / travel** — When `kotenai-zeus-client` is not installed and `demo_travel_sample` has Docker install docs (`docker-compose` / `Dockerfile` / README signals), return guide-only `install_path=docker` (`docker compose up --build`) instead of only the pip/`[agent]` message. Persist `travel_sample_dir` after `use_sample` / `travel_golden_path`. No Docker execution from the Helper.
+
+### Changed
+- Travel golden-path phase 5 prefers Docker compose when Docker packaging/docs are detected; soft markers include `docker-compose.yml` / `Dockerfile`.
+- `first_green` prompt + server instructions: UI default vs API track; credentials via env / presence flags only.
+
+### Notes
+- Existing-project integration into arbitrary repos is **not supported**. Helper coaches first green via **`demo_travel_sample` (UI default)** or **API/CLI scaffolds** (`scaffold_app`).
 
 ## 0.7.0
 

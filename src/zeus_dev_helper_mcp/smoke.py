@@ -5,14 +5,13 @@ from __future__ import annotations
 import json
 import os
 from typing import Any
-from urllib.parse import urljoin
 
 import httpx
 
 from zeus_dev_helper_mcp.checklist import set_item_status
 from zeus_dev_helper_mcp.config import HelperConfig
-from zeus_dev_helper_mcp.readiness import run_readiness_check
 from zeus_dev_helper_mcp.docs_links import docs_url
+from zeus_dev_helper_mcp.readiness import run_readiness_check
 
 
 def _base(cfg: HelperConfig) -> str:
@@ -226,13 +225,42 @@ def _turn_hops(result: Any) -> list[dict[str, Any]]:
     return hops
 
 
+def _pip_agent_next_action() -> str:
+    return (
+        "pip install 'kotenai-zeus-client>=2.3.0' (or zeus-dev-helper-mcp[agent]) "
+        "and configure LLM + Zeus, then retry smoke_test_agent"
+    )
+
+
+def _agent_docs() -> dict[str, str]:
+    return {
+        "using": docs_url("zeus-client/using-zeus-client.md"),
+        "recipe_01": docs_url("zeus-client/recipes/01-minimal-qa.md"),
+        "errors": docs_url("zeus-client/errors.md"),
+    }
+
+
+def _docker_guidance_for_agent(cfg: HelperConfig) -> dict[str, Any] | None:
+    """Guide-only: travel sample with Docker install docs → prefer compose guidance."""
+    try:
+        from zeus_dev_helper_mcp.travel import resolve_travel_docker_guidance
+
+        return resolve_travel_docker_guidance(cfg)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def smoke_test_agent(
     cfg: HelperConfig,
     *,
     question: str = "In one short sentence, what data is available in this scope?",
     update_checklist: bool = True,
 ) -> dict[str, Any]:
-    """One ZeusRuntime run_turn if kotenai-zeus-client >= 2.3.0 is installed."""
+    """One ZeusRuntime run_turn if kotenai-zeus-client >= 2.3.0 is installed.
+
+    When the client package is missing and demo_travel_sample documents Docker install,
+    return guide-only Docker compose next_action instead of only pip install.
+    """
     try:
         import asyncio
 
@@ -244,28 +272,62 @@ def smoke_test_agent(
         from zeus_client.adapters.zeus_http.catalog_remote import HttpxCatalogRemote
         from zeus_client.config.loader import config_from_mapping
     except ImportError:
+        docker = _docker_guidance_for_agent(cfg)
+        if docker:
+            return {
+                "ok": False,
+                "failure_class": None,
+                "implemented": True,
+                "install_path": "docker",
+                "sample": docker.get("sample") or "travel",
+                "local_dir": docker.get("local_dir"),
+                "docker": {
+                    "has_compose": docker.get("has_compose"),
+                    "has_dockerfile": docker.get("has_dockerfile"),
+                    "readme_signals": docker.get("readme_signals"),
+                    "recommended": docker.get("recommended"),
+                    "host_port": docker.get("host_port"),
+                    "compose_file": docker.get("compose_file"),
+                },
+                "next_action": docker.get("next_action") or _pip_agent_next_action(),
+                "docs": _agent_docs(),
+            }
         return {
             "ok": False,
             "failure_class": None,
             "implemented": True,
-            "next_action": (
-                "pip install 'kotenai-zeus-client>=2.3.0' (or zeus-dev-helper-mcp[agent]) "
-                "and configure LLM + Zeus, then retry smoke_test_agent"
-            ),
-            "docs": {
-                "using": docs_url("zeus-client/using-zeus-client.md"),
-                "recipe_01": docs_url("zeus-client/recipes/01-minimal-qa.md"),
-            },
+            "install_path": "pip",
+            "next_action": _pip_agent_next_action(),
+            "docs": _agent_docs(),
         }
 
     if not cfg.has_llm_key and not any(
         os.environ.get(k) for k in ("LLM_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY")
     ):
-        return {
+        docker = _docker_guidance_for_agent(cfg)
+        next_action = "Set LLM_API_KEY (or provider key) for the agent smoke"
+        out: dict[str, Any] = {
             "ok": False,
             "failure_class": "llm_key_missing",
-            "next_action": "Set LLM_API_KEY (or provider key) for the agent smoke",
+            "next_action": next_action,
+            "docs": _agent_docs(),
         }
+        if docker:
+            out["install_path"] = "docker"
+            out["sample"] = docker.get("sample") or "travel"
+            out["local_dir"] = docker.get("local_dir")
+            out["docker"] = {
+                "has_compose": docker.get("has_compose"),
+                "has_dockerfile": docker.get("has_dockerfile"),
+                "readme_signals": docker.get("readme_signals"),
+                "recommended": docker.get("recommended"),
+                "host_port": docker.get("host_port"),
+            }
+            out["next_action"] = (
+                f"{next_action}. Alternate (demo_travel_sample Docker path): "
+                f"{docker.get('next_action')}"
+            )
+        return out
 
     base = _base(cfg)
     if not base:

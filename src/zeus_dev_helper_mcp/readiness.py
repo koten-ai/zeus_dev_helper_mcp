@@ -437,7 +437,12 @@ def run_readiness_check(
                 "pass" if n else "fail",
                 failure_class="empty_tool_catalog" if not n else None,
                 detail=f"{n} modes available",
-                next_action="" if n else "Set ZEUS_CHAT_REQUEST_DIR or GITHUB_TOKEN",
+                next_action=""
+                if n
+                else (
+                    "Helper clones public zeus_chat_request when ZEUS_CHAT_REQUEST_DIR "
+                    "is unset; fix git/network or set ZEUS_CHAT_REQUEST_DIR / GITHUB_TOKEN"
+                ),
             )
         )
     except Exception as e:  # noqa: BLE001
@@ -448,7 +453,10 @@ def run_readiness_check(
                 "fail",
                 failure_class="empty_tool_catalog",
                 detail=str(e),
-                next_action="Clone zeus_chat_request and set ZEUS_CHAT_REQUEST_DIR",
+                next_action=(
+                    "Helper clones public zeus_chat_request when ZEUS_CHAT_REQUEST_DIR "
+                    "is unset; fix git/network or set the env / GITHUB_TOKEN"
+                ),
             )
         )
 

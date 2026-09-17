@@ -158,6 +158,7 @@ def test_prompts_list_and_get() -> None:
     server = create_mcp_server(["core"])
     prompts = {p.name for p in _run(server.list_prompts())}
     assert prompts >= {"first_green", "smoke_question", "support_pack"}
+    assert "integrate_existing" not in prompts
     got = _run(server.get_prompt("first_green", {}))
     messages = getattr(got, "messages", None) or []
     text = json.dumps(got.model_dump() if hasattr(got, "model_dump") else str(got))

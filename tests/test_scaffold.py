@@ -72,6 +72,77 @@ def test_use_sample_travel(tmp_path: Path) -> None:
     out = use_sample(cfg, "travel")
     assert out["ok"] is True
     assert "demo_travel_sample" in out["sample"]["repo"]
+    assert out.get("app_kind") == "ui"
+
+
+def test_use_sample_api_redirects_to_scaffold(tmp_path: Path) -> None:
+    cfg = HelperConfig(state_dir=tmp_path / "state")
+    out = use_sample(cfg, "api")
+    assert out["ok"] is False
+    assert out["app_kind"] == "api"
+    assert "scaffold_app" in (out.get("next_action") or "")
+
+
+def test_scaffold_api_fastapi(tmp_path: Path) -> None:
+    cfg = HelperConfig(
+        zeus_url="http://localhost:8080",
+        default_bucket="travel-sample",
+        default_scope="_default",
+        state_dir=tmp_path / "state",
+    )
+    out = scaffold_app(
+        cfg,
+        str(tmp_path / "api_app"),
+        project_name="zeus_first_api",
+        app_kind="api",
+        coding_language="python",
+    )
+    assert out["ok"] is True
+    assert out["app_kind"] == "api"
+    assert out["coding_language"] == "python"
+    root = Path(out["target_dir"])
+    main = (root / "main.py").read_text()
+    reqs = (root / "requirements.txt").read_text()
+    meta = (root / "scaffold_meta.json").read_text()
+    assert "FastAPI" in main
+    assert "POST" in main or "/turn" in main
+    assert "run_turn" in main
+    assert "ZeusRuntime" in main
+    assert "run_agent" not in main
+    assert "fastapi" in reqs
+    assert "uvicorn" in reqs
+    assert '"app_kind": "api"' in meta
+    assert "ZEUS_PASSWORD=" not in main
+    assert "password_env" not in main
+
+
+def test_scaffold_rejects_unsupported_coding_language(tmp_path: Path) -> None:
+    cfg = HelperConfig(state_dir=tmp_path / "state")
+    out = scaffold_app(
+        cfg,
+        str(tmp_path / "go_app"),
+        app_kind="api",
+        coding_language="golang",
+    )
+    assert out["ok"] is False
+    assert out["failure_class"] == "unsupported_coding_language"
+    assert not (tmp_path / "go_app" / "main.py").exists()
+
+
+def test_start_project_api_track(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    from zeus_dev_helper_mcp.config import reload_config
+    from zeus_dev_helper_mcp.server import start_project
+    from zeus_dev_helper_mcp.walkthrough import enriched_next_step
+
+    out = start_project(sample="api")
+    assert out["started"] is True
+    assert out["track"] == "api"
+    assert out["app_kind"] == "api"
+    cfg = reload_config()
+    nxt = enriched_next_step(cfg)
+    # After start, first open item may be 0.1; force check meta-aware hints on 0.2/3.1
+    assert nxt.get("app_track") == "api"
 
 
 def test_verify_local_setup(tmp_path: Path) -> None:

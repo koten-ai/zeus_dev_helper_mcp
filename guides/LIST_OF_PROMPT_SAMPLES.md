@@ -148,7 +148,7 @@ List V2 min chat_request modes from `zeus_chat_request`.
 
 1. List the V2 min catalog modes available from `zeus_chat_request`.
 2. What chat_request modes can I fetch templates for before we stamp on Hub?
-3. If catalog fetch fails, tell me to set `ZEUS_CHAT_REQUEST_DIR` or `GITHUB_TOKEN` — then list modes.
+3. If catalog fetch fails after auto-clone, tell me to fix git/network or set `ZEUS_CHAT_REQUEST_DIR` / `GITHUB_TOKEN` — then list modes.
 
 ### `fetch_chat_request`
 
@@ -196,19 +196,27 @@ Starter advice-shaped prompts for smoke / demos (not raw SQL).
 
 ### `scaffold_app`
 
-Write a minimal ZeusRuntime middle-man project (`main.py`, `config.json`, requirements, `.env.example`).
+Write a ZeusRuntime middle-man (`cli` or FastAPI `api`). UI demos use `use_sample` instead.
 
 1. Scaffold a first Zeus app into `./zeus_first_app` named `zeus_first_app`. Don't overwrite unless needed.
 2. Create a middle-man project at `/tmp/zeus_first_app` with `force=true` so we can start from a clean tree.
-3. Scaffold the default Zeus first app next to this repo and tell me which files were written.
+3. Bootstrap my first **API** Zeus app into `./zeus_first_api` with `app_kind=api` and `coding_language=python` (FastAPI `POST /turn`).
+4. I asked for a golang API — call `scaffold_app` with `coding_language=golang` and show the unsupported response (do not invent an SDK).
+
+### `start_project` (API vs UI)
+
+1. Start a first-app checklist with the default travel **UI** sample.
+2. Bootstrap an API-only track: `start_project(sample=api)` then show the next step.
+3. I will give ZEUS_URL and say I have credentials in env — `start_project(sample=api)` then `set_prereq` with URL + `has_username`/`has_password` flags only (no password values).
 
 ### `use_sample`
 
-Point at `demo_travel_sample` (or block multi until single-agent green).
+Locate or clone public `demo_travel_sample` (UI default). Sets `DEMO_TRAVEL_SAMPLE_DIR`.
 
-1. Point me at the travel sample. Use `DEMO_TRAVEL_SAMPLE_DIR` if it is already cloned.
-2. I cloned `demo_travel_sample` at `/path/to/demo_travel_sample`. Run `use_sample` with that `sample_dir`.
-3. Can I switch the sample to Yelp/multi now? Use `use_sample` and show the single-agent gate if it blocks.
+1. Bootstrap the travel UI sample — clone it if needed and show where it landed.
+2. Clone the travel sample as directory `my_first_zeus_ui` under my workspace (`project_name=my_first_zeus_ui`).
+3. I already have the sample at `/path/to/demo_travel_sample`. Run `use_sample` with that `sample_dir` (no re-clone).
+4. Can I switch the sample to Yelp/multi now? Use `use_sample` and show the single-agent gate if it blocks.
 
 ### `travel_golden_path`
 
