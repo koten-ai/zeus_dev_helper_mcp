@@ -18,6 +18,42 @@ _RULES: list[tuple[list[str], str, str]] = [
     (["invalid_req_id"], "invalid_req_id", "err-invalid-req-id"),
     (["/v1/session", "v1/session", "v1 session"], "v1_session_removed", "err-v1-session-removed"),
     (["pipeline not on direct", "pipeline_not_on_direct", "not on direct"], "pipeline_not_on_direct", "err-pipeline-not-on-direct"),
+    # ZDM-4 lab failures (must beat generic dispatch_failed / collection needles).
+    (
+        [
+            "session_force_closed",
+            "per-session round budget",
+            "per session round budget",
+            "session exceeded",
+            "round budget",
+            "re-authenticate to continue",
+        ],
+        "session_force_closed",
+        "err-session-force-closed",
+    ),
+    (
+        [
+            "node_ids required",
+            "node ids required",
+            "step_failed",
+            "empty find",
+            "abort_if_empty",
+        ],
+        "empty_find_get",
+        "err-empty-find-get",
+    ),
+    (
+        [
+            "doc_key-only",
+            "doc_key only",
+            "fts doc_key",
+            "empty node_ids",
+            "node_ids=[]",
+            "node_ids\":[]",
+        ],
+        "fts_doc_key_only",
+        "err-fts-doc-key-only",
+    ),
     (["biz:", "fts key", "src_keys as node"], "fts_key_used_as_node_id", "err-fts-key-as-node-id"),
     (["where_not_in_mini_schema", "not in mini-schema", "mini_schema", "$gt", "$gte", "$lt", "$lte"], "where_not_in_mini_schema", "err-where-not-in-mini-schema"),
     (["invent hash", "invented hash", "compute_local", "contract_hash_invent"], "contract_hash_invent_forbidden", "err-contract-hash-invent"),
@@ -111,6 +147,19 @@ _NEXT: dict[str, str] = {
     "contract_hash_invent_forbidden": (
         "Never invent or locally compute production contract_hash; bind from a stamped catalog only."
     ),
+    "session_force_closed": (
+        "Stop probing. Lab no-auth often shares sid=dev (~20 Direct rounds). "
+        "Do not pin X-Zeus-Chat-Session-Id for a catalog UI; use a unique sid or wait for Forget. "
+        "Helper smokes must not burn the shared lab budget."
+    ),
+    "empty_find_get": (
+        "abort_if_empty on find; treat aborted/empty ids as an empty list; never get on empty node_ids. "
+        "Do not send NL sentences as find.query — map known styles to where.style or use FTS fallback."
+    ),
+    "fts_doc_key_only": (
+        "FTS returned items with empty node_ids and doc_key only. Parse doc_key into cards; "
+        "do not get without n_* graph ids."
+    ),
 }
 
 _ANCHOR: dict[str, str] = {
@@ -132,6 +181,9 @@ _ANCHOR: dict[str, str] = {
     "where_not_in_mini_schema": "err-where-not-in-mini-schema",
     "fts_key_used_as_node_id": "err-fts-key-as-node-id",
     "contract_hash_invent_forbidden": "err-contract-hash-invent",
+    "session_force_closed": "err-session-force-closed",
+    "empty_find_get": "err-empty-find-get",
+    "fts_doc_key_only": "err-fts-doc-key-only",
 }
 
 
@@ -239,6 +291,18 @@ def diagnose_error(
             matched = "status"
         elif st == "409":
             failure, anchor = "hash_drift", "err-409-drift"
+            matched = "status"
+        elif st == "429" and any(
+            n in blob
+            for n in (
+                "session_force_closed",
+                "round budget",
+                "per-session",
+                "re-authenticate",
+                "session exceeded",
+            )
+        ):
+            failure, anchor = "session_force_closed", "err-session-force-closed"
             matched = "status"
         elif st == "404" and any(n in blob for n in ("/v1/session", "v1/session", "v1 session", "v1/tools")):
             failure, anchor = "v1_session_removed", "err-v1-session-removed"
