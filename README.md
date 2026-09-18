@@ -196,3 +196,7 @@ pytest -q
 ## MCP Registry
 
 Official registry name: `io.github.koten-ai/zeus-dev-helper`. The registry hosts metadata only; the install artifact is the PyPI package `zeus-dev-helper-mcp`.
+
+## License
+
+BSD-3-Clause — see [LICENSE](LICENSE).

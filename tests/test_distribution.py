@@ -51,3 +51,16 @@ def test_server_json_pypi_package() -> None:
 def test_readme_has_mcp_name_marker() -> None:
     readme = (ROOT / "README.md").read_text()
     assert f"mcp-name: {MCP_NAME}" in readme
+
+
+def test_license_is_bsd_3_clause() -> None:
+    project = _pyproject()["project"]
+    assert project["license"] == "BSD-3-Clause"
+    assert "LICENSE" in project.get("license-files", [])
+    assert "License :: OSI Approved :: BSD License" in project["classifiers"]
+    license_text = (ROOT / "LICENSE").read_text()
+    assert "BSD 3-Clause License" in license_text
+    assert "Copyright (c) 2026, Koten AI" in license_text
+    readme = (ROOT / "README.md").read_text()
+    assert "BSD-3-Clause" in readme
+    assert "[LICENSE](LICENSE)" in readme

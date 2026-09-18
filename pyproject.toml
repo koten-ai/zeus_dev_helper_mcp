@@ -4,18 +4,19 @@ build-backend = "hatchling.build"
 
 [project]
 name = "zeus-dev-helper-mcp"
-version = "0.7.2"
+version = "0.7.3"
 description = "Developer Helper MCP — first Zeus-powered app onboarding coach (ZDH)"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Proprietary" }
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 authors = [{ name = "Koten AI" }]
 keywords = ["mcp", "zeus", "koten", "onboarding", "coach"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Intended Audience :: Developers",
-  "License :: Other/Proprietary License",
+  "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",

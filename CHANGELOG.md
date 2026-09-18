@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.3
+
+### Changed
+- **License** — project is now **BSD-3-Clause** (was proprietary). Aligns with `kotenai-zeus-client` / `demo_travel_sample`. See `LICENSE`, `pyproject.toml`, and README.
+
 ## 0.7.2
 
 ### Added

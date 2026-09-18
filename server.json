@@ -3,7 +3,7 @@
   "name": "io.github.koten-ai/zeus-dev-helper",
   "title": "Zeus Dev Helper",
   "description": "Coach first Zeus Client app to green (stdio MCP).",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "websiteUrl": "https://docs.koten.ai/zeus-client/dev-helper-mcp",
   "repository": {
     "url": "https://github.com/koten-ai/zeus_dev_helper_mcp",
@@ -14,7 +14,7 @@
     {
       "registryType": "pypi",
       "identifier": "zeus-dev-helper-mcp",
-      "version": "0.7.2",
+      "version": "0.7.3",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
