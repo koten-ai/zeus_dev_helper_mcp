@@ -234,9 +234,10 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
 ) -> dict[str, Any]:
-    """UI sample path: locate or clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
+    """UI sample path: travel clone or beer Direct template.
 
-    project_name becomes the clone directory name (default demo_travel_sample).
+    travel: locate/clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
+    beer: write zero-LLM Direct catalog UI (default dir demo_beer_sample).
     For API-only apps use scaffold_app(app_kind=api).
     """
     sample = (sample or "travel").lower().strip()
@@ -274,6 +275,43 @@ def use_sample(
             "checklist_hint": "Mark 3.1 done after clone/scaffold succeeds",
             "sample_readme_snippet": golden.get("sample_readme_snippet"),
         }
+    from zeus_dev_helper_mcp.beer import SAMPLE_BEER, ensure_beer_sample, is_beer_sample
+
+    if is_beer_sample(sample):
+        ensured = ensure_beer_sample(
+            cfg,
+            sample_dir=sample_dir,
+            project_name=project_name,
+            parent_dir=parent_dir,
+        )
+        info = dict(SAMPLE_BEER)
+        info["sample"] = "beer"
+        info["app_kind"] = "ui"
+        info["track"] = "ui-direct"
+        info["llm_required"] = False
+        return {
+            "ok": bool(ensured.get("ok")),
+            "sample": info,
+            "app_kind": "ui",
+            "track": "ui-direct",
+            "llm_required": False,
+            "local_dir": ensured.get("local_dir") or ensured.get("target_dir"),
+            "written": ensured.get("written"),
+            "project_name": ensured.get("project_name"),
+            "layout": ensured.get("layout"),
+            "env": ensured.get("env"),
+            "run": ensured.get("run"),
+            "files": ensured.get("files"),
+            "env_example": ensured.get("env_example"),
+            "error": ensured.get("error"),
+            "next_action": ensured.get("next_action")
+            or (
+                "Set ZEUS_URL in .env (no LLM key), run uvicorn, then smoke_test_zeus. "
+                "smoke_test_agent is not required on this Direct track."
+            ),
+            "checklist_hint": "Mark 3.1 done after the beer Direct UI is on disk",
+            "docs": ensured.get("docs"),
+        }
     if sample in ("api", "rest", "api_only", "api-only"):
         return {
             "ok": False,
@@ -303,7 +341,10 @@ def use_sample(
     return {
         "ok": False,
         "sample": sample,
-        "next_action": "Use sample=travel or scaffold_app for custom domain",
+        "next_action": (
+            "Use sample=travel (LLM UI), sample=beer (Direct catalog UI), "
+            "or scaffold_app for custom domain"
+        ),
     }
 
 

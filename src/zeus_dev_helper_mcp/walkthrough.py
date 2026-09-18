@@ -66,6 +66,10 @@ def _checklist_sample(cfg: HelperConfig) -> str:
         return "api"
     if sample in ("ui", "demo_travel", "demo_travel_sample", "travel_sample"):
         return "travel"
+    from zeus_dev_helper_mcp.beer import is_beer_sample
+
+    if is_beer_sample(sample):
+        return "beer"
     return sample
 
 
@@ -83,7 +87,26 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             "coding_language": "python",
             "note": "UI demos use use_sample; API-only uses scaffold_app(app_kind=api)",
         }
-    base["app_track"] = "api" if sample == "api" else "ui"
+    elif sample == "beer" and item_id in ("0.2", "3.1"):
+        tools = ["use_sample", "write_env", "verify_local_setup"]
+        base["use_sample_args_hint"] = {
+            "sample": "beer",
+            "project_name": "demo_beer_sample",
+            "note": "Zero-LLM Direct catalog UI (find→get); not travel / not smoke_test_agent",
+        }
+    elif sample == "beer" and item_id in ("5.2", "6.1"):
+        # Direct track: agent smoke is not the primary next step
+        tools = ["smoke_test_zeus", "recommend_surface", "diagnose_error"]
+        base["note"] = (
+            "Beer Direct track does not require smoke_test_agent; "
+            "prefer smoke_test_zeus + browser search on the BFF."
+        )
+    if sample == "api":
+        base["app_track"] = "api"
+    elif sample == "beer":
+        base["app_track"] = "ui-direct"
+    else:
+        base["app_track"] = "ui"
     base["recommended_tools"] = tools
     uris = ["zeus-helper://checklist", *RESOURCE_HINTS.get(item_id or "", [])]
     seen: set[str] = set()

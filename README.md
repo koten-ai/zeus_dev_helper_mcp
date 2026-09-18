@@ -119,6 +119,7 @@ doctor → start_project → next_step
 Prefer `next_step` over dumping the full checklist.
 
 - **Default (UI):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`.
+- **Beer / website + no LLM:** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF find→get + static catalog UI; no pipeline; no LLM key; `smoke_test_agent` not required).
 - **API-only:** user asks for an API/REST app → `start_project(sample=api)` → `scaffold_app(app_kind=api, coding_language=python)` (FastAPI `POST /turn` on `kotenai-zeus-client`). Other languages not scaffolded yet.
 - Credentials from chat → process env / gitignored `.env`; `set_prereq` presence flags only.
 - Integrating into an arbitrary existing repo is **out of scope**.
@@ -132,12 +133,12 @@ Live `tools/list` is the call contract. Default surface is **12 tools** (`ZEUS_D
 | Tool | Job |
 | --- | --- |
 | `doctor` | Health. `detail=health\|env\|compat\|cache\|all` (env/compat/cache fold lint-toolset checks) |
-| `start_project` | Init checklist; `sample=travel` (UI default) or `sample=api` |
+| `start_project` | Init checklist; `sample=travel` (UI default), `sample=beer` (Direct), or `sample=api` |
 | `next_step` | Current item plus recommended tools and resource links |
 | `set_prereq` | Store non-secret prereqs (presence flags only for secrets) |
 | `readiness_check` | Live gates: healthz / readyz / version, auth, bootstrap |
 | `scaffold_app` | CLI or FastAPI (`app_kind=cli\|api`) ZeusRuntime app; python only |
-| `use_sample` | Travel UI sample plus golden-path check (or gate other samples) |
+| `use_sample` | Travel UI clone or beer Direct catalog UI template |
 | `bind_contract` | Copy a stamped `contract.hash` only; refuses empty / local compute |
 | `recommend_surface` | Intent → Client surface + do-not list |
 | `smoke_test_zeus` | No LLM: readiness plus a read-only describe |
