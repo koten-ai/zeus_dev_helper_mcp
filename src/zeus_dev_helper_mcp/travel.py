@@ -38,6 +38,81 @@ _HOST_PORT_RE = re.compile(
     r"localhost:(\d{2,5})|ports:\s*\n(?:\s*-\s*[\"']?)(\d{2,5}):",
     re.IGNORECASE,
 )
+# Upstream demo_travel_sample ships monorepo Docker (context: .. + sibling
+# zeus_client_python). Standalone clones need a local-context rewrite.
+_MONOREPO_DOCKER_MARKERS = (
+    "demo_travel_sample/",
+    "zeus_client_python",
+    "file:../zeus_client_python",
+)
+_STANDALONE_CLIENT_DEP = "kotenai-zeus-client>=2.3.0"
+_STANDALONE_DOCKERFILE = """\
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Standalone build: compose context is this app directory (Helper-prepared).
+COPY pyproject.toml requirements.txt LICENSE ./
+COPY src ./src
+COPY data ./data
+COPY config.example.json .
+
+RUN pip install --no-cache-dir -r requirements.txt \\
+    && pip install --no-cache-dir -e .
+
+ENV PORT=5000
+ENV ZEUS_CLIENT_CONFIG_DIR=/app
+ENV ZEUS_CHAT_REQUESTS_DIR=/app/data/chat_requests
+
+EXPOSE 5000
+CMD ["python", "-m", "travel_planner"]
+"""
+_STANDALONE_COMPOSE = """\
+services:
+  travel-planner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: {container_name}
+    ports:
+      - "5050:5000"
+    environment:
+      ENVIRONMENT: dev
+      # Reach Zeus on the host from this container.
+      ZEUS_URL: "http://host.docker.internal:8080"
+      CHAT_LOG_PATH: "/app/data/chats.jsonl"
+      ZEUS_CLIENT_CONFIG_DIR: "/app"
+      ZEUS_CHAT_REQUESTS_DIR: "/app/data/chat_requests"
+      PORT: "5000"
+    volumes:
+      - ./config.json:/app/config.json
+      - ./data:/app/data
+      - ./src/travel_planner/templates:/app/src/travel_planner/templates
+      - ./src/travel_planner/static:/app/src/travel_planner/static
+      - ./src/travel_planner:/app/src/travel_planner
+      - ./data/chat_requests:/app/data/chat_requests
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+"""
+_STANDALONE_DOCKERIGNORE = """\
+__pycache__
+*.pyc
+.git
+.grok
+.venv
+config.json
+.env
+mcps
+terminals
+*.md
+data/chats.jsonl
+data/*.jsonl
+"""
+_PYPROJECT_FILE_DEP_RE = re.compile(
+    r"""["']kotenai-zeus-client\s*@\s*file:\.\./zeus_client_python["']""",
+    re.IGNORECASE,
+)
 
 
 def _travel_state_path(cfg: HelperConfig) -> Path:
@@ -317,6 +392,25 @@ def ensure_travel_sample(
     env_path = set_demo_travel_sample_dir_env(found)
     save_travel_sample_dir(cfg, found)
     layout = validate_travel_layout(found)
+    docker_setup: dict[str, Any] | None = None
+    if layout.get("ok"):
+        # UI bootstrap: make `docker compose up --build` work for standalone clones.
+        docker_setup = prepare_standalone_docker(found)
+    next_action: str
+    if not layout.get("ok"):
+        next_action = (
+            "Clone/path exists but layout looks incomplete — check README / sample_dir"
+        )
+    elif docker_setup and docker_setup.get("prepared"):
+        next_action = (
+            f"DEMO_TRAVEL_SAMPLE_DIR={env_path}. {docker_setup.get('next_action')} "
+            "Continue readiness_check and smokes."
+        )
+    else:
+        next_action = (
+            f"DEMO_TRAVEL_SAMPLE_DIR={env_path}. Continue readiness_check and smokes "
+            "(optional: docker compose up --build for the demo UI)."
+        )
     return {
         "ok": bool(layout.get("ok")),
         "local_dir": str(found),
@@ -324,15 +418,11 @@ def ensure_travel_sample(
         "project_name": found.name,
         "clone": clone_info,
         "layout": layout,
+        "docker_setup": docker_setup,
         "env": {ENV_TRAVEL_DIR: env_path},
         "repo": TRAVEL_REPO,
         "private": False,
-        "next_action": (
-            f"DEMO_TRAVEL_SAMPLE_DIR={env_path}. Continue readiness_check and smokes "
-            "(optional: docker compose up --build for the demo UI)."
-            if layout.get("ok")
-            else "Clone/path exists but layout looks incomplete — check README / sample_dir"
-        ),
+        "next_action": next_action,
     }
 
 
@@ -444,6 +534,192 @@ def detect_docker_install(root: Path | None) -> dict[str, Any]:
     }
 
 
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def monorepo_docker_layout_usable(root: Path) -> bool:
+    """True when parent looks like the koten-ai monorepo Docker expects."""
+    parent = root.parent
+    sibling_client = parent / "zeus_client_python"
+    # Upstream compose: context=parent, dockerfile=demo_travel_sample/Dockerfile
+    dockerfile_via_parent = parent / "demo_travel_sample" / "Dockerfile"
+    local_dockerfile = root / "Dockerfile"
+    return bool(
+        sibling_client.is_dir()
+        and (dockerfile_via_parent.is_file() or (root.name == "demo_travel_sample" and local_dockerfile.is_file()))
+    )
+
+
+def _packaging_has_monorepo_markers(root: Path) -> bool:
+    texts: list[str] = []
+    for name in ("Dockerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml", "pyproject.toml"):
+        p = root / name
+        if p.is_file():
+            texts.append(_read_text(p))
+    blob = "\n".join(texts)
+    return any(marker in blob for marker in _MONOREPO_DOCKER_MARKERS)
+
+
+def _is_standalone_docker_packaging(root: Path) -> bool:
+    dockerfile = root / "Dockerfile"
+    if not dockerfile.is_file():
+        return False
+    text = _read_text(dockerfile)
+    if any(marker in text for marker in _MONOREPO_DOCKER_MARKERS):
+        return False
+    return "COPY pyproject.toml" in text and "WORKDIR /app" in text
+
+
+def needs_standalone_docker_setup(root: Path | None) -> bool:
+    """True when UI sample Docker packaging won't build outside the monorepo."""
+    if root is None or not root.is_dir():
+        return False
+    if monorepo_docker_layout_usable(root):
+        return False
+    if _is_standalone_docker_packaging(root) and not _packaging_has_monorepo_markers(root):
+        return False
+    # Only rewrite upstream monorepo packaging — do not invent Docker for plain trees.
+    return _packaging_has_monorepo_markers(root)
+
+
+def _rewrite_pyproject_client_dep(root: Path) -> bool:
+    path = root / "pyproject.toml"
+    if not path.is_file():
+        return False
+    text = _read_text(path)
+    new_text, n = _PYPROJECT_FILE_DEP_RE.subn(f'"{_STANDALONE_CLIENT_DEP}"', text)
+    if n == 0 and "file:../zeus_client_python" in text:
+        new_text = text.replace(
+            "kotenai-zeus-client @ file:../zeus_client_python",
+            _STANDALONE_CLIENT_DEP,
+        )
+        if new_text == text:
+            return False
+    elif n == 0:
+        return False
+    path.write_text(new_text, encoding="utf-8")
+    return True
+
+
+def _rewrite_dockerignore(root: Path) -> bool:
+    path = root / ".dockerignore"
+    existing = _read_text(path) if path.is_file() else ""
+    # Bare `data` excludes stamped chat_requests from the image build context.
+    lines = [ln.strip() for ln in existing.splitlines() if ln.strip()]
+    if "data" in lines or not path.is_file():
+        path.write_text(_STANDALONE_DOCKERIGNORE, encoding="utf-8")
+        return True
+    return False
+
+
+def prepare_standalone_docker(root: Path, *, force: bool = False) -> dict[str, Any]:
+    """Rewrite travel-sample Docker packaging for a standalone clone.
+
+    Upstream demo_travel_sample assumes compose ``context: ..`` and a sibling
+    ``zeus_client_python``. When the sample is cloned outside that monorepo
+    (typical Helper ``use_sample`` / ``project_name`` path), rewrite Dockerfile,
+    compose, pyproject client dep, and ``.dockerignore`` so
+    ``docker compose up --build`` works. Does not run Docker.
+    """
+    root = root.expanduser().resolve()
+    if not root.is_dir():
+        return {
+            "ok": False,
+            "prepared": False,
+            "local_dir": str(root),
+            "reason": "missing_dir",
+            "next_action": "Clone or set sample_dir to a travel UI sample root",
+            "files_written": [],
+        }
+
+    if monorepo_docker_layout_usable(root) and not force:
+        return {
+            "ok": True,
+            "prepared": False,
+            "skipped": "monorepo_layout",
+            "local_dir": str(root),
+            "reason": "monorepo_docker_usable",
+            "next_action": (
+                f"Monorepo Docker layout detected — from {root} run "
+                "`docker compose up --build` (parent must contain zeus_client_python)."
+            ),
+            "files_written": [],
+        }
+
+    if _is_standalone_docker_packaging(root) and not _packaging_has_monorepo_markers(root) and not force:
+        return {
+            "ok": True,
+            "prepared": False,
+            "skipped": "already_standalone",
+            "local_dir": str(root),
+            "reason": "already_standalone",
+            "next_action": docker_install_next_action(root),
+            "files_written": [],
+        }
+
+    if not force and not needs_standalone_docker_setup(root):
+        return {
+            "ok": True,
+            "prepared": False,
+            "skipped": "not_needed",
+            "local_dir": str(root),
+            "reason": "not_needed",
+            "next_action": docker_install_next_action(root) if detect_docker_install(root).get("ok") else "",
+            "files_written": [],
+        }
+
+    written: list[str] = []
+    container_name = sanitize_travel_dir_name(root.name)
+    if container_name == DEFAULT_TRAVEL_DIR_NAME:
+        container_name = "travel-planner"
+
+    # Prefer docker-compose.yml name used by the upstream sample.
+    compose_path = root / "docker-compose.yml"
+    existing_compose = _compose_file(root)
+    if existing_compose is not None and existing_compose.name != "docker-compose.yml":
+        compose_path = existing_compose
+
+    (root / "Dockerfile").write_text(_STANDALONE_DOCKERFILE, encoding="utf-8")
+    written.append("Dockerfile")
+    compose_path.write_text(
+        _STANDALONE_COMPOSE.format(container_name=container_name),
+        encoding="utf-8",
+    )
+    written.append(compose_path.name)
+
+    if _rewrite_pyproject_client_dep(root):
+        written.append("pyproject.toml")
+    if _rewrite_dockerignore(root):
+        written.append(".dockerignore")
+
+    # Ensure LICENSE exists for Dockerfile COPY (upstream has it; keep soft).
+    if not (root / "LICENSE").is_file() and (root / "LICENSE.md").is_file():
+        pass  # Dockerfile expects LICENSE; leave as-is — build will fail loudly
+
+    host_port = 5050
+    next_action = (
+        f"Standalone Docker packaging prepared in {root}. "
+        "cp config.example.json config.json; set llm_provider.api_key "
+        f"(zeus.url may stay localhost — Compose sets ZEUS_URL=host.docker.internal:8080); "
+        f"then `docker compose up --build` and open http://localhost:{host_port}."
+    )
+    return {
+        "ok": True,
+        "prepared": True,
+        "local_dir": str(root),
+        "reason": "rewrote_monorepo_docker",
+        "container_name": container_name,
+        "client_dep": _STANDALONE_CLIENT_DEP,
+        "files_written": written,
+        "next_action": next_action,
+        "host_port": host_port,
+    }
+
+
 def resolve_travel_docker_guidance(
     cfg: HelperConfig | None = None,
     *,
@@ -485,6 +761,7 @@ def travel_golden_path(
     root = Path(root_s) if root_s else None
     layout = ensured.get("layout") or (validate_travel_layout(root) if root else None)
     docker = detect_docker_install(root) if root else None
+    docker_setup = ensured.get("docker_setup")
 
     phase5 = (
         "smoke_test_zeus then docker compose up --build (demo UI) "
@@ -532,6 +809,12 @@ def travel_golden_path(
         next_action = ensured.get("next_action") or (
             "Clone failed — fix git/network or scaffold_app for a minimal path without the demo UI."
         )
+    elif root and docker_setup and docker_setup.get("prepared"):
+        next_action = (
+            "Standalone Docker packaging prepared for this UI clone — "
+            f"{docker_setup.get('next_action')}; "
+            "continue readiness_check and smokes with travel scope env."
+        )
     elif root and docker and docker.get("ok"):
         next_action = (
             "Layout found with Docker install docs — "
@@ -557,6 +840,7 @@ def travel_golden_path(
         "local_dir": str(root) if root else None,
         "layout": layout,
         "docker": docker,
+        "docker_setup": docker_setup,
         "ensure": ensured,
         "env": {
             ENV_TRAVEL_DIR: env_path,

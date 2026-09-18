@@ -263,6 +263,8 @@ def use_sample(
             "cloned": golden.get("cloned"),
             "project_name": golden.get("project_name"),
             "layout": golden.get("layout"),
+            "docker": golden.get("docker"),
+            "docker_setup": golden.get("docker_setup"),
             "env": golden.get("env"),
             "next_action": golden.get("next_action")
             or (

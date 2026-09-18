@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.2
+
+### Added
+- **UI Docker standalone prep** — `use_sample` / `ensure_travel_sample` / `travel_golden_path` detect when `demo_travel_sample` Docker packaging assumes the monorepo (`context: ..`, `demo_travel_sample/Dockerfile`, sibling `zeus_client_python`) and the clone is outside that layout. Helper rewrites `Dockerfile`, `docker-compose.yml`, `pyproject.toml` (PyPI `kotenai-zeus-client>=2.3.0`), and `.dockerignore` so `docker compose up --build` works. Skips when monorepo siblings are present or packaging is already standalone. Still does **not** execute Docker.
+
+### Notes
+- Fixes the bootstrap failure `lstat .../demo_travel_sample: no such file or directory` when cloning the UI sample into a project directory (e.g. `demos/my-first-zeus-app`).
+
 ## 0.7.1
 
 ### Added
