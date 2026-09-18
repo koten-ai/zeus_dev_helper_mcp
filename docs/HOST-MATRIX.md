@@ -23,6 +23,10 @@ Local only: tool **ids** in `helper_metrics` / `metrics.jsonl`. No prompts, bodi
 
 **Re-measure after** coach + `use_sample(sample=beer)` land (ZDM-3 / ZDM-6 / ZDM-2). Record time-to-green here when the utterance first-greens on the Helper path.
 
+### Coach compliance (Grok / Claude)
+
+After `doctor`, if the user named a URL or sample: **`set_prereq` with the user’s URL/bucket/scope → `start_project` → `next_step`**. Do not skip to grepping Zeus docs/API or curling verbs by hand until `readiness_check` / `smoke_test_zeus` (or `next_step`) say so. Call `recommend_surface` before Travel LLM vs Direct UI vs FastAPI. If `has_llm_key=false`, do not offer `smoke_test_agent` / travel as the only path.
+
 ## Current demo (Grok, 2026-09-15)
 
 App: Helper `scaffold_app` tree **`demos/travelapp`**. Engine Zeus **0.8.31** public `:8080`. Scope `travel-sample/_default`, mode `analytics`. Client **`kotenai-zeus-client==2.4.1`** from **PyPI** (`requirements.txt` / `pyproject.toml`; wheel `kotenai_zeus_client-2.4.1-py3-none-any.whl`). 5.2 verb-proof **re-smoked on 2.4.1**.
