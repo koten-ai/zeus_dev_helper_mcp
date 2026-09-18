@@ -163,6 +163,9 @@ def test_prompts_list_and_get() -> None:
     messages = getattr(got, "messages", None) or []
     text = json.dumps(got.model_dump() if hasattr(got, "model_dump") else str(got))
     assert "8080" in text or (messages and "8080" in str(messages))
+    blob = text + str(messages)
+    assert "beer-sample" in blob or "Application-user" in blob
+    assert "use_sample(sample=beer)" in blob or "Direct/beer" in blob
     smoke = _run(server.get_prompt("smoke_question", {"question": "What entities exist?"}))
     smoke_text = json.dumps(smoke.model_dump() if hasattr(smoke, "model_dump") else str(smoke))
     assert "entities" in smoke_text.lower() or "smoke_test_agent" in smoke_text

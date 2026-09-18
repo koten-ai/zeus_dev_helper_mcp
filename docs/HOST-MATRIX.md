@@ -10,6 +10,19 @@ Local only: tool **ids** in `helper_metrics` / `metrics.jsonl`. No prompts, bodi
 | Claude Code / Desktop | `mcpServers` JSON, `uvx` / venv python | | Unmeasured |
 | Cursor | MCP stdio entry, same env | | Unmeasured |
 
+## Application-user beer utterance (Grok Build, 2026-09-18)
+
+**Utterance (paraphrased):** Zeus at `http://192.168.0.219:8080`, beer-sample enabled — make a sample website from the endpoint (no Helper tool names, no LLM requirement).
+
+| Field | Result |
+| --- | --- |
+| Outcome | Working Direct catalog UI hand-rolled (~22 min to first paint); Helper coach path mostly skipped |
+| Helper tools used | `doctor` once (`detail=health`); **not** `start_project`, `set_prereq`, `next_step`, `recommend_surface`, `use_sample`, `smoke_test_zeus`, `diagnose_error` |
+| Miss | Agent grepped Zeus docs/API and curled verbs; travel default would have been wrong (LLM + other bucket); **no beer Direct UI slot** in Helper yet |
+| Epic | [ZDM-1](https://kotenai.atlassian.net/browse/ZDM-1) · prompts [ZDM-5](https://kotenai.atlassian.net/browse/ZDM-5) · design [`DESIGN-zdm-1-beer-first-green.md`](DESIGN-zdm-1-beer-first-green.md) |
+
+**Re-measure after** coach + `use_sample(sample=beer)` land (ZDM-3 / ZDM-6 / ZDM-2). Record time-to-green here when the utterance first-greens on the Helper path.
+
 ## Current demo (Grok, 2026-09-15)
 
 App: Helper `scaffold_app` tree **`demos/travelapp`**. Engine Zeus **0.8.31** public `:8080`. Scope `travel-sample/_default`, mode `analytics`. Client **`kotenai-zeus-client==2.4.1`** from **PyPI** (`requirements.txt` / `pyproject.toml`; wheel `kotenai_zeus_client-2.4.1-py3-none-any.whl`). 5.2 verb-proof **re-smoked on 2.4.1**.

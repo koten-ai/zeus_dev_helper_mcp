@@ -20,6 +20,7 @@ Hard constraints:
 App kind (important):
 - Default when the user does not say API vs UI: **UI** → start_project(sample=travel) → use_sample (clones public demo_travel_sample when missing; optional project_name for the clone directory; sets DEMO_TRAVEL_SAMPLE_DIR).
 - If the user asks for an **API** / REST / FastAPI Zeus app: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python). Output is a FastAPI app (GET /healthz, POST /turn) on kotenai-zeus-client (zeus_client_python).
+- Application-user class (zero Zeus vocabulary): “I have Zeus at HOST:8080 and beer-sample enabled — make a sample website” (or “don’t use an LLM / show cards”). Prefer Direct/beer catalog UI over travel. Call set_prereq with the user’s URL + bucket=beer-sample + scope=_default + has_llm_key=false when they said no LLM. Do not clone travel and do not require an LLM key for first paint. Intended disk path: use_sample(sample=beer) once available; until then stay on doctor → set_prereq → start_project → next_step → readiness_check / smoke_test_zeus / recommend_surface(needs_llm=false).
 - coding_language other than python (golang, node, …): do not invent scaffolds — report unsupported and keep python or the UI sample.
 
 Order:
