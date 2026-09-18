@@ -83,6 +83,29 @@ def test_use_sample_api_redirects_to_scaffold(tmp_path: Path) -> None:
     assert "scaffold_app" in (out.get("next_action") or "")
 
 
+def test_use_sample_beer_direct(tmp_path: Path) -> None:
+    cfg = HelperConfig(
+        zeus_url="http://localhost:8080",
+        default_bucket="beer-sample",
+        state_dir=tmp_path / "state",
+    )
+    out = use_sample(
+        cfg,
+        sample="beer",
+        project_name="demo_beer_sample",
+        parent_dir=str(tmp_path),
+    )
+    assert out["ok"] is True
+    assert out.get("app_kind") == "ui"
+    assert out.get("track") == "ui-direct"
+    root = Path(out["local_dir"])
+    assert (root / "main.py").is_file()
+    main = (root / "main.py").read_text()
+    assert "/pipeline" not in main
+    assert '"pipeline"' not in main
+    assert "abort_if_empty" in main
+
+
 def test_scaffold_api_fastapi(tmp_path: Path) -> None:
     cfg = HelperConfig(
         zeus_url="http://localhost:8080",

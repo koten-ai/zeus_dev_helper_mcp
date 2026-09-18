@@ -20,19 +20,19 @@ Hard constraints:
 App kind (important):
 - Default when the user does not say API vs UI: **UI** → start_project(sample=travel) → use_sample (clones public demo_travel_sample when missing; optional project_name for the clone directory; sets DEMO_TRAVEL_SAMPLE_DIR).
 - If the user asks for an **API** / REST / FastAPI Zeus app: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python). Output is a FastAPI app (GET /healthz, POST /turn) on kotenai-zeus-client (zeus_client_python).
-- Application-user class (zero Zeus vocabulary): “I have Zeus at HOST:8080 and beer-sample enabled — make a sample website” (or “don’t use an LLM / show cards”). Prefer Direct/beer catalog UI over travel. Call set_prereq with the user’s URL + bucket=beer-sample + scope=_default + has_llm_key=false when they said no LLM. Do not clone travel and do not require an LLM key for first paint. Intended disk path: use_sample(sample=beer) once available; until then stay on doctor → set_prereq → start_project → next_step → readiness_check / smoke_test_zeus / recommend_surface(needs_llm=false).
+- Application-user class (zero Zeus vocabulary): “I have Zeus at HOST:8080 and beer-sample enabled — make a sample website” (or “don’t use an LLM / show cards”). Prefer Direct/beer catalog UI over travel. Call set_prereq with the user’s URL + bucket=beer-sample + scope=_default + has_llm_key=false when they said no LLM. Do not clone travel and do not require an LLM key for first paint. Disk path: start_project(sample=beer) → use_sample(sample=beer) writes demo_beer_sample (FastAPI BFF find→get + static; no pipeline).
 - coding_language other than python (golang, node, …): do not invent scaffolds — report unsupported and keep python or the UI sample.
 
 Order:
 1. doctor
 2. If the user gave a Zeus URL and/or sample/bucket name: call set_prereq with those values first (zeus_url from the user sentence — not Helper’s default localhost; bucket/scope; has_llm_key true/false). Do not explore the Zeus source tree or hand-roll curl OpenAPI for first green.
-3. start_project — sample=travel (default UI), sample=api (API-only), or beer/Direct when the user named beer-sample / website + no LLM
+3. start_project — sample=travel (default UI), sample=api (API-only), or sample=beer when the user named beer-sample / website + no LLM
 4. next_step — then only the recommended tool
 5. validate_env / readiness_check / recommend_surface as next_step directs
 6. Read zeus-helper://checklist and zeus-helper://glossary/{topic} / verbs/* instead of dumping encyclopedia tools or grepping Zeus docs
 7. bind_contract from a Hub-stamped catalog when on the agent path (never compute_local). Direct catalog UI does not need an invented hash for first paint.
 8. use_sample (UI travel or beer Direct) OR scaffold_app(app_kind=api) (API) OR scaffold_app(app_kind=cli) as fallback
-9. smoke_test_zeus; smoke_test_agent only when an LLM key exists and the surface is agent — if has_llm_key=false, stay on Direct and do not treat travel + smoke_test_agent as the only path
+9. smoke_test_zeus; smoke_test_agent only when an LLM key exists and the surface is agent — if has_llm_key=false / sample=beer, stay on Direct and do not treat travel + smoke_test_agent as the only path
 
 Prefer next_step over get_checklist. Knowledge lives on zeus-helper:// resources. After 5.1+5.2 green, data-plane and multi-agent are handoffs only.
 """

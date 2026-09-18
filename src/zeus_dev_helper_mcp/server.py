@@ -136,6 +136,8 @@ INSTRUCTIONS = (
     "scaffold_app / smoke_test_agent emit ZeusRuntime + run_turn, not V1 ZeusClient / run_agent. "
     "Bootstrap default is UI: use_sample clones public demo_travel_sample when missing "
     "and sets DEMO_TRAVEL_SAMPLE_DIR (optional project_name for the clone directory). "
+    "Beer / website + no LLM: start_project(sample=beer) → use_sample(sample=beer) writes "
+    "demo_beer_sample Direct catalog UI (find→get, no pipeline, no LLM key). "
     "API-only: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python) "
     "(FastAPI POST /turn). Other coding languages are not scaffolded yet. "
     "Never pass username/password/token into MCP tools — env + set_prereq presence flags only. "
@@ -250,6 +252,7 @@ def start_project(
 
     sample:
       - travel (default) — UI path via demo_travel_sample / use_sample
+      - beer — zero-LLM Direct catalog UI (use_sample sample=beer)
       - api — API-only FastAPI scaffold (scaffold_app app_kind=api)
       - yelp / multi — gated until single-agent smokes green unless force_multi
 
@@ -262,6 +265,11 @@ def start_project(
     if sample_l in ("ui", "demo_travel", "demo_travel_sample", "travel_sample"):
         sample_l = "travel"
         sample = "travel"
+    from zeus_dev_helper_mcp.beer import is_beer_sample
+
+    if is_beer_sample(sample_l):
+        sample_l = "beer"
+        sample = "beer"
     if sample_l in ("rest", "api_only", "api-only"):
         sample_l = "api"
         sample = "api"
@@ -334,6 +342,22 @@ def start_project(
             "bind_contract",
             "smoke_test_zeus",
             "smoke_test_agent",
+        ]
+    elif sample_l == "beer":
+        out["track"] = "ui-direct"
+        out["app_kind"] = "ui"
+        out["llm_required"] = False
+        out["note"] = (
+            "Beer Direct track (zero LLM): after prereqs/readiness, "
+            "use_sample(sample=beer) writes demo_beer_sample (find→get BFF + static). "
+            "smoke_test_agent is not required on this track."
+        )
+        out["recommended_tools"] = [
+            "set_prereq",
+            "readiness_check",
+            "use_sample",
+            "smoke_test_zeus",
+            "recommend_surface",
         ]
     elif wants_multi:
         out["track"] = "multi-agent"
@@ -612,9 +636,11 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
 ) -> dict[str, Any]:
-    """UI sample: locate or clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
+    """UI sample: travel clone or beer Direct template.
 
-    project_name = clone directory name (default demo_travel_sample).
+    sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
+    sample=beer — write demo_beer_sample Direct catalog UI (no LLM; find→get).
+    project_name = directory name (defaults: demo_travel_sample / demo_beer_sample).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     """
     return use_sample_impl(

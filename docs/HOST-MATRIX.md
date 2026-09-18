@@ -18,7 +18,7 @@ Local only: tool **ids** in `helper_metrics` / `metrics.jsonl`. No prompts, bodi
 | --- | --- |
 | Outcome | Working Direct catalog UI hand-rolled (~22 min to first paint); Helper coach path mostly skipped |
 | Helper tools used | `doctor` once (`detail=health`); **not** `start_project`, `set_prereq`, `next_step`, `recommend_surface`, `use_sample`, `smoke_test_zeus`, `diagnose_error` |
-| Miss | Agent grepped Zeus docs/API and curled verbs; travel default would have been wrong (LLM + other bucket); **no beer Direct UI slot** in Helper yet |
+| Miss (pre-ZDM-6) | Agent grepped Zeus docs/API and curled verbs; travel default would have been wrong (LLM + other bucket); beer Direct UI slot now lands via `use_sample(sample=beer)` |
 | Epic | [ZDM-1](https://kotenai.atlassian.net/browse/ZDM-1) · prompts [ZDM-5](https://kotenai.atlassian.net/browse/ZDM-5) · design [`DESIGN-zdm-1-beer-first-green.md`](DESIGN-zdm-1-beer-first-green.md) |
 
 **Re-measure after** coach + `use_sample(sample=beer)` land (ZDM-3 / ZDM-6 / ZDM-2). Record time-to-green here when the utterance first-greens on the Helper path.

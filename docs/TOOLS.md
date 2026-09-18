@@ -50,7 +50,7 @@ If the user already gave a Zeus URL or sample name, call `set_prereq` with **tho
 | User intent | `start_project` | Project on disk |
 | --- | --- | --- |
 | Unspecified / UI / “show me the app” (**default**) | `sample=travel` | `use_sample` → **`demo_travel_sample`** (full UI) |
-| Website + beer-sample / no LLM | `sample=beer` (when shipped) | `use_sample(sample=beer)` Direct catalog UI |
+| Website + beer-sample / no LLM | `sample=beer` | `use_sample(sample=beer)` → **`demo_beer_sample`** Direct catalog UI (find→get, no pipeline) |
 | “API” / REST / FastAPI | `sample=api` | `scaffold_app(app_kind=api, coding_language=python)` |
 | Minimal CLI fallback | (travel unavailable) | `scaffold_app(app_kind=cli)` |
 
@@ -79,7 +79,7 @@ Resources (not default tools): `zeus-helper://checklist` / `glossary/{topic}` / 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
 | `doctor` | Version, public config (no secrets), catalog reachability | — | `catalog` | First call. Then `start_project`. |
-| `start_project` | Init or reset the first-app checklist | `goal=single-agent`, `sample=travel\|api`, `force_multi=false` | `state` | After doctor. Default **`travel`** (UI). `sample=api` → API track. Then `set_prereq`. Never turns semantic cache on. Multi / `sample=yelp` gated until 5.1+5.2 unless `force_multi`. |
+| `start_project` | Init or reset the first-app checklist | `goal=single-agent`, `sample=travel\|beer\|api`, `force_multi=false` | `state` | After doctor. Default **`travel`** (UI). `sample=beer` → Direct/`ui-direct` (no LLM). `sample=api` → API track. Then `set_prereq`. Never turns semantic cache on. Multi / `sample=yelp` gated until 5.1+5.2 unless `force_multi`. |
 | `helper_metrics` | Local time-to-green (never leaves the machine) | — | none (reads `state`) | Anytime. Events are recorded on start / smoke green. |
 
 **Do not:** treat `doctor` as a Zeus cluster health check (`readiness_check` does that). Do not pass passwords into `start_project`.
@@ -137,7 +137,7 @@ Prefer a **live Zeus stamp**. `zeus_chat_request` is min templates only.
 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
-| `use_sample` | Locate or **clone** public `demo_travel_sample`; set `DEMO_TRAVEL_SAMPLE_DIR`; prepare standalone Docker when monorepo Compose would fail | `sample=travel`, optional `sample_dir`, `project_name` (clone dir name), `parent_dir`, `clone_if_missing=true` | `state` + process env + may rewrite Docker files in the sample dir | Default UI path. Clones when no local path; `project_name` defaults to `demo_travel_sample`. Outside the monorepo, rewrites `Dockerfile` / compose / `pyproject.toml` / `.dockerignore` for `docker compose up --build`. Yelp/multi → `handoff_to_multi` gate. |
+| `use_sample` | Travel: locate or **clone** public `demo_travel_sample`; set `DEMO_TRAVEL_SAMPLE_DIR`; prepare standalone Docker when needed. Beer: **write** `demo_beer_sample` Direct UI (FastAPI BFF find→get + static; no pipeline; no LLM) | `sample=travel\|beer`, optional `sample_dir`, `project_name` (dir name), `parent_dir`, `clone_if_missing=true` (travel) | `state` + process env + disk (beer write / travel Docker rewrite) | Default UI path is travel. `sample=beer` defaults `project_name=demo_beer_sample`. Existing non-empty dir must look like the beer sample or fails. Yelp/multi → `handoff_to_multi` gate. |
 | `travel_golden_path` | Same ensure/clone + golden-path phases | same as `use_sample` travel args | `state` + env if layout ok (marks 0.2 / 3.1) | Same track as `use_sample` for travel. Then readiness + smokes with the sample’s bucket/scope. |
 | `scaffold_app` | ZeusRuntime middle-man on disk | `target_dir`, `project_name`, `force=false`, `app_kind=cli\|api`, `coding_language=python` | `disk`, `state` | **`api`**: FastAPI `GET /healthz` + `POST /turn`. **`cli`**: one-shot `main.py`. Only **python** / `kotenai-zeus-client` today; other languages → `unsupported_coding_language`. UI demos use `use_sample`, not this tool. |
 | `write_env` | Write `.env.example` from prereqs | `target_dir` | `disk` | After scaffold/sample. Never writes secret values. |
