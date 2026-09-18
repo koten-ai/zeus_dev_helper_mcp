@@ -261,11 +261,13 @@ def start_project(
     """
     cfg = _cfg()
     goal_l = (goal or "single-agent").lower().strip()
-    sample_l = (sample or "travel").lower().strip()
+    sample_raw = (sample or "travel").lower().strip()
+    sample_l = sample_raw
     if sample_l in ("ui", "demo_travel", "demo_travel_sample", "travel_sample"):
         sample_l = "travel"
         sample = "travel"
-    from zeus_dev_helper_mcp.beer import is_beer_sample
+    from zeus_dev_helper_mcp.beer import is_beer_sample, prereqs_prefer_beer_direct
+    from zeus_dev_helper_mcp.prereqs import load_prereqs
 
     if is_beer_sample(sample_l):
         sample_l = "beer"
@@ -273,6 +275,14 @@ def start_project(
     if sample_l in ("rest", "api_only", "api-only"):
         sample_l = "api"
         sample = "api"
+    # Named beer bucket + has_llm_key=false wins over default travel (ZDM-2).
+    rerouted_from_travel = False
+    if sample_l == "travel":
+        prefs = load_prereqs(cfg)
+        if prereqs_prefer_beer_direct(prefs) and prefs.get("has_llm_key") is False:
+            sample_l = "beer"
+            sample = "beer"
+            rerouted_from_travel = True
     wants_multi = goal_l in ("multi", "multi-agent", "multi_agent") or sample_l in (
         "yelp",
         "multi",
@@ -352,6 +362,12 @@ def start_project(
             "use_sample(sample=beer) writes demo_beer_sample (find→get BFF + static). "
             "smoke_test_agent is not required on this track."
         )
+        if rerouted_from_travel:
+            out["note"] = (
+                "Rerouted from default travel: prereqs have beer-sample + has_llm_key=false. "
+                + out["note"]
+            )
+            out["rerouted_from"] = "travel"
         out["recommended_tools"] = [
             "set_prereq",
             "readiness_check",
@@ -369,6 +385,14 @@ def start_project(
         out["note"] = (
             "UI track (default): use_sample / demo_travel_sample for the full app look."
         )
+        prefs = load_prereqs(cfg)
+        if prefs.get("has_llm_key") is False:
+            out["note"] += (
+                " has_llm_key=false: prefer recommend_surface(needs_llm=false) / Direct; "
+                "do not treat smoke_test_agent as required. If bucket is beer-sample, "
+                "use start_project(sample=beer) / use_sample(sample=beer)."
+            )
+            out["llm_required"] = False
     return out
 
 

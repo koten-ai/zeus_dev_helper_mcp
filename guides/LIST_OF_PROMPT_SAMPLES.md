@@ -32,7 +32,7 @@ Copy-paste prompts for someone who only has a public Zeus URL and a sample name.
 
 1. I have Zeus running at `http://192.168.0.219:8080` and beer-sample enabled. Make a sample website from that endpoint.
 
-**Expected tool sequence:** `doctor` → `set_prereq(zeus_url=http://192.168.0.219:8080, bucket=beer-sample, scope=_default, has_llm_key=false)` (user URL, not localhost) → `start_project(sample=beer)` (do not default to travel when the user named beer-sample) → `next_step` → only the recommended tool (`readiness_check` / `use_sample(sample=beer)` / `smoke_test_zeus` / `recommend_surface(needs_llm=false)`). Do not grep the Zeus engine repo or hand-roll curl until readiness/smoke say so. Do not ask for an LLM key for first paint.
+**Expected tool sequence:** `doctor` → `set_prereq(zeus_url=http://192.168.0.219:8080, bucket=beer-sample, scope=_default, has_llm_key=false)` (user URL, not localhost) → `start_project(sample=beer)` (named beer + no LLM also reroutes default travel → beer) → `next_step` → only the recommended tool (`readiness_check` / `use_sample(sample=beer)` / `smoke_test_zeus` / `recommend_surface(needs_llm=false)`). Do not grep the Zeus engine repo or hand-roll curl until readiness/smoke say so. Do not ask for an LLM key for first paint.
 
 2. Don’t use an LLM. Browse beer-sample with find/search and show cards.
 

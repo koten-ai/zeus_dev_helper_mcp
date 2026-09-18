@@ -94,6 +94,34 @@ def test_beer_nonempty_unrelated_dir_errors(tmp_path: Path) -> None:
     ).lower()
 
 
+def test_start_project_reroutes_travel_when_beer_no_llm(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    from zeus_dev_helper_mcp.config import HelperConfig, reload_config
+    from zeus_dev_helper_mcp.prereqs import save_prereqs
+    from zeus_dev_helper_mcp.server import start_project
+    from zeus_dev_helper_mcp.walkthrough import enriched_next_step
+
+    cfg = HelperConfig(state_dir=tmp_path / "state")
+    save_prereqs(
+        cfg,
+        {
+            "zeus_url": "http://192.168.0.219:8080",
+            "bucket": "beer-sample",
+            "scope": "_default",
+            "has_llm_key": False,
+        },
+    )
+    out = start_project(sample="travel")
+    assert out["started"] is True
+    assert out["sample"] == "beer"
+    assert out["track"] == "ui-direct"
+    assert out.get("rerouted_from") == "travel"
+    assert "smoke_test_agent" not in (out.get("recommended_tools") or [])
+    nxt = enriched_next_step(reload_config())
+    assert nxt.get("app_track") == "ui-direct"
+    assert "smoke_test_agent" not in (nxt.get("recommended_tools") or [])
+
+
 def test_start_project_beer_sets_track(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
     from zeus_dev_helper_mcp.config import reload_config

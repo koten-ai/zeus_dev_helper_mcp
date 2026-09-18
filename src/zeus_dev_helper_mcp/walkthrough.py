@@ -107,6 +107,34 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         base["app_track"] = "ui-direct"
     else:
         base["app_track"] = "ui"
+    # ZDM-2: no LLM → do not push travel agent smoke as primary
+    try:
+        from zeus_dev_helper_mcp.prereqs import load_prereqs
+
+        prefs = load_prereqs(cfg)
+    except Exception:  # noqa: BLE001
+        prefs = {}
+    if prefs.get("has_llm_key") is False:
+        tools = [t for t in tools if t != "smoke_test_agent"]
+        if sample == "travel" and item_id in ("0.2", "3.1", "5.2"):
+            from zeus_dev_helper_mcp.beer import prereqs_prefer_beer_direct
+
+            if prereqs_prefer_beer_direct(prefs):
+                tools = ["use_sample", "recommend_surface", "smoke_test_zeus"]
+                base["use_sample_args_hint"] = {
+                    "sample": "beer",
+                    "note": "has_llm_key=false + beer bucket → Direct, not travel agent",
+                }
+                base["app_track"] = "ui-direct"
+                base["note"] = (
+                    "Prereqs prefer beer Direct (no LLM). "
+                    "use_sample(sample=beer); do not clone travel or run smoke_test_agent."
+                )
+            else:
+                base["note"] = (
+                    "has_llm_key=false: smoke_test_agent is not required; "
+                    "prefer recommend_surface(needs_llm=false) / Direct path."
+                )
     base["recommended_tools"] = tools
     uris = ["zeus-helper://checklist", *RESOURCE_HINTS.get(item_id or "", [])]
     seen: set[str] = set()
