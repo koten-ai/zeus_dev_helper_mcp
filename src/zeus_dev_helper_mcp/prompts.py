@@ -25,13 +25,14 @@ App kind (important):
 
 Order:
 1. doctor
-2. start_project — sample=travel (default UI) or sample=api when the user asked for API-only
-3. next_step — then only the recommended tool
-4. set_prereq / validate_env / readiness_check as next_step directs (URL + presence flags; secrets in env)
-5. Read zeus-helper://checklist and zeus-helper://glossary/{topic} instead of dumping encyclopedia tools
-6. bind_contract from a Hub-stamped catalog (never compute_local)
-7. use_sample (UI) OR scaffold_app(app_kind=api) (API) OR scaffold_app(app_kind=cli) as fallback
-8. smoke_test_zeus then smoke_test_agent until session_id / req_id exist (API apps can also curl POST /turn)
+2. If the user gave a Zeus URL and/or sample/bucket name: call set_prereq with those values first (zeus_url from the user sentence — not Helper’s default localhost; bucket/scope; has_llm_key true/false). Do not explore the Zeus source tree or hand-roll curl OpenAPI for first green.
+3. start_project — sample=travel (default UI), sample=api (API-only), or beer/Direct when the user named beer-sample / website + no LLM
+4. next_step — then only the recommended tool
+5. validate_env / readiness_check / recommend_surface as next_step directs
+6. Read zeus-helper://checklist and zeus-helper://glossary/{topic} / verbs/* instead of dumping encyclopedia tools or grepping Zeus docs
+7. bind_contract from a Hub-stamped catalog when on the agent path (never compute_local). Direct catalog UI does not need an invented hash for first paint.
+8. use_sample (UI travel or beer Direct) OR scaffold_app(app_kind=api) (API) OR scaffold_app(app_kind=cli) as fallback
+9. smoke_test_zeus; smoke_test_agent only when an LLM key exists and the surface is agent — if has_llm_key=false, stay on Direct and do not treat travel + smoke_test_agent as the only path
 
 Prefer next_step over get_checklist. Knowledge lives on zeus-helper:// resources. After 5.1+5.2 green, data-plane and multi-agent are handoffs only.
 """

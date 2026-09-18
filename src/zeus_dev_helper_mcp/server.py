@@ -123,7 +123,13 @@ from zeus_dev_helper_mcp.walkthrough import build_gap_report, enriched_next_step
 INSTRUCTIONS = (
     "Developer Helper MCP coaches a first Zeus Client app to green "
     "(session_id / req_id on public :8080). "
-    "Order: doctor → next_step, then only the recommended tool. "
+    "Order: doctor → (if user gave URL/sample) set_prereq with those values → "
+    "start_project → next_step, then only the recommended tool. "
+    "If the user named a Zeus URL or sample (e.g. beer-sample), call set_prereq with that "
+    "zeus_url/bucket/scope — do not keep localhost defaults and do not grep the Zeus source tree "
+    "or hand-roll curl for first green; use readiness_check / smoke_test_zeus / zeus-helper://. "
+    "Call recommend_surface before choosing Travel LLM vs Direct UI vs FastAPI. "
+    "If has_llm_key=false, do not offer smoke_test_agent / travel as the only path. "
     "Hard constraints: public API is :8080 not Hub :9091; never invent contract_hash; "
     "fetch_chat_request / catalog resources are TEMPLATE ONLY (prefer a live Zeus stamp); "
     "no secrets in results or checklist evidence; semantic cache stays off. "
@@ -192,6 +198,10 @@ def doctor(detail: str = "health") -> dict[str, Any]:
 
     env/compat/cache fold validate_env, compat_check, and semantic_cache_status
     (those names stay on the lint toolset).
+
+    If the user already gave a Zeus URL or sample name, next call set_prereq with
+    those values (not Helper localhost defaults), then start_project / next_step.
+    Do not grep the Zeus engine tree for first green.
     """
     key = (detail or "health").strip().lower()
     if key not in DOCTOR_DETAILS:
@@ -344,7 +354,12 @@ def get_checklist() -> dict[str, Any]:
 
 
 def next_step() -> dict[str, Any]:
-    """Return the single current checklist blocker + recommended Helper tools (coach)."""
+    """Return the single current checklist blocker + recommended Helper tools (coach).
+
+    Call only the recommended tool next. If the user named a URL/bucket and prereqs
+    are unset, recommend set_prereq first. Prefer zeus-helper:// + readiness_check /
+    smoke_test_zeus over hand-rolled curl.
+    """
     return enriched_next_step(_cfg())
 
 
@@ -451,6 +466,8 @@ def set_prereq(
     """Store non-secret prereqs for readiness (does not store password/token values).
 
     Put real secrets in environment variables (ZEUS_PASSWORD, ZEUS_BEARER_TOKEN, LLM_API_KEY).
+    When the user named a Zeus URL or sample in chat, pass that zeus_url / bucket / scope here
+    (not Helper localhost defaults). Presence flags only for credentials and LLM key.
     """
     cfg = _cfg()
     payload: dict[str, Any] = {}

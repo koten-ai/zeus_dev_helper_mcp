@@ -37,17 +37,20 @@ Prefer `next_step` over dumping the full checklist.
 ## Day-one path
 
 ```text
-doctor → start_project → next_step
-  → set_prereq → readiness_check
-  → use_sample | scaffold_app → bind_contract → recommend_surface
-  → smoke_test_zeus → smoke_test_agent → diagnose_error
+doctor → set_prereq (when user already named URL/sample) → start_project → next_step
+  → readiness_check → recommend_surface
+  → use_sample | scaffold_app → bind_contract (agent path)
+  → smoke_test_zeus → smoke_test_agent (only if LLM) → diagnose_error
 ```
+
+If the user already gave a Zeus URL or sample name, call `set_prereq` with **those** values before relying on Helper localhost defaults. Do not grep the Zeus engine tree or hand-roll OpenAPI curl for first green — use `readiness_check` / `smoke_test_zeus` / `zeus-helper://`. Call `recommend_surface` before choosing Travel LLM vs Direct UI vs FastAPI. If `has_llm_key=false`, do not treat travel + `smoke_test_agent` as the only path.
 
 **Bootstrap app kind**
 
 | User intent | `start_project` | Project on disk |
 | --- | --- | --- |
 | Unspecified / UI / “show me the app” (**default**) | `sample=travel` | `use_sample` → **`demo_travel_sample`** (full UI) |
+| Website + beer-sample / no LLM | `sample=beer` (when shipped) | `use_sample(sample=beer)` Direct catalog UI |
 | “API” / REST / FastAPI | `sample=api` | `scaffold_app(app_kind=api, coding_language=python)` |
 | Minimal CLI fallback | (travel unavailable) | `scaffold_app(app_kind=cli)` |
 
