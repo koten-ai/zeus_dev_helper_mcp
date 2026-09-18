@@ -28,6 +28,18 @@ def test_nl_question_run_turn() -> None:
     assert out["trace_class"] == "agent"
 
 
+def test_nl_question_no_llm_is_direct_not_travel() -> None:
+    out = recommend_surface(HelperConfig(), intent="nl_question", needs_llm=False)
+    assert out["ok"] is True
+    assert out["surface"] == "rt.data.verb"
+    assert out["trace_class"] == "direct.read"
+    blob = " ".join(out.get("notes") or []).lower()
+    assert "beer" in blob or "direct" in blob
+    assert "travel" in blob
+    assert "use_sample" in (out.get("next_action") or "")
+    assert "smoke_test_agent" not in (out.get("recommended_tools") or [])
+
+
 def test_single_verb_direct_read() -> None:
     out = recommend_surface(HelperConfig(), intent="single_verb")
     assert out["surface"] == "rt.data.verb"

@@ -74,11 +74,21 @@ def recommend_surface(
         trace_class = "direct.interactive"
         do_not = [_DO_NOT_PIPELINE_DIRECT, *_DO_NOT_COMMON]
         notes.append("Typeahead / suggest is Direct interactive — no LLM round.")
+        if needs_llm is False:
+            notes.append(
+                "Catalog/website browse with no LLM: stay on Direct search; "
+                "do not clone travel or call smoke_test_agent. "
+                "For beer-sample use use_sample(sample=beer)."
+            )
     elif key == "single_verb":
         surface = "rt.data.verb"
         trace_class = "direct.read"
         do_not = [_DO_NOT_PIPELINE_DIRECT, *_DO_NOT_COMMON]
         notes.append("Single V2 verb on Direct (find/get/describe/search/…). pipeline is not on Direct.")
+        if needs_llm is False:
+            notes.append(
+                "Website + sample + no LLM → Direct BFF (sequential find→get), not travel agent."
+            )
     elif key == "multi_step":
         surface = "agent-for-pipeline"
         trace_class = "agent"
@@ -87,6 +97,12 @@ def recommend_surface(
             "Multi-step composition stays on the agent path (rt.agent.run_turn / catalog pipeline). "
             "Do not POST pipeline via Direct."
         )
+        if needs_llm is False:
+            notes.append(
+                "needs_llm=false with multi_step: still do not POST pipeline on Direct. "
+                "For a catalog website use typeahead/single_verb + sequential find→get in a BFF "
+                "(use_sample sample=beer), not travel agent."
+            )
     else:
         # nl_question
         if needs_llm is False:
@@ -96,6 +112,10 @@ def recommend_surface(
             notes.append(
                 "needs_llm=false: prefer Direct verb/search over rt.agent.run_turn. "
                 "Use intent=typeahead for suggest UI."
+            )
+            notes.append(
+                "Website + named sample (e.g. beer-sample) + no LLM → Direct catalog UI "
+                "(use_sample sample=beer), not demo_travel_sample / smoke_test_agent."
             )
         else:
             surface = "rt.agent.run_turn"
@@ -138,7 +158,18 @@ def recommend_surface(
             "for_ai_agents": docs_url("zeus-client/for-ai-agents.md"),
         },
         "next_action": (
-            "explain_verb / lint_verb_args for Direct; "
-            "rt.agent.run_turn for NL; never pipeline on Direct"
+            "use_sample(sample=beer) or explain_verb / lint_verb_args for Direct catalog UI; "
+            "rt.agent.run_turn only when needs_llm; never pipeline on Direct; "
+            "do not default to travel when needs_llm=false"
+            if needs_llm is False
+            else (
+                "explain_verb / lint_verb_args for Direct; "
+                "rt.agent.run_turn for NL; never pipeline on Direct"
+            )
+        ),
+        "recommended_tools": (
+            ["use_sample", "smoke_test_zeus", "explain_verb"]
+            if needs_llm is False and key in ("nl_question", "typeahead", "single_verb")
+            else []
         ),
     }

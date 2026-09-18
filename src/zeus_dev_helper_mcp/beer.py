@@ -38,6 +38,23 @@ BEER_ALIASES = frozenset(
     }
 )
 
+BEER_BUCKET_HINTS = frozenset({"beer-sample", "beer_sample", "beersample", "beer"})
+
+
+def is_beer_sample(name: str) -> bool:
+    return (name or "").lower().strip() in BEER_ALIASES
+
+
+def prereqs_prefer_beer_direct(prereqs: dict[str, Any] | None) -> bool:
+    """True when stored prereqs say beer bucket/sample and LLM is not required."""
+    p = prereqs or {}
+    bucket = str(p.get("bucket") or "").lower().strip()
+    sample = str(p.get("sample") or "").lower().strip()
+    has_llm = p.get("has_llm_key")
+    if has_llm is True:
+        return False
+    return is_beer_sample(sample) or bucket in BEER_BUCKET_HINTS
+
 BEER_MARKERS = (
     "README.md",
     "main.py",
@@ -646,10 +663,6 @@ No `LLM_API_KEY` / OpenAI key is required for first paint.
 - https://docs.koten.ai/zeus-client/using-zeus-client
 - Helper design: ZDM-1 beer first-green / ZDM-6 Direct UI
 """
-
-
-def is_beer_sample(sample: str) -> bool:
-    return (sample or "").lower().strip() in BEER_ALIASES
 
 
 def sanitize_beer_dir_name(project_name: str = "") -> str:

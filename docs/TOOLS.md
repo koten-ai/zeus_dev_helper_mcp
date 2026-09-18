@@ -155,7 +155,7 @@ These tools do **not** run Zeus data-plane verbs (except `lint_verb_args` may op
 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
-| `recommend_surface` | Intent → Client surface + Trace-Class + do-not list | `intent` (`nl_question` \| `typeahead` \| `single_verb` \| `multi_step`), optional `qps`, `needs_llm` | none | Before writing app code. High `qps` stays off `run_turn`. |
+| `recommend_surface` | Intent → Client surface + Trace-Class + do-not list | `intent` (`nl_question` \| `typeahead` \| `single_verb` \| `multi_step`), optional `qps`, `needs_llm` | none | Before writing app code. High `qps` stays off `run_turn`. **Website + named sample (beer-sample) + `needs_llm=false` → Direct**, not travel agent — then `use_sample(sample=beer)`. |
 | `explain_verb` | Static V2 encyclopedia: path class, demux, Direct vs pipeline | `name` (`find`, `search`, `get`, `describe`, `pipeline`, …) | none | When drafting a verb. `find`: `return` is the router; `where` is equality-only. |
 | `lint_verb_args` | Lint a would-be JSON body | `verb`, `body` (JSON string), optional `mini_schema` | optional `live POST` describe (schema only) | After `explain_verb`. Rejects `$gt` / non-equality `where`, FTS `biz:` keys as node ids, pipeline on Direct. `posted=false`. |
 | `suggest_verb_call` | Draft a **legal** JSON body from a goal | `goal`, optional `mini_schema` | none | Guidance only — **does not POST**. Then the **app** calls `rt.data.verb` / agent. |
@@ -164,10 +164,12 @@ These tools do **not** run Zeus data-plane verbs (except `lint_verb_args` may op
 
 | Intent | Surface | Trace-Class |
 | --- | --- | --- |
-| `nl_question` | `rt.agent.run_turn` | `agent` |
+| `nl_question` | `rt.agent.run_turn` (or Direct when `needs_llm=false`) | `agent` / `direct.read` |
 | `typeahead` | `rt.data.search` | `direct.interactive` |
 | `single_verb` | `rt.data.verb` | `direct.read` |
 | `multi_step` | `agent-for-pipeline` | `agent` |
+
+**ZDM-2 case:** website + sample + no LLM → `needs_llm=false` → Direct Trace-Class; `start_project` / `next_step` must not recommend `use_sample(travel)` or `smoke_test_agent` as the primary path. Named `beer-sample` bucket + `has_llm_key=false` reroutes default travel to `sample=beer`.
 
 **Do not:** pipeline on Direct; `agent_memory` on Direct/typeahead; composite hop ids (`base:1`); invent `contract_hash`.
 
