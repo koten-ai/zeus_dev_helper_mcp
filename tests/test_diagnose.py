@@ -68,6 +68,40 @@ def test_diagnose_detective_urls_only() -> None:
     assert "scrape" in (out.get("detective_note") or "").lower()
 
 
+def test_diagnose_session_force_closed() -> None:
+    out = diagnose_error(
+        HelperConfig(),
+        status="429",
+        message="session exceeded per-session round budget; re-authenticate to continue. session_force_closed",
+    )
+    assert out["failure_class"] == "session_force_closed"
+    assert out["doc_anchor"] == "err-session-force-closed"
+    assert "sid=dev" in out["next_action"] or "unique sid" in out["next_action"].lower()
+
+
+def test_diagnose_empty_find_get_node_ids_required() -> None:
+    out = diagnose_error(
+        HelperConfig(),
+        status="400",
+        message="STEP_FAILED: node_ids required",
+        body='{"error":"STEP_FAILED","message":"node_ids required"}',
+    )
+    assert out["failure_class"] == "empty_find_get"
+    assert out["doc_anchor"] == "err-empty-find-get"
+    assert "abort_if_empty" in out["next_action"]
+
+
+def test_diagnose_fts_doc_key_only() -> None:
+    out = diagnose_error(
+        HelperConfig(),
+        message="FTS hits with empty node_ids and doc_key only",
+        body='{"items":[{"node":{"doc_key":"beer:1"}}],"node_ids":[]}',
+    )
+    assert out["failure_class"] == "fts_doc_key_only"
+    assert out["doc_anchor"] == "err-fts-doc-key-only"
+    assert "doc_key" in out["next_action"]
+
+
 def test_diagnose_does_not_import_zeus_client() -> None:
     src = Path("src/zeus_dev_helper_mcp/diagnose.py").read_text()
     tree = ast.parse(src)

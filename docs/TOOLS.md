@@ -268,6 +268,8 @@ Returned on red paths (`failure_class` + `next_action`). Do not invent new ones 
 
 **0.6:** `invalid_req_id`, `v1_session_removed`, `pipeline_not_on_direct`, `where_not_in_mini_schema`, `fts_key_used_as_node_id`, `composite_req_id`, `contract_hash_invent_forbidden`.
 
+**ZDM-4 (beer Direct lab):** `session_force_closed`, `empty_find_get`, `fts_doc_key_only`.
+
 `diagnose_error` also maps well-known client ErrorCode strings (`030005`, `060010`, `060004`, `050010`, …) without importing the SDK on the default extra.
 
 ---
