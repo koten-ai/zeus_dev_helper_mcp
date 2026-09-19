@@ -115,7 +115,9 @@ def recommend_surface(
             )
             notes.append(
                 "Website + named sample (e.g. beer-sample) + no LLM → Direct catalog UI "
-                "(use_sample sample=beer), not demo_travel_sample / smoke_test_agent."
+                "(use_sample sample=beer), not demo_travel_sample / smoke_test_agent. "
+                "Copy TravelPlan BFF/same-origin/config shape only; do not copy run_turn "
+                "unless this is an agent app (TravelPlan = agent-plane; beer = data-plane Direct)."
             )
         else:
             surface = "rt.agent.run_turn"

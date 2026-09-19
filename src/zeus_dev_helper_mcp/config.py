@@ -81,28 +81,38 @@ def _load_prereq_file(state_dir: Path) -> dict:
         return {}
 
 
+def _prereq_or_env(pr: dict, key: str, env_val: str, default: str = "") -> str:
+    """Prefer an explicit set_prereq value over MCP host env defaults (ZDM-3).
+
+    Host configs often bake ZEUS_URL=http://localhost:8080 into the MCP server env.
+    That must not shadow set_prereq(zeus_url=http://<lab>:8080) for readiness/doctor.
+    """
+    stored = pr.get(key)
+    if stored is not None and str(stored).strip() != "":
+        return str(stored).strip()
+    env_val = (env_val or "").strip()
+    if env_val:
+        return env_val
+    return default
+
+
 def load_config() -> HelperConfig:
     cr_dir = os.environ.get("ZEUS_CHAT_REQUEST_DIR", "").strip()
     docs_dir = os.environ.get("KOTEN_DOCS_DIR", "").strip()
     state_dir = _state_dir()
     pr = _load_prereq_file(state_dir)
 
-    # Env wins; then persisted prereqs
-    zeus_url = os.environ.get("ZEUS_URL", "").strip() or str(pr.get("zeus_url") or "")
-    auth_mode = (
-        os.environ.get("ZEUS_AUTH_MODE", "").strip()
-        or str(pr.get("auth_mode") or "")
-        or "none"
+    # Persisted set_prereq wins over env for routing fields (ZDM-3).
+    # Secrets stay env-only; presence flags still OR env + prereq below.
+    zeus_url = _prereq_or_env(pr, "zeus_url", os.environ.get("ZEUS_URL", ""))
+    auth_mode = _prereq_or_env(pr, "auth_mode", os.environ.get("ZEUS_AUTH_MODE", ""), "none")
+    bucket = _prereq_or_env(pr, "bucket", os.environ.get("ZEUS_BUCKET", ""))
+    scope = _prereq_or_env(pr, "scope", os.environ.get("ZEUS_SCOPE", ""))
+    collection = _prereq_or_env(
+        pr, "collection", os.environ.get("ZEUS_COLLECTION", ""), "_default"
     )
-    bucket = os.environ.get("ZEUS_BUCKET", "").strip() or str(pr.get("bucket") or "")
-    scope = os.environ.get("ZEUS_SCOPE", "").strip() or str(pr.get("scope") or "")
-    collection = (
-        os.environ.get("ZEUS_COLLECTION", "").strip()
-        or str(pr.get("collection") or "")
-        or "_default"
-    )
-    mode = os.environ.get("ZEUS_MODE", "").strip() or str(pr.get("mode") or "") or "analytics"
-    role = os.environ.get("ZEUS_HELPER_ROLE", "").strip() or str(pr.get("role") or "") or "dev"
+    mode = _prereq_or_env(pr, "mode", os.environ.get("ZEUS_MODE", ""), "analytics")
+    role = _prereq_or_env(pr, "role", os.environ.get("ZEUS_HELPER_ROLE", ""), "dev")
 
     has_user = bool(os.environ.get("ZEUS_USERNAME") or os.environ.get("ZEUS_USER")) or bool(
         pr.get("has_username")

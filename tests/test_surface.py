@@ -36,6 +36,7 @@ def test_nl_question_no_llm_is_direct_not_travel() -> None:
     blob = " ".join(out.get("notes") or []).lower()
     assert "beer" in blob or "direct" in blob
     assert "travel" in blob
+    assert "run_turn" in blob and "do not copy" in blob
     assert "use_sample" in (out.get("next_action") or "")
     assert "smoke_test_agent" not in (out.get("recommended_tools") or [])
 
@@ -69,6 +70,10 @@ def test_explain_new_topics() -> None:
         ("direct", "pipeline"),
         ("typeahead", "rt.data.search"),
         ("pipeline", "Direct"),
+        ("demo_travel_sample", "agent-plane"),
+        ("travelplan", "agent-plane"),
+        ("demo_beer_sample", "data-plane"),
+        ("beer_direct", "data-plane"),
     ):
         out = explain_topic(cfg, topic)
         assert out["found"] is True, topic
