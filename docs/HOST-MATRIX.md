@@ -75,11 +75,13 @@ These are why “Helper says 2.2” is not the demo’s real next step. Family w
 
 ## Grok gotchas
 
+Set `ZEUS_URL` to the Zeus public API you actually use (`http://<zeus-host>:8080` or e.g. `http://192.168.0.219:8080`). Use `http://localhost:8080` only when Zeus is on the same machine. After add, if the user named a URL/sample, call `set_prereq` with that URL — do not leave a stale localhost env as the only probe target. `doctor` reports stored vs effective URL (ZDM-3).
+
 `uvx` argument is the published package, not the MCP server id:
 
 ```bash
 grok mcp add zeus-dev-helper \
-  -e ZEUS_URL=http://localhost:8080 \
+  -e ZEUS_URL=http://192.168.0.219:8080 \
   -- uvx zeus-dev-helper-mcp
 ```
 
@@ -89,7 +91,7 @@ grok mcp add zeus-dev-helper \
 
 ```bash
 grok mcp add zeus-dev-helper \
-  -e ZEUS_URL=http://localhost:8080 \
+  -e ZEUS_URL=http://192.168.0.219:8080 \
   -- "$(pwd)/.venv/bin/python" -m zeus_dev_helper_mcp
 ```
 
