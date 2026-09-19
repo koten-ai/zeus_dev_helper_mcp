@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterable
 from functools import wraps
 from typing import Any
@@ -76,7 +77,7 @@ from zeus_dev_helper_mcp.mcp_compat import (
     register_tool,
 )
 from zeus_dev_helper_mcp.motion import recommend_motion as recommend_motion_impl
-from zeus_dev_helper_mcp.prereqs import public_prereqs, save_prereqs
+from zeus_dev_helper_mcp.prereqs import load_prereqs, public_prereqs, save_prereqs
 from zeus_dev_helper_mcp.prompts import register_prompts
 from zeus_dev_helper_mcp.readiness import run_readiness_check
 from zeus_dev_helper_mcp.resources import register_resources
@@ -123,6 +124,10 @@ from zeus_dev_helper_mcp.walkthrough import build_gap_report, enriched_next_step
 INSTRUCTIONS = (
     "Developer Helper MCP coaches a first Zeus Client app to green "
     "(session_id / req_id on public :8080). "
+    "Human docs for first green: https://docs.koten.ai/zeus-client "
+    "(live published Zeus Client hub — For AI agents, Start, Using Zeus Client, Errors, "
+    "Dev Helper MCP). Prefer that hub + Helper tools + live :8080; do not clone koten_docs "
+    "or grep the Zeus engine for first green. "
     "Order: doctor → (if user gave URL/sample) set_prereq with those values → "
     "start_project → next_step, then only the recommended tool. "
     "If the user named a Zeus URL or sample (e.g. beer-sample), call set_prereq with that "
@@ -134,10 +139,16 @@ INSTRUCTIONS = (
     "fetch_chat_request / catalog resources are TEMPLATE ONLY (prefer a live Zeus stamp); "
     "no secrets in results or checklist evidence; semantic cache stays off. "
     "scaffold_app / smoke_test_agent emit ZeusRuntime + run_turn, not V1 ZeusClient / run_agent. "
+    "TravelPlan / demo_travel_sample is the agent-plane (LLM chat UI) example; "
+    "demo_beer_sample is the data-plane Direct (zero-LLM find→get) example — "
+    "https://docs.koten.ai/zeus-client/using-zeus-client. "
     "Bootstrap default is UI: use_sample clones public demo_travel_sample when missing "
     "and sets DEMO_TRAVEL_SAMPLE_DIR (optional project_name for the clone directory). "
     "Beer / website + no LLM: start_project(sample=beer) → use_sample(sample=beer) writes "
-    "demo_beer_sample Direct catalog UI (find→get, no pipeline, no LLM key). "
+    "demo_beer_sample Direct catalog UI (find→get, no pipeline, no LLM key); "
+    "never clone demo_travel_sample on that path. "
+    "Direct websites may copy TravelPlan BFF/same-origin/config shape only — "
+    "do not copy run_turn unless this is an agent app. "
     "API-only: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python) "
     "(FastAPI POST /turn). Other coding languages are not scaffolded yet. "
     "Never pass username/password/token into MCP tools — env + set_prereq presence flags only. "
@@ -154,6 +165,36 @@ def _cfg() -> HelperConfig:
 DOCTOR_DETAILS = ("health", "env", "compat", "cache", "all")
 
 
+def _url_routing_view(cfg: HelperConfig) -> dict[str, Any]:
+    """Compare MCP host ZEUS_URL, set_prereq stored URL, and effective config (ZDM-3)."""
+    stored = (load_prereqs(cfg).get("zeus_url") or "").strip() or None
+    env_url = (os.environ.get("ZEUS_URL") or "").strip() or None
+    effective = (cfg.zeus_url or "").strip() or None
+
+    def _norm(u: str | None) -> str | None:
+        return u.rstrip("/") if u else None
+
+    issues: list[dict[str, str]] = []
+    if stored and env_url and _norm(stored) != _norm(env_url):
+        issues.append(
+            {
+                "code": "env_url_differs_from_prereq",
+                "message": (
+                    f"MCP host ZEUS_URL={env_url} differs from set_prereq "
+                    f"zeus_url={stored}; effective uses set_prereq (persisted wins)."
+                ),
+                "severity": "set_prereq",
+                "env": "ZEUS_URL",
+            }
+        )
+    return {
+        "stored_zeus_url": stored,
+        "env_zeus_url": env_url,
+        "effective_zeus_url": effective,
+        "issues": issues,
+    }
+
+
 def _doctor_health() -> dict[str, Any]:
     cfg = _cfg()
     catalog_ok = False
@@ -167,10 +208,15 @@ def _doctor_health() -> dict[str, Any]:
         catalog_error = str(e)
 
     sibling = resolve_local_repo_hint()
+    routing = _url_routing_view(cfg)
+    next_action = (
+        "set_prereq with the user’s Zeus URL/sample (if named), then start_project → next_step"
+    )
     return {
         "ok": True,
         "version": __version__,
         "config": cfg.public_view(),
+        "url_routing": routing,
         "catalog": {
             "reachable": catalog_ok,
             "modes_count": modes_count,
@@ -183,15 +229,17 @@ def _doctor_health() -> dict[str, Any]:
             "local_dir": str(cfg.chat_request_dir) if cfg.chat_request_dir else None,
         },
         "docs": {
+            "zeus_client_hub": docs_url("zeus-client"),
             "for_ai_agents": (
                 docs_url("zeus-client/for-ai-agents.md")
             ),
             "using_zeus_client": (
                 docs_url("zeus-client/using-zeus-client.md")
             ),
+            "dev_helper_mcp": docs_url("zeus-client/dev-helper-mcp.md"),
             "zeus_chat_request": f"https://github.com/{cfg.chat_request_repo}",
         },
-        "next_action": "start_project then next_step",
+        "next_action": next_action,
     }
 
 
@@ -515,7 +563,9 @@ def set_prereq(
 
     Put real secrets in environment variables (ZEUS_PASSWORD, ZEUS_BEARER_TOKEN, LLM_API_KEY).
     When the user named a Zeus URL or sample in chat, pass that zeus_url / bucket / scope here
-    (not Helper localhost defaults). Presence flags only for credentials and LLM key.
+    (not Helper localhost defaults). Persisted values override MCP host ZEUS_* env defaults
+    so readiness/doctor hit the user's cluster (ZDM-3). Presence flags only for credentials
+    and LLM key.
     """
     cfg = _cfg()
     payload: dict[str, Any] = {}
@@ -543,12 +593,32 @@ def set_prereq(
         payload["has_password"] = has_password
 
     stored = save_prereqs(cfg, payload)
+    # Mirror non-secret routing into process env so tools that read ZEUS_* directly
+    # and reload_config() agree. Persisted prereqs still win if the MCP host re-injects
+    # a stale localhost ZEUS_URL (ZDM-3).
+    env_map = {
+        "zeus_url": "ZEUS_URL",
+        "auth_mode": "ZEUS_AUTH_MODE",
+        "bucket": "ZEUS_BUCKET",
+        "scope": "ZEUS_SCOPE",
+        "collection": "ZEUS_COLLECTION",
+        "mode": "ZEUS_MODE",
+        "role": "ZEUS_HELPER_ROLE",
+    }
+    for key, env_name in env_map.items():
+        val = stored.get(key)
+        if val is not None and str(val).strip() != "":
+            os.environ[env_name] = str(val).strip()
+
     cfg = reload_config()
     return {
         "saved": True,
         "stored_public": stored,
         "effective_config": cfg.public_view(),
-        "note": "Secrets must remain in env vars — only presence flags are stored.",
+        "note": (
+            "Secrets must remain in env vars — only presence flags are stored. "
+            "Persisted zeus_url/bucket/scope override MCP host ZEUS_* defaults."
+        ),
         "next_action": "validate_env → readiness_check",
     }
 

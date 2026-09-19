@@ -6,10 +6,10 @@
 
 1. This file  
 2. [docs/TOOLS.md](docs/TOOLS.md) — Helper tool catalog (when / args / side effects / do-not)  
-3. [docs.koten.ai](https://docs.koten.ai/) (published docs; site may be placeholder while wiring)  
-4. [agent-index.yaml](https://github.com/koten-ai/koten_docs/blob/zeus-v1.0.0/agent-index.yaml) (machine index in source repo)  
-5. [For AI agents](https://docs.koten.ai/zeus-client/for-ai-agents)  
-6. [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client)  
+3. [Zeus Client docs](https://docs.koten.ai/zeus-client) — **live** published human docs hub  
+4. [For AI agents](https://docs.koten.ai/zeus-client/for-ai-agents) · [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client) · [Start](https://docs.koten.ai/zeus-client/start) · [Errors](https://docs.koten.ai/zeus-client/errors) · [Dev Helper MCP](https://docs.koten.ai/zeus-client/dev-helper-mcp)  
+5. Live Zeus public API **:8080** (readiness / stamp / smoke — never Hub **:9091** from the app path)  
+6. [agent-index.yaml](https://github.com/koten-ai/koten_docs/blob/zeus-v1.0.0/agent-index.yaml) — machine map only (do **not** clone `koten_docs` or grep the Zeus engine for first green)  
 7. [zeus_chat_request](https://github.com/koten-ai/zeus_chat_request) for templates  
 
 ## Hard constraints
@@ -21,7 +21,7 @@
 
 ## Tools to use first
 
-Default surface (`core`): `doctor` → `start_project` → `next_step` → `set_prereq` / `readiness_check` → `use_sample` | `scaffold_app` → `bind_contract` → `recommend_surface` → `smoke_test_zeus` / `smoke_test_agent` → `diagnose_error`. **Default app kind is UI** (`start_project(sample=travel)` → `use_sample` clones public `demo_travel_sample` when missing, optional `project_name` for the clone dir, sets `DEMO_TRAVEL_SAMPLE_DIR`). **Beer / website + no LLM:** `start_project(sample=beer)` → `use_sample(sample=beer)` writes `demo_beer_sample` Direct catalog UI (FastAPI BFF find→get + static; no pipeline; no LLM key; `smoke_test_agent` not required). **API-only** when the user asks for API/REST: `start_project(sample=api)` → `scaffold_app(app_kind=api, coding_language=python)` (FastAPI). Credentials → env + `set_prereq` presence flags only. `doctor(detail=env|compat|cache)` covers checks that also live on the lint toolset. Wiring Zeus into an arbitrary existing repo is **out of scope**.
+Default surface (`core`): `doctor` → (if user named URL/sample) `set_prereq` → `start_project` → `next_step` → `readiness_check` → `use_sample` | `scaffold_app` → `bind_contract` → `recommend_surface` → `smoke_test_zeus` / `smoke_test_agent` → `diagnose_error`. **Default app kind is UI** (`start_project(sample=travel)` → `use_sample` clones public `demo_travel_sample` when missing, optional `project_name` for the clone dir, sets `DEMO_TRAVEL_SAMPLE_DIR`). **Beer / website + no LLM:** `start_project(sample=beer)` → `use_sample(sample=beer)` writes `demo_beer_sample` Direct catalog UI (FastAPI BFF find→get + static; no pipeline; no LLM key; `smoke_test_agent` not required). **API-only** when the user asks for API/REST: `start_project(sample=api)` → `scaffold_app(app_kind=api, coding_language=python)` (FastAPI). Credentials → env + `set_prereq` presence flags only. `doctor(detail=env|compat|cache)` covers checks that also live on the lint toolset. Wiring Zeus into an arbitrary existing repo is **out of scope**.
 
 Knowledge is resources: `zeus-helper://checklist`, `zeus-helper://glossary/{topic}`, `zeus-helper://verbs/{name}`, `zeus-helper://policy/hash-boundary`, `zeus-helper://policy/req-id`, `zeus-helper://catalog/modes`. Prompts: `first_green`, `smoke_question`, `support_pack`.
 
