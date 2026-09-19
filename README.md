@@ -51,13 +51,26 @@ Prefer the published console script (`uvx` / `pip install`) so hosts do not need
 
 ## Host install
 
+Set `ZEUS_URL` to your Zeus **public API** on port **8080** (never Hub `:9091`). Prefer the remote host you actually use. Use `http://localhost:8080` only when Zeus runs on the **same machine** as the MCP host.
+
+```bash
+# Remote Zeus (typical lab / shared engine) — put your host here
+export ZEUS_URL=http://192.168.0.219:8080
+# or: http://<zeus-host>:8080
+#
+# Same-machine Zeus only:
+# export ZEUS_URL=http://localhost:8080
+```
+
+If the user names a URL or sample in chat, call **`set_prereq`** with that `zeus_url` / bucket / scope (do not keep a stale localhost default). `doctor` reports **stored vs effective** URL routing (see [ZDM-3](https://kotenai.atlassian.net/browse/ZDM-3)).
+
 ### Grok Build
 
-`grok mcp add` treats flags like `-m` as its own unless they come **after `--`**.
+`grok mcp add` treats flags like `-m` as its own unless they come **after `--`**. The `uvx` argument is the **PyPI package** `zeus-dev-helper-mcp`, not the MCP server id `zeus-dev-helper`.
 
 ```bash
 grok mcp add zeus-dev-helper \
-  -e ZEUS_URL=http://localhost:8080 \
+  -e ZEUS_URL=http://192.168.0.219:8080 \
   -- uvx zeus-dev-helper-mcp
 ```
 
@@ -65,7 +78,7 @@ From a local checkout after `pip install -e ".[dev]"`, point `command` at this t
 
 ```bash
 grok mcp add zeus-dev-helper \
-  -e ZEUS_URL=http://localhost:8080 \
+  -e ZEUS_URL=http://192.168.0.219:8080 \
   -- "$(pwd)/.venv/bin/python" -m zeus_dev_helper_mcp
 ```
 
@@ -75,7 +88,7 @@ Equivalent config:
 [mcp_servers.zeus-dev-helper]
 command = "uvx"
 args = ["zeus-dev-helper-mcp"]
-env = { ZEUS_URL = "http://localhost:8080" }
+env = { ZEUS_URL = "http://192.168.0.219:8080" }
 enabled = true
 ```
 
@@ -84,6 +97,7 @@ Then refresh MCP servers, or `grok mcp doctor zeus-dev-helper`.
 Common failures:
 
 - `unexpected argument '-m'` — missing `--` before the python command
+- `uvx zeus-dev-helper` / `No solution found` — wrong package name; use **`zeus-dev-helper-mcp`**
 - `No module named 'zeus_dev_helper_mcp'` / `python: No such file or directory` — the host did not inherit the venv; use the `.venv/bin/python` path above
 - `No module named 'mcp.server.fastmcp'` — mcp 2.x renamed FastMCP; use Helper **0.6.0+** (`mcp>=1.8.0,<3`)
 
@@ -96,7 +110,25 @@ Common failures:
       "command": "uvx",
       "args": ["zeus-dev-helper-mcp"],
       "env": {
-        "ZEUS_URL": "http://localhost:8080"
+        "ZEUS_URL": "http://192.168.0.219:8080"
+      }
+    }
+  }
+}
+```
+
+### Cursor
+
+Add (or merge) `.cursor/mcp.json` in the project (or use Cursor’s global MCP settings):
+
+```json
+{
+  "mcpServers": {
+    "zeus-dev-helper": {
+      "command": "uvx",
+      "args": ["zeus-dev-helper-mcp"],
+      "env": {
+        "ZEUS_URL": "http://192.168.0.219:8080"
       }
     }
   }
@@ -105,23 +137,23 @@ Common failures:
 
 ### Other stdio hosts
 
-Point the host’s MCP stdio entry at `uvx zeus-dev-helper-mcp` (or `python -m zeus_dev_helper_mcp` from a venv) with the same env vars.
+Point the host’s MCP stdio entry at `uvx zeus-dev-helper-mcp` (or `python -m zeus_dev_helper_mcp` from a venv) with the same env vars. Replace the sample IP with your Zeus host.
 
 ## Day-one coach path
 
 ```text
-doctor → start_project → next_step
-  → set_prereq → validate_env → readiness_check
+doctor → (if user named URL/sample) set_prereq → start_project → next_step
+  → readiness_check
   → use_sample | scaffold_app → bind_contract → recommend_surface
   → smoke_test_zeus → smoke_test_agent → diagnose_error
 ```
 
-Prefer `next_step` over dumping the full checklist.
+Prefer `next_step` over dumping the full checklist. Two first-green paths (TravelPlan is **not** the only path):
 
-- **Default (UI / agent-plane):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) (TravelPlan LLM chat UI) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`.
-- **Beer / website + no LLM (data-plane Direct):** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF find→get + static catalog UI; no pipeline; no LLM key; `smoke_test_agent` not required; never clones TravelPlan). Direct sites may copy TravelPlan’s BFF/same-origin/config shape only — not `run_turn` ([docs](https://docs.koten.ai/zeus-client/using-zeus-client)).
+- **Travel + LLM (UI default):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`. Needs an LLM key for `smoke_test_agent`.
+- **Direct + named sample (beer / website, no LLM):** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF find→get + static catalog UI; no pipeline; no LLM key; `smoke_test_agent` not required).
 - **API-only:** user asks for an API/REST app → `start_project(sample=api)` → `scaffold_app(app_kind=api, coding_language=python)` (FastAPI `POST /turn` on `kotenai-zeus-client`). Other languages not scaffolded yet.
-- Credentials from chat → process env / gitignored `.env`; `set_prereq` presence flags only.
+- Credentials from chat → process env / gitignored `.env`; `set_prereq` presence flags only. Pass the user’s Zeus URL into `set_prereq(zeus_url=…)`.
 - Integrating into an arbitrary existing repo is **out of scope**.
 
 Read `zeus-helper://` resources for glossary, verbs, policies, and catalog modes. Hosts can pick prompts `first_green`, `smoke_question`, and `support_pack`.
@@ -155,7 +187,7 @@ Secrets stay in the process environment. `set_prereq` stores presence flags only
 
 | Variable | Purpose |
 | --- | --- |
-| `ZEUS_URL` | Public Zeus API base URL (port 8080) |
+| `ZEUS_URL` | Public Zeus API base URL (port 8080). Remote host first; `localhost` only when Zeus is local |
 | `ZEUS_BUCKET` / `ZEUS_SCOPE` / `ZEUS_COLLECTION` | Scope for bootstrap and auth probes |
 | `ZEUS_MODE` | Default catalog mode (`analytics`) |
 | `ZEUS_AUTH_MODE` | Auth mode (`none`, basic, bearer) |
