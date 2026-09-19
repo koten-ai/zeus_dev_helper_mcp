@@ -124,6 +124,10 @@ from zeus_dev_helper_mcp.walkthrough import build_gap_report, enriched_next_step
 INSTRUCTIONS = (
     "Developer Helper MCP coaches a first Zeus Client app to green "
     "(session_id / req_id on public :8080). "
+    "Human docs for first green: https://docs.koten.ai/zeus-client "
+    "(live published Zeus Client hub — For AI agents, Start, Using Zeus Client, Errors, "
+    "Dev Helper MCP). Prefer that hub + Helper tools + live :8080; do not clone koten_docs "
+    "or grep the Zeus engine for first green. "
     "Order: doctor → (if user gave URL/sample) set_prereq with those values → "
     "start_project → next_step, then only the recommended tool. "
     "If the user named a Zeus URL or sample (e.g. beer-sample), call set_prereq with that "
@@ -225,12 +229,14 @@ def _doctor_health() -> dict[str, Any]:
             "local_dir": str(cfg.chat_request_dir) if cfg.chat_request_dir else None,
         },
         "docs": {
+            "zeus_client_hub": docs_url("zeus-client"),
             "for_ai_agents": (
                 docs_url("zeus-client/for-ai-agents.md")
             ),
             "using_zeus_client": (
                 docs_url("zeus-client/using-zeus-client.md")
             ),
+            "dev_helper_mcp": docs_url("zeus-client/dev-helper-mcp.md"),
             "zeus_chat_request": f"https://github.com/{cfg.chat_request_repo}",
         },
         "next_action": next_action,

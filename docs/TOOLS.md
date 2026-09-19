@@ -298,6 +298,7 @@ Returned on red paths (`failure_class` + `next_action`). Do not invent new ones 
 
 | Doc | Use |
 | --- | --- |
+| [Zeus Client docs](https://docs.koten.ai/zeus-client) | Live published human docs hub |
 | [For AI agents](https://docs.koten.ai/zeus-client/for-ai-agents) | Agent load order (published) |
 | [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client) | Client / Runtime wiring |
 | [Dev Helper MCP](https://docs.koten.ai/zeus-client/dev-helper-mcp) | Published Helper page |
