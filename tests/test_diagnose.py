@@ -89,6 +89,19 @@ def test_diagnose_empty_find_get_node_ids_required() -> None:
     assert out["failure_class"] == "empty_find_get"
     assert out["doc_anchor"] == "err-empty-find-get"
     assert "abort_if_empty" in out["next_action"]
+    assert "bad plan" in out["next_action"].lower() or "not empty zeus" in out["next_action"].lower()
+
+
+def test_diagnose_sentence_as_query_points_at_nl_plan() -> None:
+    out = diagnose_error(
+        HelperConfig(),
+        message="0 rows on a sentence: find.query=What beers are made from fruit?",
+        body="sentence as query / NL sentence stuffed into find",
+    )
+    assert out["failure_class"] == "empty_find_get"
+    assert "where.style" in out["next_action"] or "Fruit Beer" in out["next_action"]
+    assert "plan" in out["next_action"].lower() or "token" in out["next_action"].lower()
+    assert "empty zeus" in out["next_action"].lower() or "bad plan" in out["next_action"].lower()
 
 
 def test_diagnose_fts_doc_key_only() -> None:

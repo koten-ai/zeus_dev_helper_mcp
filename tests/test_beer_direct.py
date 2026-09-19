@@ -54,6 +54,12 @@ def test_beer_sources_have_no_pipeline_and_find_get(tmp_path: Path) -> None:
     assert "/find" in main or '"find"' in main
     assert "/get" in main or '"get"' in main
     assert "strategy" in main and "fts" in main
+    # ZDM-7 NL planner embedded in written sample
+    assert "STOPWORDS" in main
+    assert "plan_query" in main
+    assert "Fruit Beer" in main
+    assert "Pumpkin Beer" in main
+    assert "_select_get_ids" in main
     assert "fastapi" in reqs
     assert "uvicorn" in reqs
     assert "httpx" in reqs
@@ -64,6 +70,7 @@ def test_beer_sources_have_no_pipeline_and_find_get(tmp_path: Path) -> None:
     assert "no llm" in readme.lower()
     assert "PORT" in readme
     assert "ZEUS_URL" in readme
+    assert "bad plan" in readme.lower() or "0 rows on a sentence" in readme.lower()
     assert "pipeline" not in reqs.lower()
     assert "pipeline" not in env.lower()
 
