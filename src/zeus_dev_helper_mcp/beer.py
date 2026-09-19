@@ -1,7 +1,8 @@
-"""Beer-sample Direct catalog UI template (ZDM-6).
+"""Beer-sample Direct catalog UI template (ZDM-6 / ZDM-7).
 
 Zero-LLM same-origin FastAPI BFF + static page. Sequential find → get
-(+ FTS fallback). Never POST pipeline.
+(+ FTS fallback). Never POST pipeline. NL questions use a Hub-Chat-like
+deterministic planner (tokenize / stopwords / where.style / FTS tokens).
 """
 
 from __future__ import annotations
@@ -55,6 +56,196 @@ def prereqs_prefer_beer_direct(prereqs: dict[str, Any] | None) -> bool:
         return False
     return is_beer_sample(sample) or bucket in BEER_BUCKET_HINTS
 
+
+# --- NL planner (ZDM-7); mirrored inside _MAIN_PY for the written sample ---
+
+BEER_NL_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "of",
+        "and",
+        "or",
+        "to",
+        "in",
+        "on",
+        "for",
+        "with",
+        "from",
+        "by",
+        "at",
+        "as",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "what",
+        "which",
+        "who",
+        "where",
+        "when",
+        "how",
+        "why",
+        "made",
+        "make",
+        "makes",
+        "using",
+        "use",
+        "used",
+        "beer",
+        "beers",
+        "brew",
+        "brews",
+        "show",
+        "list",
+        "find",
+        "get",
+        "give",
+        "me",
+        "please",
+        "any",
+        "some",
+        "all",
+        "that",
+        "this",
+        "those",
+        "these",
+        "do",
+        "does",
+        "can",
+        "you",
+        "i",
+        "we",
+        "there",
+        "about",
+        "like",
+        "have",
+        "has",
+        "had",
+    }
+)
+
+BEER_KNOWN_STYLES: dict[str, str] = {
+    "ipa": "American IPA",
+    "american ipa": "American IPA",
+    "porter": "Porter",
+    "stout": "Stout",
+    "lager": "Lager",
+    "pilsner": "Pilsner",
+    "wheat": "Wheat Beer",
+    "wheat beer": "Wheat Beer",
+    "fruit": "Fruit Beer",
+    "fruit beer": "Fruit Beer",
+    "pumpkin": "Pumpkin Beer",
+    "pumpkin beer": "Pumpkin Beer",
+    "sour": "Sour Beer",
+    "belgian": "Belgian Ale",
+    "pale ale": "American Pale Ale",
+    "apa": "American Pale Ale",
+}
+
+_BEER_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def tokenize_beer_query(q: str) -> list[str]:
+    return _BEER_TOKEN_RE.findall((q or "").lower())
+
+
+def beer_content_tokens(q: str) -> list[str]:
+    return [t for t in tokenize_beer_query(q) if t not in BEER_NL_STOPWORDS]
+
+
+def resolve_beer_style(q: str, tokens: list[str] | None = None) -> str | None:
+    key = (q or "").strip().lower()
+    if not key:
+        return None
+    if key in BEER_KNOWN_STYLES:
+        return BEER_KNOWN_STYLES[key]
+    for canon in BEER_KNOWN_STYLES.values():
+        if key == canon.lower():
+            return canon
+    toks = list(tokens) if tokens is not None else beer_content_tokens(q)
+    for n in range(min(3, len(toks)), 0, -1):
+        for i in range(0, len(toks) - n + 1):
+            phrase = " ".join(toks[i : i + n])
+            if phrase in BEER_KNOWN_STYLES:
+                return BEER_KNOWN_STYLES[phrase]
+    return None
+
+
+def plan_beer_query(q: str) -> dict[str, Any]:
+    """Hub-Chat-like plan: where.style / short find.query / FTS tokens — never NL as find.query."""
+    raw = (q or "").strip()
+    tokens = beer_content_tokens(raw)
+    style = resolve_beer_style(raw, tokens)
+    fts_query_text = " ".join(tokens)
+    plan: dict[str, Any] = {
+        "raw": raw,
+        "tokens": tokens,
+        "style": style,
+        "fts_query_text": fts_query_text,
+        "find_query": None,
+        "mode": "empty",
+    }
+    if not raw:
+        return plan
+    if style:
+        plan["mode"] = "where_style"
+        return plan
+    if len(tokens) == 1:
+        plan["find_query"] = tokens[0]
+        plan["mode"] = "find_query"
+        return plan
+    if fts_query_text:
+        plan["mode"] = "fts"
+        return plan
+    return plan
+
+
+def select_beer_get_ids(data: dict[str, Any]) -> list[str]:
+    """Prefer result.node_ids / file:: over item-local n_* when both appear."""
+    def _clean(raw: Any) -> list[str]:
+        out: list[str] = []
+        if isinstance(raw, list):
+            for x in raw:
+                s = str(x).strip()
+                if s:
+                    out.append(s)
+        return out
+
+    top = _clean(data.get("node_ids") or data.get("ids") or [])
+    item_ids: list[str] = []
+    items = data.get("items") or data.get("nodes") or []
+    if isinstance(items, list):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            node = item.get("node") if isinstance(item.get("node"), dict) else item
+            if not isinstance(node, dict):
+                continue
+            for key in ("id", "node_id"):
+                s = str(node.get(key) or item.get(key) or "").strip()
+                if s:
+                    item_ids.append(s)
+                    break
+
+    candidates = top if top else item_ids
+    if not candidates:
+        return []
+    non_n = [i for i in candidates if not i.startswith("n_")]
+    n_ids = [i for i in candidates if i.startswith("n_")]
+    if non_n and n_ids:
+        non_n = sorted(non_n, key=lambda s: (0 if s.startswith("file::") else 1, s))
+        return non_n
+    if non_n:
+        return sorted(non_n, key=lambda s: (0 if s.startswith("file::") else 1, s))
+    return candidates
+
+
+
 BEER_MARKERS = (
     "README.md",
     "main.py",
@@ -79,11 +270,14 @@ _MAIN_PY = '''#!/usr/bin/env python3
 """Beer-sample Direct catalog UI — FastAPI BFF (zero LLM).
 
 Sequential find → get (+ FTS fallback). Direct-safe: no multi-step DAG verb.
+NL questions use a Hub-Chat-like planner (tokenize / stopwords / where.style /
+FTS tokens) — never find.query=full sentence (ZDM-7).
 Scaffolded by zeus_dev_helper_mcp use_sample(sample=beer).
 """
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -114,11 +308,28 @@ KNOWN_STYLES: dict[str, str] = {
     "wheat beer": "Wheat Beer",
     "fruit": "Fruit Beer",
     "fruit beer": "Fruit Beer",
+    "pumpkin": "Pumpkin Beer",
+    "pumpkin beer": "Pumpkin Beer",
     "sour": "Sour Beer",
     "belgian": "Belgian Ale",
     "pale ale": "American Pale Ale",
     "apa": "American Pale Ale",
 }
+
+STOPWORDS = frozenset(
+    {
+        "a", "an", "the", "of", "and", "or", "to", "in", "on", "for", "with",
+        "from", "by", "at", "as", "is", "are", "was", "were", "be", "been",
+        "what", "which", "who", "where", "when", "how", "why",
+        "made", "make", "makes", "using", "use", "used",
+        "beer", "beers", "brew", "brews",
+        "show", "list", "find", "get", "give", "me", "please",
+        "any", "some", "all", "that", "this", "those", "these",
+        "do", "does", "can", "you", "i", "we", "there",
+        "about", "like", "have", "has", "had",
+    }
+)
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 app = FastAPI(title="Beer Direct catalog UI", version="0.1.0")
 _static = _ROOT / "static"
@@ -159,20 +370,46 @@ def _unwrap(payload: Any) -> dict[str, Any]:
     return payload
 
 
-def _node_ids(data: dict[str, Any]) -> list[str]:
-    raw = data.get("node_ids") or data.get("ids") or []
-    out: list[str] = []
-    if isinstance(raw, list):
-        for x in raw:
-            s = str(x).strip()
-            if s:
-                out.append(s)
-    return out
-
-
 def _items(data: dict[str, Any]) -> list[Any]:
     raw = data.get("items") or data.get("nodes") or []
     return list(raw) if isinstance(raw, list) else []
+
+
+def _select_get_ids(data: dict[str, Any]) -> list[str]:
+    """Prefer result.node_ids / file:: over item-local n_* when both appear."""
+    def _clean(raw: Any) -> list[str]:
+        out: list[str] = []
+        if isinstance(raw, list):
+            for x in raw:
+                s = str(x).strip()
+                if s:
+                    out.append(s)
+        return out
+
+    top = _clean(data.get("node_ids") or data.get("ids") or [])
+    item_ids: list[str] = []
+    for item in _items(data):
+        if not isinstance(item, dict):
+            continue
+        node = item.get("node") if isinstance(item.get("node"), dict) else item
+        if not isinstance(node, dict):
+            continue
+        for key in ("id", "node_id"):
+            s = str(node.get(key) or item.get(key) or "").strip()
+            if s:
+                item_ids.append(s)
+                break
+
+    candidates = top if top else item_ids
+    if not candidates:
+        return []
+    non_n = [i for i in candidates if not i.startswith("n_")]
+    n_ids = [i for i in candidates if i.startswith("n_")]
+    if non_n and n_ids:
+        return sorted(non_n, key=lambda s: (0 if s.startswith("file::") else 1, s))
+    if non_n:
+        return sorted(non_n, key=lambda s: (0 if s.startswith("file::") else 1, s))
+    return candidates
 
 
 def _parse_doc_key(doc_key: str) -> dict[str, str]:
@@ -294,17 +531,55 @@ async def _fts(query_text: str) -> tuple[dict[str, Any], str | None]:
     )
 
 
-def _resolve_style(q: str) -> str | None:
+def _content_tokens(q: str) -> list[str]:
+    return [t for t in _TOKEN_RE.findall((q or "").lower()) if t not in STOPWORDS]
+
+
+def _resolve_style(q: str, tokens: list[str] | None = None) -> str | None:
     key = (q or "").strip().lower()
     if not key:
         return None
     if key in KNOWN_STYLES:
         return KNOWN_STYLES[key]
-    # Exact chip values already canonical
     for canon in KNOWN_STYLES.values():
         if key == canon.lower():
             return canon
+    toks = list(tokens) if tokens is not None else _content_tokens(q)
+    for n in range(min(3, len(toks)), 0, -1):
+        for i in range(0, len(toks) - n + 1):
+            phrase = " ".join(toks[i : i + n])
+            if phrase in KNOWN_STYLES:
+                return KNOWN_STYLES[phrase]
     return None
+
+
+def plan_query(q: str) -> dict[str, Any]:
+    """Deterministic NL plan — Hub Chat style, never find.query=full sentence."""
+    raw = (q or "").strip()
+    tokens = _content_tokens(raw)
+    style = _resolve_style(raw, tokens)
+    fts_query_text = " ".join(tokens)
+    plan: dict[str, Any] = {
+        "raw": raw,
+        "tokens": tokens,
+        "style": style,
+        "fts_query_text": fts_query_text,
+        "find_query": None,
+        "mode": "empty",
+    }
+    if not raw:
+        return plan
+    if style:
+        plan["mode"] = "where_style"
+        return plan
+    if len(tokens) == 1:
+        plan["find_query"] = tokens[0]
+        plan["mode"] = "find_query"
+        return plan
+    if fts_query_text:
+        plan["mode"] = "fts"
+        return plan
+    return plan
 
 
 @app.get("/healthz")
@@ -327,83 +602,107 @@ async def api_config() -> dict[str, Any]:
 
 @app.get("/api/search")
 async def api_search(q: str = Query("", min_length=0, max_length=200)) -> dict[str, Any]:
-    """Catalog search: known style → find where.style; short token → find query; else FTS.
+    """Catalog search via NL plan: where.style / short find.query / FTS tokens.
 
     Never calls get when node_ids is empty (abort_if_empty behavior).
     On empty find: FTS fallback; doc_key-only hits become cards without get.
+    Never sends a full NL sentence as find.query.
     """
     query = (q or "").strip()
     if not query:
-        return {"ok": True, "query": query, "cards": [], "path": [], "req_ids": []}
+        return {"ok": True, "query": query, "cards": [], "path": [], "req_ids": [], "plan": {}}
 
     path: list[str] = []
     req_ids: list[str] = []
-    style = _resolve_style(query)
+    plan = plan_query(query)
+    path.append(f"plan:{plan['mode']}")
 
-    find_body: dict[str, Any]
-    if style:
-        find_body = {
+    find_data: dict[str, Any] | None = None
+    ids: list[str] = []
+
+    if plan["mode"] == "where_style":
+        style = plan["style"]
+        find_body: dict[str, Any] = {
             "entity_type": "Beer",
             "where": {"style": style},
             "return": "ids",
             "limit": 20,
         }
         path.append(f"find:where.style={style}")
-    else:
-        # Short tokens → find query= (not NL sentences)
+        find_data, rid = await _find(find_body)
+        if rid:
+            req_ids.append(rid)
+        ids = _select_get_ids(find_data)
+    elif plan["mode"] == "find_query":
+        token = plan["find_query"]
         find_body = {
             "entity_type": "Beer",
-            "query": query,
+            "query": token,
             "return": "ids",
             "limit": 20,
         }
-        path.append(f"find:query={query}")
+        path.append(f"find:query={token}")
+        find_data, rid = await _find(find_body)
+        if rid:
+            req_ids.append(rid)
+        ids = _select_get_ids(find_data)
+    # mode fts / empty: skip find.query for multi-word NL
 
-    find_data, rid = await _find(find_body)
-    if rid:
-        req_ids.append(rid)
-    ids = _node_ids(find_data)
-
-    # abort_if_empty: empty find → do not get; try FTS
+    # abort_if_empty: empty find → do not get; try FTS with content tokens
     if not ids:
-        path.append("abort_if_empty")
-        fts_data, frid = await _fts(query)
-        if frid:
-            req_ids.append(frid)
-        path.append("search:fts")
-        fts_ids = _node_ids(fts_data)
-        if fts_ids:
-            get_data, grid = await _get(fts_ids)
-            if grid:
-                req_ids.append(grid)
-            path.append("get")
-            cards = []
-            for item in _items(get_data):
-                card = _card_from_node(item if isinstance(item, dict) else {})
-                if card:
-                    cards.append(card)
-            if not cards:
-                cards = _cards_from_find_or_fts(fts_data, source="fts")
+        if find_data is not None:
+            path.append("abort_if_empty")
+        fts_q = plan["fts_query_text"]
+        if fts_q:
+            fts_data, frid = await _fts(fts_q)
+            if frid:
+                req_ids.append(frid)
+            path.append(f"search:fts={fts_q}")
+            fts_ids = _select_get_ids(fts_data)
+            if fts_ids:
+                get_data, grid = await _get(fts_ids)
+                if grid:
+                    req_ids.append(grid)
+                path.append("get")
+                cards = []
+                for item in _items(get_data):
+                    card = _card_from_node(item if isinstance(item, dict) else {})
+                    if card:
+                        cards.append(card)
+                if not cards:
+                    cards = _cards_from_find_or_fts(fts_data, source="fts")
+                return {
+                    "ok": True,
+                    "query": query,
+                    "cards": cards,
+                    "path": path,
+                    "req_ids": req_ids,
+                    "node_ids": fts_ids,
+                    "plan": plan,
+                }
+            # node_ids=[] but items may carry doc_key — parse into cards; never get
+            cards = _cards_from_find_or_fts(fts_data, source="fts_doc_key")
+            if cards:
+                path.append("doc_key")
             return {
                 "ok": True,
                 "query": query,
                 "cards": cards,
                 "path": path,
                 "req_ids": req_ids,
-                "node_ids": fts_ids,
+                "node_ids": [],
+                "plan": plan,
+                "note": "FTS doc_key-only or empty; skipped get",
             }
-        # node_ids=[] but items may carry doc_key — parse into cards; never get
-        cards = _cards_from_find_or_fts(fts_data, source="fts_doc_key")
-        if cards:
-            path.append("doc_key")
         return {
             "ok": True,
             "query": query,
-            "cards": cards,
+            "cards": [],
             "path": path,
             "req_ids": req_ids,
             "node_ids": [],
-            "note": "FTS doc_key-only or empty; skipped get",
+            "plan": plan,
+            "note": "No content tokens / empty plan",
         }
 
     get_data, grid = await _get(ids)
@@ -415,7 +714,7 @@ async def api_search(q: str = Query("", min_length=0, max_length=200)) -> dict[s
         card = _card_from_node(item if isinstance(item, dict) else {})
         if card:
             cards.append(card)
-    if not cards:
+    if not cards and find_data is not None:
         cards = _cards_from_find_or_fts(find_data, source="find")
     return {
         "ok": True,
@@ -424,6 +723,7 @@ async def api_search(q: str = Query("", min_length=0, max_length=200)) -> dict[s
         "path": path,
         "req_ids": req_ids,
         "node_ids": ids,
+        "plan": plan,
     }
 
 
@@ -634,7 +934,7 @@ uvicorn main:app --host 127.0.0.1 --port ${{PORT:-8090}}
 ```
 
 Open `http://127.0.0.1:8090/`. Try chips **ipa** / **porter** / **Fruit Beer**,
-or a short search token. Cards show `req_id` from the BFF path.
+a short token, or NL like “What beers are made from fruit?”. Cards show `req_id`.
 
 ## Env
 
@@ -652,16 +952,24 @@ No `LLM_API_KEY` / OpenAI key is required for first paint.
 
 ## Search path (BFF)
 
-1. Known styles (chip / alias) → `find` with `where.style=…`
-2. Other short tokens → `find` with `query=`
-3. Empty `node_ids` → **abort_if_empty** (skip `get`) → FTS `search`
-4. FTS with ids → `get`; FTS with `doc_key` only → parse cards (no `get`)
-5. Never call `get` when `node_ids` is empty
+1. **NL plan** (tokenize → drop stopwords) — never `find.query=` a full sentence
+2. Known styles (chip / alias / content token, incl. **Fruit Beer** / **Pumpkin Beer**) → `find` `where.style=…`
+3. Single content token → `find` with `query=` that token only
+4. Multi-token without style → FTS `query_text` = content tokens joined (not the sentence)
+5. Empty `node_ids` → **abort_if_empty** (skip `get`) → FTS / `doc_key` cards
+6. Prefer `result.node_ids` / `file::` ids for `get` over item-local `n_*` when both appear
+7. Never call `get` when `node_ids` is empty
+
+### NL plan note
+
+**0 rows on a sentence** (e.g. “What beers are made from fruit?”) usually means a **bad plan** —
+`find.query` stuffed with the full sentence — **not** an empty Zeus. Use this planner:
+stopwords out → `where.style=Fruit Beer` and/or FTS `query_text=fruit`.
 
 ## Docs
 
 - https://docs.koten.ai/zeus-client/using-zeus-client
-- Helper design: ZDM-1 beer first-green / ZDM-6 Direct UI
+- Helper design: ZDM-1 beer first-green / ZDM-6 Direct UI / ZDM-7 NL planner
 """
 
 

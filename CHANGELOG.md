@@ -6,6 +6,7 @@
 - **[ZDM-3](https://kotenai.atlassian.net/browse/ZDM-3)** Persisted `set_prereq(zeus_url/bucket/scope/…)` now **overrides** MCP host `ZEUS_*` env defaults. Stale `ZEUS_URL=http://localhost:8080` no longer shadows a lab URL for `doctor` / `readiness_check`. `set_prereq` also mirrors those fields into process env. `doctor` reports `url_routing` (`stored` / `env` / `effective`) and flags when host env differs from `set_prereq`.
 
 ### Added
+- **[ZDM-7](https://kotenai.atlassian.net/browse/ZDM-7)** Beer Direct NL planner — `plan_beer_query` (tokenize / stopwords / `where.style` incl. Fruit Beer + Pumpkin Beer / FTS `query_text`=tokens) mirrored in the `demo_beer_sample` BFF. Golden “What beers are made from fruit?” maps to `where.style=Fruit Beer`, never `find.query=` the full sentence. Prefer `result.node_ids` / `file::` over item-local `n_*` for `get`. README + `diagnose_error(empty_find_get)` treat “0 rows on a sentence” as a bad plan, not empty Zeus.
 - **[ZDM-6](https://kotenai.atlassian.net/browse/ZDM-6)** Beer Direct UI — `start_project(sample=beer)` sets track `ui-direct`; `use_sample(sample=beer)` writes `demo_beer_sample` (FastAPI same-origin BFF + static catalog page). BFF uses sequential `find` → `get` with FTS fallback, `abort_if_empty` (never `get` on empty `node_ids`), and `doc_key` cards when FTS returns no graph ids. **No `pipeline`**, **no LLM key**. Walkthrough recommends `use_sample` on 0.2/3.1 and does not push `smoke_test_agent` as primary on this track.
 
 ## 0.7.3
