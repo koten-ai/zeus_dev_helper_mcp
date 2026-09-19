@@ -795,7 +795,7 @@ def travel_golden_path(
 4. `export ZEUS_URL=http://localhost:8080` and scope env from this sample's docs.
 5. MCP tools: `start_project(sample=travel)` → `use_sample` → `readiness_check` → smokes.
 6. If this sample documents Docker: `cp config.example.json config.json` then `docker compose up --build`.
-7. Published docs: https://docs.koten.ai/
+7. Published docs: https://docs.koten.ai/zeus-client
 """
 
     if layout and layout.get("ok") and root is not None:
