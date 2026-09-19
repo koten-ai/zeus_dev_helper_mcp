@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterable
 from functools import wraps
 from typing import Any
@@ -515,7 +516,9 @@ def set_prereq(
 
     Put real secrets in environment variables (ZEUS_PASSWORD, ZEUS_BEARER_TOKEN, LLM_API_KEY).
     When the user named a Zeus URL or sample in chat, pass that zeus_url / bucket / scope here
-    (not Helper localhost defaults). Presence flags only for credentials and LLM key.
+    (not Helper localhost defaults). Persisted values override MCP host ZEUS_* env defaults
+    so readiness/doctor hit the user's cluster (ZDM-3). Presence flags only for credentials
+    and LLM key.
     """
     cfg = _cfg()
     payload: dict[str, Any] = {}
@@ -543,12 +546,32 @@ def set_prereq(
         payload["has_password"] = has_password
 
     stored = save_prereqs(cfg, payload)
+    # Mirror non-secret routing into process env so tools that read ZEUS_* directly
+    # and reload_config() agree. Persisted prereqs still win if the MCP host re-injects
+    # a stale localhost ZEUS_URL (ZDM-3).
+    env_map = {
+        "zeus_url": "ZEUS_URL",
+        "auth_mode": "ZEUS_AUTH_MODE",
+        "bucket": "ZEUS_BUCKET",
+        "scope": "ZEUS_SCOPE",
+        "collection": "ZEUS_COLLECTION",
+        "mode": "ZEUS_MODE",
+        "role": "ZEUS_HELPER_ROLE",
+    }
+    for key, env_name in env_map.items():
+        val = stored.get(key)
+        if val is not None and str(val).strip() != "":
+            os.environ[env_name] = str(val).strip()
+
     cfg = reload_config()
     return {
         "saved": True,
         "stored_public": stored,
         "effective_config": cfg.public_view(),
-        "note": "Secrets must remain in env vars — only presence flags are stored.",
+        "note": (
+            "Secrets must remain in env vars — only presence flags are stored. "
+            "Persisted zeus_url/bucket/scope override MCP host ZEUS_* defaults."
+        ),
         "next_action": "validate_env → readiness_check",
     }
 
