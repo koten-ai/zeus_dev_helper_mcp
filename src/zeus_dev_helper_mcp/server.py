@@ -77,7 +77,7 @@ from zeus_dev_helper_mcp.mcp_compat import (
     register_tool,
 )
 from zeus_dev_helper_mcp.motion import recommend_motion as recommend_motion_impl
-from zeus_dev_helper_mcp.prereqs import public_prereqs, save_prereqs
+from zeus_dev_helper_mcp.prereqs import load_prereqs, public_prereqs, save_prereqs
 from zeus_dev_helper_mcp.prompts import register_prompts
 from zeus_dev_helper_mcp.readiness import run_readiness_check
 from zeus_dev_helper_mcp.resources import register_resources
@@ -155,6 +155,36 @@ def _cfg() -> HelperConfig:
 DOCTOR_DETAILS = ("health", "env", "compat", "cache", "all")
 
 
+def _url_routing_view(cfg: HelperConfig) -> dict[str, Any]:
+    """Compare MCP host ZEUS_URL, set_prereq stored URL, and effective config (ZDM-3)."""
+    stored = (load_prereqs(cfg).get("zeus_url") or "").strip() or None
+    env_url = (os.environ.get("ZEUS_URL") or "").strip() or None
+    effective = (cfg.zeus_url or "").strip() or None
+
+    def _norm(u: str | None) -> str | None:
+        return u.rstrip("/") if u else None
+
+    issues: list[dict[str, str]] = []
+    if stored and env_url and _norm(stored) != _norm(env_url):
+        issues.append(
+            {
+                "code": "env_url_differs_from_prereq",
+                "message": (
+                    f"MCP host ZEUS_URL={env_url} differs from set_prereq "
+                    f"zeus_url={stored}; effective uses set_prereq (persisted wins)."
+                ),
+                "severity": "set_prereq",
+                "env": "ZEUS_URL",
+            }
+        )
+    return {
+        "stored_zeus_url": stored,
+        "env_zeus_url": env_url,
+        "effective_zeus_url": effective,
+        "issues": issues,
+    }
+
+
 def _doctor_health() -> dict[str, Any]:
     cfg = _cfg()
     catalog_ok = False
@@ -168,10 +198,15 @@ def _doctor_health() -> dict[str, Any]:
         catalog_error = str(e)
 
     sibling = resolve_local_repo_hint()
+    routing = _url_routing_view(cfg)
+    next_action = (
+        "set_prereq with the user’s Zeus URL/sample (if named), then start_project → next_step"
+    )
     return {
         "ok": True,
         "version": __version__,
         "config": cfg.public_view(),
+        "url_routing": routing,
         "catalog": {
             "reachable": catalog_ok,
             "modes_count": modes_count,
@@ -192,7 +227,7 @@ def _doctor_health() -> dict[str, Any]:
             ),
             "zeus_chat_request": f"https://github.com/{cfg.chat_request_repo}",
         },
-        "next_action": "start_project then next_step",
+        "next_action": next_action,
     }
 
 

@@ -69,3 +69,30 @@ def test_env_used_when_no_prereq_file(tmp_path: Path, monkeypatch) -> None:
     cfg = reload_config()
     assert cfg.zeus_url == "http://localhost:8080"
     assert cfg.default_bucket == ""
+
+
+def test_doctor_flags_stored_vs_env_url(tmp_path: Path, monkeypatch) -> None:
+    """doctor.url_routing surfaces MCP env vs set_prereq when they disagree."""
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(state))
+    monkeypatch.setenv("ZEUS_URL", "http://localhost:8080")
+    cfg = reload_config()
+    save_prereqs(
+        cfg,
+        {
+            "zeus_url": "http://192.168.0.219:8080",
+            "bucket": "beer-sample",
+            "scope": "_default",
+        },
+    )
+    reload_config()
+    from zeus_dev_helper_mcp.server import doctor
+
+    out = doctor("health")
+    routing = out.get("url_routing") or {}
+    assert routing.get("stored_zeus_url") == "http://192.168.0.219:8080"
+    assert routing.get("env_zeus_url") == "http://localhost:8080"
+    assert routing.get("effective_zeus_url") == "http://192.168.0.219:8080"
+    codes = {i.get("code") for i in (routing.get("issues") or [])}
+    assert "env_url_differs_from_prereq" in codes
