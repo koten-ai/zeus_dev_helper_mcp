@@ -6,10 +6,10 @@
 
 1. This file  
 2. [docs/TOOLS.md](docs/TOOLS.md) — Helper tool catalog (when / args / side effects / do-not)  
-3. [docs.koten.ai](https://docs.koten.ai/) (published docs; site may be placeholder while wiring)  
-4. [agent-index.yaml](https://github.com/koten-ai/koten_docs/blob/zeus-v1.0.0/agent-index.yaml) (machine index in source repo)  
-5. [For AI agents](https://docs.koten.ai/zeus-client/for-ai-agents)  
-6. [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client)  
+3. [Zeus Client docs](https://docs.koten.ai/zeus-client) — **live** published human docs hub  
+4. [For AI agents](https://docs.koten.ai/zeus-client/for-ai-agents) · [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client) · [Start](https://docs.koten.ai/zeus-client/start) · [Errors](https://docs.koten.ai/zeus-client/errors) · [Dev Helper MCP](https://docs.koten.ai/zeus-client/dev-helper-mcp)  
+5. Live Zeus public API **:8080** (readiness / stamp / smoke — never Hub **:9091** from the app path)  
+6. [agent-index.yaml](https://github.com/koten-ai/koten_docs/blob/zeus-v1.0.0/agent-index.yaml) — machine map only (do **not** clone `koten_docs` or grep the Zeus engine for first green)  
 7. [zeus_chat_request](https://github.com/koten-ai/zeus_chat_request) for templates  
 
 ## Hard constraints

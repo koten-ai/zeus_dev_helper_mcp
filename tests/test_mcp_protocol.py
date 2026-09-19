@@ -169,6 +169,8 @@ def test_prompts_list_and_get() -> None:
     assert "set_prereq" in blob
     assert "Zeus source tree" in blob or "grep" in blob.lower()
     assert "has_llm_key=false" in blob or "has_llm_key" in blob
+    assert "docs.koten.ai/zeus-client" in blob
+    assert "placeholder while wiring" not in blob.lower()
     smoke = _run(server.get_prompt("smoke_question", {"question": "What entities exist?"}))
     smoke_text = json.dumps(smoke.model_dump() if hasattr(smoke, "model_dump") else str(smoke))
     assert "entities" in smoke_text.lower() or "smoke_test_agent" in smoke_text

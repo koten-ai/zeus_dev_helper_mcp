@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- **[ZDM-10](https://kotenai.atlassian.net/browse/ZDM-10)** Treat [docs.koten.ai/zeus-client](https://docs.koten.ai/zeus-client) as the live human docs hub. Removed “placeholder while wiring” from `AGENTS.md` / `docs_links.py` / DESIGN blurbs. Day-one load order prefers Helper tools + published hub + live `:8080`; `agent-index.yaml` remains a machine map only (do not clone `koten_docs` for first green). `first_green` prompt + server `INSTRUCTIONS` name the hub. `doctor` docs include `zeus_client_hub` / `dev_helper_mcp`. Optional `scripts/docs_link_smoke.py` GETs key pages (not wired into CI).
+
 ### Added
 - **[ZDM-6](https://kotenai.atlassian.net/browse/ZDM-6)** Beer Direct UI — `start_project(sample=beer)` sets track `ui-direct`; `use_sample(sample=beer)` writes `demo_beer_sample` (FastAPI same-origin BFF + static catalog page). BFF uses sequential `find` → `get` with FTS fallback, `abort_if_empty` (never `get` on empty `node_ids`), and `doc_key` cards when FTS returns no graph ids. **No `pipeline`**, **no LLM key**. Walkthrough recommends `use_sample` on 0.2/3.1 and does not push `smoke_test_agent` as primary on this track.
 

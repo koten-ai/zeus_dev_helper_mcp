@@ -8,6 +8,8 @@ from zeus_dev_helper_mcp.mcp_compat import register_prompt
 
 FIRST_GREEN = """You are coaching a first Zeus Client app to green using the Developer Helper MCP.
 
+Human docs for first green: https://docs.koten.ai/zeus-client (For AI agents, Start, Using Zeus Client, Errors, Dev Helper MCP). Prefer that live hub + Helper tools (zeus-helper:// / next_step) + live Zeus :8080. Do not clone koten_docs or grep the Zeus engine for first green; agent-index.yaml is a machine map only.
+
 Hard constraints:
 - Public Zeus API is :8080, never Hub :9091 from the app path.
 - Never invent contract_hash. bind_contract copies a stamped hash only.

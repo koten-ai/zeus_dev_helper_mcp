@@ -1,8 +1,8 @@
 """Canonical published docs URLs (https://docs.koten.ai/).
 
-GitHub koten_docs remains the *source* repo; the public site is docs.koten.ai
+Live human docs hub: https://docs.koten.ai/zeus-client
+GitHub koten_docs remains the *source* repo; docs.koten.ai is the published site
 (GitBook). Paths follow repo file paths without .md (see koten_docs SUMMARY).
-While the site is still a placeholder, links still point at the future home.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import os
 
 DEFAULT_DOCS_BASE = "https://docs.koten.ai"
 DEFAULT_DOCS_SOURCE = "https://github.com/koten-ai/koten_docs"
+ZEUS_CLIENT_HUB = f"{DEFAULT_DOCS_BASE}/zeus-client"
 
 
 def docs_base() -> str:
@@ -35,7 +36,7 @@ def docs_url(path: str) -> str:
         raw, frag = raw.split("#", 1)
         anchor = f"#{frag}"
     p = raw
-    # YAML / raw machine files: prefer source repo until published on the site
+    # YAML / raw machine files stay on GitHub (machine index; not a site page)
     if p.endswith(".yaml") or p.endswith(".yml"):
         branch = os.environ.get("KOTEN_DOCS_BRANCH", "zeus-v1.0.0").strip() or "zeus-v1.0.0"
         return f"{docs_source_repo()}/blob/{branch}/{raw}{anchor}"
