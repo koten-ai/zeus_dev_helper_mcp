@@ -108,7 +108,7 @@ Phases: **0** intent → **1** prereqs → **2** platform → **3** project on d
 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
-| `set_prereq` | Store non-secret prereqs | `zeus_url`, `auth_mode`, `bucket`, `scope`, `collection`, `mode`, `role`, presence flags (`has_llm_key`, `has_bearer`, `has_username`, `has_password`) | `state` | After `start_project`. Secrets stay in env (`ZEUS_PASSWORD`, `ZEUS_BEARER_TOKEN`, `LLM_API_KEY`). Then `validate_env`. |
+| `set_prereq` | Store non-secret prereqs | `zeus_url`, `auth_mode`, `bucket`, `scope`, `collection`, `mode`, `role`, presence flags (`has_llm_key`, `has_bearer`, `has_username`, `has_password`) | `state` | After `start_project` (or right after `doctor` when the user already named a URL/sample). Persisted `zeus_url` / `bucket` / `scope` **override** MCP host `ZEUS_*` env defaults (common `localhost:8080` must not win). Secrets stay in env (`ZEUS_PASSWORD`, `ZEUS_BEARER_TOKEN`, `LLM_API_KEY`). Then `validate_env`. |
 | `validate_env` | Shape check: URL port, LLM key presence, bucket/scope, catalog templates | — | `catalog` | After `set_prereq`. Then `readiness_check`. Flags `:9091` as `wrong_port_hub_vs_public`. |
 | `readiness_check` | Live gates: healthz / readyz / version, auth, bootstrap, chat_request | `update_checklist=true` | `live GET`, optional `state` | After env looks sane. Then catalogs or `bootstrap_scope`. |
 | `compat_check` | `GET /version` + `/healthz` plus static 0.7 feature gates | `zeus_url` (optional override) | `live GET` | Before relying on 0.7 behaviour (req-id policy, V1 session gone, semantic cache floor). **Not** a COMPAT matrix row. |

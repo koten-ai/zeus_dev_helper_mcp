@@ -14,9 +14,8 @@ Hard constraints the prompts assume:
 Day-one order (for chaining, not required per prompt). Default MCP surface is `core`; encyclopedia tools need `ZEUS_DEV_HELPER_TOOLSETS` or `zeus-helper://` resources:
 
 ```text
-doctor → start_project → next_step
-  → set_prereq → validate_env → readiness_check
-  → use_sample | scaffold_app → bind_contract → recommend_surface
+doctor → (if user named URL/sample) set_prereq → start_project → next_step
+  → readiness_check → use_sample | scaffold_app → bind_contract → recommend_surface
   → smoke_test_zeus → smoke_test_agent → diagnose_error
 ```
 
