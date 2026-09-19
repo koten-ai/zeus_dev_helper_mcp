@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- **[ZDM-9](https://kotenai.atlassian.net/browse/ZDM-9)** Coach wording: TravelPlan / `demo_travel_sample` is the **agent-plane** (LLM + `run_turn`) example; `demo_beer_sample` is the **data-plane Direct** example. Direct websites may copy TravelPlan BFF/same-origin/config only — **do not copy `run_turn`** unless this is an agent app. Beer / website / no LLM never clones `demo_travel_sample`. Glossary topics `demo_travel_sample` / `demo_beer_sample`; `first_green`, server instructions, LIST, AGENTS, README, TOOLS.
+
 ### Added
 - **[ZDM-6](https://kotenai.atlassian.net/browse/ZDM-6)** Beer Direct UI — `start_project(sample=beer)` sets track `ui-direct`; `use_sample(sample=beer)` writes `demo_beer_sample` (FastAPI same-origin BFF + static catalog page). BFF uses sequential `find` → `get` with FTS fallback, `abort_if_empty` (never `get` on empty `node_ids`), and `doc_key` cards when FTS returns no graph ids. **No `pipeline`**, **no LLM key**. Walkthrough recommends `use_sample` on 0.2/3.1 and does not push `smoke_test_agent` as primary on this track.
 
