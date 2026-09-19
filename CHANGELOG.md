@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- **[ZDM-8](https://kotenai.atlassian.net/browse/ZDM-8)** Host install docs no longer pin `localhost:8080` as the only `ZEUS_URL` example. README / `docs/HOST-MATRIX.md` lead with remote-host examples (`http://<zeus-host>:8080` / `http://192.168.0.219:8080`), note localhost only for same-machine Zeus, add Cursor `.cursor/mcp.json`, keep Grok `--` / `uvx zeus-dev-helper-mcp` gotchas, and document day-one `set_prereq` with the user’s URL plus Travel+LLM vs Direct+beer paths. `server.json` placeholder is `http://<zeus-host>:8080`. `doctor` stored-vs-effective URL note points at ZDM-3.
+
 ### Added
 - **[ZDM-6](https://kotenai.atlassian.net/browse/ZDM-6)** Beer Direct UI — `start_project(sample=beer)` sets track `ui-direct`; `use_sample(sample=beer)` writes `demo_beer_sample` (FastAPI same-origin BFF + static catalog page). BFF uses sequential `find` → `get` with FTS fallback, `abort_if_empty` (never `get` on empty `node_ids`), and `doc_key` cards when FTS returns no graph ids. **No `pipeline`**, **no LLM key**. Walkthrough recommends `use_sample` on 0.2/3.1 and does not push `smoke_test_agent` as primary on this track.
 
