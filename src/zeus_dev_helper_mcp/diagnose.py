@@ -38,6 +38,15 @@ _RULES: list[tuple[list[str], str, str]] = [
             "step_failed",
             "empty find",
             "abort_if_empty",
+            # ZDM-7: NL sentence stuffed into find.query → 0 rows (bad plan, not empty Zeus)
+            "sentence as query",
+            "sentence-as-query",
+            "find.query=",
+            "find query=full",
+            "nl sentence",
+            "full sentence",
+            "what beers are made",
+            "0 rows on a sentence",
         ],
         "empty_find_get",
         "err-empty-find-get",
@@ -154,7 +163,9 @@ _NEXT: dict[str, str] = {
     ),
     "empty_find_get": (
         "abort_if_empty on find; treat aborted/empty ids as an empty list; never get on empty node_ids. "
-        "Do not send NL sentences as find.query — map known styles to where.style or use FTS fallback."
+        "0 rows on an NL sentence usually means a bad plan (find.query=full sentence), not empty Zeus — "
+        "tokenize → drop stopwords → where.style (Fruit Beer / Pumpkin Beer) or FTS query_text=tokens only. "
+        "See beer Direct NL planner (plan_beer_query / use_sample sample=beer)."
     ),
     "fts_doc_key_only": (
         "FTS returned items with empty node_ids and doc_key only. Parse doc_key into cards; "
