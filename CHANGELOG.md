@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+### Changed
+- **[ZDM-9](https://kotenai.atlassian.net/browse/ZDM-9)** Coach wording: TravelPlan / `demo_travel_sample` is the **agent-plane** (LLM + `run_turn`) example; `demo_beer_sample` is the **data-plane Direct** example. Direct websites may copy TravelPlan BFF/same-origin/config only — **do not copy `run_turn`** unless this is an agent app. Beer / website / no LLM never clones `demo_travel_sample`. Glossary topics `demo_travel_sample` / `demo_beer_sample`; `first_green`, server instructions, LIST, AGENTS, README, TOOLS.
 ### Fixed
 - **[ZDM-3](https://kotenai.atlassian.net/browse/ZDM-3)** Persisted `set_prereq(zeus_url/bucket/scope/…)` now **overrides** MCP host `ZEUS_*` env defaults. Stale `ZEUS_URL=http://localhost:8080` no longer shadows a lab URL for `doctor` / `readiness_check`. `set_prereq` also mirrors those fields into process env. `doctor` reports `url_routing` (`stored` / `env` / `effective`) and flags when host env differs from `set_prereq`.
 

@@ -49,10 +49,12 @@ If the user already gave a Zeus URL or sample name, call `set_prereq` with **tho
 
 | User intent | `start_project` | Project on disk |
 | --- | --- | --- |
-| Unspecified / UI / “show me the app” (**default**) | `sample=travel` | `use_sample` → **`demo_travel_sample`** (full UI) |
-| Website + beer-sample / no LLM | `sample=beer` | `use_sample(sample=beer)` → **`demo_beer_sample`** Direct catalog UI (find→get, no pipeline) |
+| Unspecified / UI / “show me the app” (**default**, **agent-plane**) | `sample=travel` | `use_sample` → **`demo_travel_sample`** / TravelPlan (LLM + `run_turn`) |
+| Website + beer-sample / no LLM (**data-plane Direct**) | `sample=beer` | `use_sample(sample=beer)` → **`demo_beer_sample`** (find→get, no pipeline; never clone travel) |
 | “API” / REST / FastAPI | `sample=api` | `scaffold_app(app_kind=api, coding_language=python)` |
 | Minimal CLI fallback | (travel unavailable) | `scaffold_app(app_kind=cli)` |
+
+Direct websites may copy TravelPlan’s BFF/same-origin/config shape only — **do not copy `run_turn`** unless this is an agent app. Agent vs Direct: [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client).
 
 Credentials in the user message → env / gitignored `.env` + `set_prereq` **presence flags** only (never password values in MCP args). Existing-repo integration is **out of scope**.
 

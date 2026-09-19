@@ -118,8 +118,8 @@ doctor → start_project → next_step
 
 Prefer `next_step` over dumping the full checklist.
 
-- **Default (UI):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`.
-- **Beer / website + no LLM:** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF find→get + static catalog UI; no pipeline; no LLM key; `smoke_test_agent` not required).
+- **Default (UI / agent-plane):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) (TravelPlan LLM chat UI) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`.
+- **Beer / website + no LLM (data-plane Direct):** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF find→get + static catalog UI; no pipeline; no LLM key; `smoke_test_agent` not required; never clones TravelPlan). Direct sites may copy TravelPlan’s BFF/same-origin/config shape only — not `run_turn` ([docs](https://docs.koten.ai/zeus-client/using-zeus-client)).
 - **API-only:** user asks for an API/REST app → `start_project(sample=api)` → `scaffold_app(app_kind=api, coding_language=python)` (FastAPI `POST /turn` on `kotenai-zeus-client`). Other languages not scaffolded yet.
 - Credentials from chat → process env / gitignored `.env`; `set_prereq` presence flags only.
 - Integrating into an arbitrary existing repo is **out of scope**.

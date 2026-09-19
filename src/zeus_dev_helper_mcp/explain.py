@@ -202,6 +202,25 @@ TOPICS: dict[str, dict[str, str]] = {
         ),
         "doc": "zeus-client/using-zeus-client.md",
     },
+    "demo_travel_sample": {
+        "summary": (
+            "TravelPlan (public demo_travel_sample) is the agent-plane / LLM UI example: "
+            "Flask BFF, config.json, ZeusRuntime, rt.agent.run_turn, catalog bind. "
+            "use_sample(sample=travel) clones it when the user wants a chat UI and has an LLM key. "
+            "Do not default it for beer-sample / website / no-LLM utterances."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+        "external": "https://github.com/koten-ai/demo_travel_sample",
+    },
+    "demo_beer_sample": {
+        "summary": (
+            "demo_beer_sample is the data-plane Direct catalog UI example (zero LLM): "
+            "FastAPI same-origin BFF with sequential find→get (+ FTS), no pipeline, no run_turn. "
+            "use_sample(sample=beer) writes it. When shaping a Direct website you may copy "
+            "TravelPlan’s BFF/same-origin/config layout only — not the agent loop."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+    },
     "typeahead": {
         "summary": (
             "As-you-type suggest is rt.data.search with Trace-Class direct.interactive. "
@@ -279,6 +298,14 @@ def explain_topic(cfg: HelperConfig, topic: str) -> dict:
         "traceclass": "trace_class",
         "direct_path": "direct",
         "rt_data": "direct",
+        "travelplan": "demo_travel_sample",
+        "travel_plan": "demo_travel_sample",
+        "demo_travel": "demo_travel_sample",
+        "travel_sample": "demo_travel_sample",
+        "agent_plane": "demo_travel_sample",
+        "beer_direct": "demo_beer_sample",
+        "demo_beer": "demo_beer_sample",
+        "beer_sample_ui": "demo_beer_sample",
         "suggest": "typeahead",
         "autocomplete": "typeahead",
         "dag": "pipeline",
