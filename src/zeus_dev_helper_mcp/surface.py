@@ -87,7 +87,8 @@ def recommend_surface(
         notes.append("Single V2 verb on Direct (find/get/describe/search/…). pipeline is not on Direct.")
         if needs_llm is False:
             notes.append(
-                "Website + sample + no LLM → Direct BFF (sequential find→get), not travel agent."
+                "Website + sample + no LLM → beer catalog BFF posts one public /pipeline "
+                "(find or search, then get). rt.data.verb still rejects pipeline."
             )
     elif key == "multi_step":
         surface = "agent-for-pipeline"
@@ -99,9 +100,9 @@ def recommend_surface(
         )
         if needs_llm is False:
             notes.append(
-                "needs_llm=false with multi_step: still do not POST pipeline on Direct. "
-                "For a catalog website use typeahead/single_verb + sequential find→get in a BFF "
-                "(use_sample sample=beer), not travel agent."
+                "needs_llm=false with multi_step: the beer catalog BFF posts the public "
+                "/pipeline HTTP verb (find or search, then get). Do not send that call through "
+                "rt.data.verb (060010). use_sample(sample=beer), and leave the travel agent off."
             )
     else:
         # nl_question

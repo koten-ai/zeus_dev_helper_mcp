@@ -214,9 +214,10 @@ TOPICS: dict[str, dict[str, str]] = {
     },
     "demo_beer_sample": {
         "summary": (
-            "demo_beer_sample is the data-plane Direct catalog UI example (zero LLM): "
-            "FastAPI same-origin BFF with sequential find→get (+ FTS), no pipeline, no run_turn. "
-            "use_sample(sample=beer) writes it. When shaping a Direct website you may copy "
+            "demo_beer_sample is the data-plane catalog UI example (zero LLM): "
+            "FastAPI same-origin BFF. Each search is one public pipeline "
+            "(find or FTS search, then get of @found.node_ids). No run_turn. "
+            "use_sample(sample=beer) writes it. When shaping a catalog website you may copy "
             "TravelPlan’s BFF/same-origin/config layout only — not the agent loop."
         ),
         "doc": "zeus-client/using-zeus-client.md",

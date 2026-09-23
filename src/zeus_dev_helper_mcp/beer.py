@@ -1,10 +1,10 @@
 """Beer-sample Direct catalog UI template (ZDM-6).
 
-Zero-LLM same-origin FastAPI BFF + static page. Sequential find → get
-(+ FTS on content words). Never POST pipeline. A question whose content
-tokens are exactly one beer style or category is find where. A bare token
-such as fruit or IPA stays a name lookup. The raw question is never
-find.query or search.query_text.
+Zero-LLM same-origin FastAPI BFF + static page. Each search attempt is one
+public ``pipeline`` (find or FTS search, then get of ``@found.node_ids``).
+A question whose content tokens are exactly one beer style or category is
+find where. A bare token such as fruit or IPA stays a name lookup. The raw
+question is never find.query or search.query_text.
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ SAMPLE_BEER = {
     "name": "demo_beer_sample",
     "note": (
         "Zero-LLM Direct catalog UI for beer-sample. "
-        "use_sample(sample=beer) writes a FastAPI BFF + static page (find→get, no pipeline)."
+        "use_sample(sample=beer) writes a FastAPI BFF + static page (one pipeline per search)."
     ),
     "related": [
         docs_url("zeus-client/using-zeus-client.md"),
@@ -80,12 +80,13 @@ SAMPLE_BEER = {
 }
 
 _APP_HEAD = '''#!/usr/bin/env python3
-"""Beer-sample Direct catalog UI — FastAPI BFF (zero LLM).
+"""Beer-sample catalog UI — FastAPI BFF (zero LLM).
 
-Sequential find, then get. Questions whose words are exactly one style or
-category use find where. Other text is a name lookup, then that where when
-the name lookup is empty, then FTS on the content words. The raw question is
-never find.query or search.query_text.
+Each search attempt is one public pipeline: find or FTS search, then get.
+Questions whose words are exactly one style or category use find where.
+Other text is a name lookup, then that where when the name lookup is empty,
+then FTS on the content words. The raw question is never find.query or
+search.query_text.
 Scaffolded by zeus_dev_helper_mcp use_sample(sample=beer).
 The planner inlined below is zeus_dev_helper_mcp.beer_plan.
 """
@@ -416,7 +417,7 @@ _INDEX_HTML = """\
 <body>
   <header>
     <h1>The Sample Tap</h1>
-    <p class="sub">Zero-LLM Direct UI on <strong>beer-sample</strong> — find → get (+ FTS). No pipeline. No LLM key.</p>
+    <p class="sub">Zero-LLM catalog UI on <strong>beer-sample</strong> — one pipeline (find or search, then get). No LLM key.</p>
   </header>
   <main>
     <div class="search-row">
@@ -530,8 +531,8 @@ Zero-LLM **Direct** catalog UI for Couchbase **beer-sample**, written by
 Developer Helper MCP `use_sample(sample=beer)`.
 
 Same-origin **FastAPI BFF** + static page. The BFF talks to Zeus public API
-**`:8080`** with sequential **`find` → `get`** and an **FTS `search` fallback**.
-It never POSTs **`pipeline`** (Direct / ErrorCode `060010`).
+**`:8080`** with one **`pipeline`** per search attempt: a `find` or FTS `search`
+step, then `get` of `@found.node_ids`.
 
 **No LLM key required.**
 
@@ -571,7 +572,7 @@ No `LLM_API_KEY` / OpenAI key is required for first paint.
 
 ## Search path (BFF)
 
-Page size is 50 (`/api/search` default and cap). `find` uses `return: "rows"`, then one `get` of the row `n_*` ids.
+Page size is 50 (`/api/search` default and cap). Each attempt is one `POST /v2/.../pipeline`: step `found` is `find` (`return: "rows"`) or FTS `search`, step `rows` is `get` with `ids: "@found.node_ids"`. `abort_if_empty` on `found` skips `get` when that step has no items.
 
 1. Tokenize on `[a-z0-9]+`. Drop function words. Fold a trailing `s` (`fruits` → `fruit`, `beers` → `beer`). Drop `beer` / `ale` / `lager` / `style` / `brew` / `brewing`. Expand only `ipa`, `pilsner`, `fruity`, and `wit`.
 2. A question (contains `?`, or starts with what/which/who/where/when/why/how/list/show/find) whose content tokens **exactly** match one style or category → `find` `where`. Style wins over category. `fruit` matches **Fruit Beer** and does not match **Belgian-Style Fruit Lambic**.
@@ -579,13 +580,13 @@ Page size is 50 (`/api/search` default and cap). `find` uses `return: "rows"`, t
 4. Otherwise `find` `query`. A question uses the content words (`What is Duvel?` → `duvel`). A bare token uses the raw string (`fruit`, `IPA`, `Duvel`).
 5. If that name lookup is empty and a facet matched (`fruits`) → the same `where`.
 6. If still empty → FTS `strategy: "fts"`, `query_text` = content words, `timeout_ms: 8000`. Never the raw question.
-7. Empty ids → **abort_if_empty** (skip `get`). FTS doc keys become cards; detail resolves a doc key with `find` `where.name`.
+7. Empty `found` → **abort_if_empty** (the pipeline stops before `get`). FTS doc keys become cards; detail resolves a doc key with `find` `where.name` inside a pipeline. `get` ids are `@found.node_ids` only.
 
 ### Bad plan
 
 **0 rows on a sentence** such as “What beers are made from fruits?” is a **bad plan**, not an empty Zeus. `find.query` only matches name and snippet, so the sentence returns 0. The plan above sends `where.style` = `Fruit Beer`.
 
-List routes `GET /api/beers` and `GET /api/breweries` are `find` with `return: "rows"` and no `query`. `GET /api/beer/{{id}}` hydrates an `n_*` id with `get`.
+List routes `GET /api/beers` and `GET /api/breweries` are the same pipeline: `find` with `return: "rows"` and no `query`, then `get`. `GET /api/beer/{{id}}` hydrates an `n_*` id with a one-step `get` pipeline.
 
 ## Docs
 
@@ -672,17 +673,8 @@ def validate_beer_layout(root: Path) -> dict[str, Any]:
     if ok and main.is_file():
         try:
             text = main.read_text(encoding="utf-8", errors="replace")
-            # Reject only callable pipeline surfaces, not prose that says "no pipeline".
-            calls_pipeline = (
-                "/pipeline" in text
-                or '"pipeline"' in text
-                or "'pipeline'" in text
-            )
-            ok = (
-                not calls_pipeline
-                and ("/find" in text or '"find"' in text or "find" in text)
-                and "abort_if_empty" in text
-            )
+            calls_pipeline = '"pipeline"' in text or "'pipeline'" in text
+            ok = calls_pipeline and "abort_if_empty" in text and "@found.node_ids" in text
         except Exception:  # noqa: BLE001
             ok = False
     return {
@@ -690,7 +682,7 @@ def validate_beer_layout(root: Path) -> dict[str, Any]:
         "root": str(root),
         "found": found,
         "missing": missing,
-        "note": "Beer Direct UI markers (FastAPI BFF + static, no pipeline)",
+        "note": "Beer catalog UI markers (FastAPI BFF + static, pipeline find/search then get)",
     }
 
 
@@ -788,7 +780,7 @@ def write_beer_sample(
         "bucket": cfg.default_bucket or "beer-sample",
         "scope": cfg.default_scope or "_default",
         "from": "zeus_dev_helper_mcp.beer.write_beer_sample",
-        "bff": "find→get (+ FTS); no pipeline",
+        "bff": "pipeline find/search then get",
     }
     meta_path = root / "sample_meta.json"
     meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")

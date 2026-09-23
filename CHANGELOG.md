@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Beer catalog search posts one public `pipeline` per attempt (`find` or FTS `search`, then `get` of `@found.node_ids`). `What beers are made from fruit?` stays `find` `where.style="Fruit Beer"` inside that pipeline, so the raw sentence is not a name lookup (that lookup returns 0). `rt.data.verb` still rejects `pipeline` (060010); the sample calls the HTTP verb.
+
 ## 0.7.4
 
 ### Changed

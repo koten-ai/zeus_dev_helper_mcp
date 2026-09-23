@@ -27,7 +27,7 @@ MCP prompts: `first_green`, `smoke_question`, `support_pack`. Resources: `zeus-h
 
 Copy-paste prompts for someone who only has a public Zeus URL and a sample name. They will not say Helper tool names. The agent should stay on the coach path (see [`docs/DESIGN-zdm-1-beer-first-green.md`](../docs/DESIGN-zdm-1-beer-first-green.md)).
 
-**Plane reminder (ZDM-9):** TravelPlan / `demo_travel_sample` = **agent-plane** (LLM + `run_turn`). `demo_beer_sample` = **data-plane Direct** (find→get, no LLM). Docs: [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client). A Direct website may copy TravelPlan’s BFF/same-origin/config shape only — **do not copy `run_turn`** unless this is an agent app. Beer / website / no LLM **never clones** `demo_travel_sample`.
+**Plane reminder (ZDM-9):** TravelPlan / `demo_travel_sample` = **agent-plane** (LLM + `run_turn`). `demo_beer_sample` = **data-plane catalog** (one public `pipeline` per search, no LLM). Docs: [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client). A catalog website may copy TravelPlan’s BFF/same-origin/config shape only — **do not copy `run_turn`** unless this is an agent app. Beer / website / no LLM **never clones** `demo_travel_sample`.
 
 ### Make a website from beer-sample
 
@@ -41,7 +41,7 @@ Copy-paste prompts for someone who only has a public Zeus URL and a sample name.
 
 3. What beers are made from fruit?
 
-**Expected tool sequence:** Only after a Direct catalog site exists. Answer via the site / Direct find+search (style map or FTS fallback) — not `smoke_test_agent` unless the user asked for chat. On failure, `diagnose_error` (empty find→get, FTS `doc_key`-only).
+**Expected tool sequence:** Only after a catalog site exists. Answer via the site’s pipeline (style `where` or FTS fallback inside `find`/`search` then `get`) — not `smoke_test_agent` unless the user asked for chat. On failure, `diagnose_error` (empty find→get, FTS `doc_key`-only).
 
 ---
 

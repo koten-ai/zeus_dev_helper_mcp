@@ -13,8 +13,8 @@ Target: first paint via Helper coach tools in minutes, without grepping the Zeus
 
 ## Locked decisions
 
-1. **BFF → Zeus uses sequential `find` then `get` (+ FTS fallback).** Never POST `pipeline` from the Direct/zero-LLM catalog UI. Aligns with frozen `pipeline_not_on_direct` / ErrorCode `060010`.
-2. **“Direct” here means zero-LLM catalog UI** (same-origin BFF + page), coached as `rt.data.verb` / typeahead — not `pipeline` on Direct.
+1. **BFF → Zeus posts one public `pipeline` per search attempt** (`find` or FTS `search`, then `get` of `@found.node_ids`, with `abort_if_empty` when the recall step has no items). A fruit question is `find` `where.style = "Fruit Beer"` inside that pipeline. The raw sentence is never `find.query`. The Python client `rt.data.verb` still rejects `pipeline` (ErrorCode `060010`); this sample calls the HTTP verb.
+2. **“Direct” here means zero-LLM catalog UI** (same-origin BFF + page). The sample showcases `pipeline` on the public API. `rt.data.verb("pipeline")` stays rejected.
 3. **Beer sample delivery (v1):** template written by `use_sample(sample=beer)` inside Helper (scaffold-style). Optional later: public `demo_beer_sample` clone (travel pattern).
 4. **Stacked branches** (one per ticket):
 
@@ -43,7 +43,7 @@ main
 | [ZDM-5](https://kotenai.atlassian.net/browse/ZDM-5) | `zdm-5/application-user-prompts` | Application-user prompt samples + `first_green` + host-matrix note |
 | [ZDM-4](https://kotenai.atlassian.net/browse/ZDM-4) | `zdm-4/diagnose-lab-errors` | `session_force_closed`, empty find→get, FTS `doc_key`-only |
 | [ZDM-3](https://kotenai.atlassian.net/browse/ZDM-3) | `zdm-3/coach-utterance` | doctor → set_prereq (user URL) → start_project → next_step |
-| [ZDM-6](https://kotenai.atlassian.net/browse/ZDM-6) | `zdm-6/beer-direct-ui` | Beer Direct UI template (find→get, no pipeline) |
+| [ZDM-6](https://kotenai.atlassian.net/browse/ZDM-6) | `zdm-6/beer-direct-ui` | Beer catalog UI template (pipeline: find/search then get) |
 | [ZDM-2](https://kotenai.atlassian.net/browse/ZDM-2) | `zdm-2/recommend-surface-direct` | website + sample + no LLM → Direct, not travel agent |
 
 ## Non-goals

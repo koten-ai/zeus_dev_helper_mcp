@@ -34,7 +34,7 @@ def test_use_sample_beer_writes_tree(tmp_path: Path) -> None:
     assert (root / "README.md").is_file()
 
 
-def test_beer_sources_have_no_pipeline_and_find_get(tmp_path: Path) -> None:
+def test_beer_sources_post_pipeline_find_then_get(tmp_path: Path) -> None:
     cfg = HelperConfig(state_dir=tmp_path / "state", default_bucket="beer-sample")
     out = write_beer_sample(cfg, tmp_path / "demo_beer_sample")
     assert out["ok"] is True
@@ -45,11 +45,9 @@ def test_beer_sources_have_no_pipeline_and_find_get(tmp_path: Path) -> None:
     env = (root / ".env.example").read_text(encoding="utf-8")
     readme = (root / "README.md").read_text(encoding="utf-8")
 
-    # Executable BFF must never call the pipeline verb
-    assert "/pipeline" not in main
-    assert '"pipeline"' not in main
-    assert "'pipeline'" not in main
+    assert '"pipeline"' in main or "'pipeline'" in main
     assert "abort_if_empty" in main
+    assert "@found.node_ids" in main
     assert "doc_key" in main
     assert "/find" in main or '"find"' in main
     assert "/get" in main or '"get"' in main

@@ -151,38 +151,45 @@ def test_execute_fruit_question_hydrates_n_ids() -> None:
 
     async def fetch(verb: str, body: dict) -> dict:
         calls.append((verb, body))
-        if verb == "find":
-            return {
+        assert verb == "pipeline"
+        found = body["steps"][0]
+        assert found["verb"] == "find"
+        assert found["params"]["where"] == {"style": "Fruit Beer"}
+        assert "What beers are made from fruits?" not in json.dumps(body)
+        assert body["steps"][1]["verb"] == "get"
+        assert body["steps"][1]["params"]["ids"] == "@found.node_ids"
+        return {
+            "status": "ok",
+            "found": {
                 "items": [
                     {"id": "n_728444f85942a4", "name": "Wild Blue", "type": "Beer", "doc_key": "ab-wild_blue"}
                 ],
                 "node_ids": ["file::446030a3c1a57314"],
                 "truncated": True,
                 "status": "ok",
-            }
-        assert verb == "get"
-        assert body == {"ids": ["n_728444f85942a4"], "include": ["body"]}
-        return {
-            "status": "ok",
-            "items": [
-                {
-                    "id": "file::446030a3c1a57314",
-                    "snippet": json.dumps(
-                        {
-                            "name": "Wild Blue",
-                            "style": "Fruit Beer",
-                            "category": "Other Style",
-                            "abv": 0,
-                            "brewery_id": "anheuser_busch",
-                        }
-                    ),
-                }
-            ],
+            },
+            "rows": {
+                "status": "ok",
+                "items": [
+                    {
+                        "id": "file::446030a3c1a57314",
+                        "snippet": json.dumps(
+                            {
+                                "name": "Wild Blue",
+                                "style": "Fruit Beer",
+                                "category": "Other Style",
+                                "abv": 0,
+                                "brewery_id": "anheuser_busch",
+                            }
+                        ),
+                    }
+                ],
+            },
         }
 
     out = asyncio.run(execute_search(plan_beer_query(FRUIT_Q), 50, fetch))
-    assert [verb for verb, _body in calls] == ["find", "get"]
-    assert calls[0][1]["where"] == {"style": "Fruit Beer"}
+    assert [verb for verb, _body in calls] == ["pipeline"]
+    assert out["path"][1].startswith("pipeline:find:where.style=Fruit Beer")
     assert out["match"] == {"field": "style", "value": "Fruit Beer"}
     assert out["truncated"] is True
     assert out["partial"] is False
@@ -199,22 +206,26 @@ def test_execute_bare_fruit_stops_on_name_hits() -> None:
     calls: list[dict] = []
 
     async def fetch(verb: str, body: dict) -> dict:
+        assert verb == "pipeline"
         calls.append(body)
-        if verb == "get":
-            return {"status": "ok", "items": []}
-        assert verb == "find"
-        assert body["query"] == "fruit"
+        params = body["steps"][0]["params"]
+        assert params["query"] == "fruit"
+        assert "where" not in params
         return {
-            "truncated": False,
-            "items": [
-                {"id": "n_1", "name": "Fruit Bat"},
-                {"id": "n_2", "name": "Fruit"},
-            ],
+            "status": "ok",
+            "found": {
+                "truncated": False,
+                "items": [
+                    {"id": "n_1", "name": "Fruit Bat"},
+                    {"id": "n_2", "name": "Fruit"},
+                ],
+                "node_ids": ["n_1", "n_2"],
+            },
+            "rows": {"status": "ok", "items": []},
         }
 
     out = asyncio.run(execute_search(plan_beer_query("fruit"), 50, fetch))
-    assert len(calls) == 2  # find + get, no style where
-    assert "where" not in calls[0]
+    assert len(calls) == 1
     assert out["match"] == {"field": "name", "value": "fruit"}
     assert len(out["items"]) == 2
     assert out["truncated"] is False
@@ -225,39 +236,62 @@ def test_execute_fruits_name_miss_then_style_where() -> None:
     seen: list[dict] = []
 
     async def fetch(verb: str, body: dict) -> dict:
+        assert verb == "pipeline"
         seen.append(body)
-        if body.get("query") == "fruits":
-            return {"items": [], "node_ids": []}
-        if body.get("where") == {"style": "Fruit Beer"}:
+        params = body["steps"][0]["params"]
+        if params.get("query") == "fruits":
             return {
-                "truncated": True,
-                "items": [{"id": "n_9", "name": "Kriek", "type": "Beer"}],
+                "status": "aborted",
+                "reason": "abort_if_empty",
+                "results_so_far": {"found": {"items": [], "node_ids": []}},
             }
-        return {"items": [{"id": "n_9", "snippet": json.dumps({"name": "Kriek", "style": "Fruit Beer"})}]}
+        if params.get("where") == {"style": "Fruit Beer"}:
+            return {
+                "status": "ok",
+                "found": {
+                    "truncated": True,
+                    "items": [{"id": "n_9", "name": "Kriek", "type": "Beer"}],
+                    "node_ids": ["n_9"],
+                },
+                "rows": {
+                    "items": [
+                        {"id": "n_9", "snippet": json.dumps({"name": "Kriek", "style": "Fruit Beer"})}
+                    ]
+                },
+            }
+        return {"status": "ok", "found": {"items": []}, "rows": {"items": []}}
 
     out = asyncio.run(execute_search(plan_beer_query("fruits"), 50, fetch))
-    assert seen[0]["query"] == "fruits"
-    assert seen[1]["where"] == {"style": "Fruit Beer"}
+    assert seen[0]["steps"][0]["params"]["query"] == "fruits"
+    assert seen[1]["steps"][0]["params"]["where"] == {"style": "Fruit Beer"}
     assert out["match"]["field"] == "style"
     assert out["items"][0]["style"] == "Fruit Beer"
     assert "abort_if_empty" in out["path"]
 
 
 def test_execute_fts_doc_key_skips_get() -> None:
-    calls: list[str] = []
+    calls: list[tuple[str, str]] = []
 
     async def fetch(verb: str, body: dict) -> dict:
-        calls.append(verb)
-        if verb == "find":
-            return {"items": [], "node_ids": []}
+        calls.append((verb, body["steps"][0]["verb"]))
+        assert body["steps"][1]["params"]["ids"] == "@found.node_ids"
+        if body["steps"][0]["verb"] == "find":
+            return {
+                "status": "aborted",
+                "reason": "abort_if_empty",
+                "results_so_far": {"found": {"items": [], "node_ids": []}},
+            }
         return {
-            "node_ids": [],
-            "items": [{"node": {"doc_key": "storm_brewing-fruit_lambics"}}],
+            "status": "ok",
+            "found": {
+                "node_ids": [],
+                "items": [{"node": {"doc_key": "storm_brewing-fruit_lambics"}}],
+            },
+            "rows": None,
         }
 
     out = asyncio.run(execute_search(plan_beer_query("What is Duvel?"), 50, fetch))
-    assert calls == ["find", "search"]
-    assert "get" not in calls
+    assert calls == [("pipeline", "find"), ("pipeline", "search")]
     assert out["items"][0]["id"] == "storm_brewing-fruit_lambics"
     assert out["items"][0]["name"] == "fruit lambics"
     assert "doc_key" in out["path"]
@@ -276,8 +310,28 @@ def test_list_find_has_no_query_and_detail_uses_get() -> None:
     assert doc["body"]["where"] == {"name": "fruit lambics"}
 
     async def fetch(verb: str, body: dict) -> dict:
-        if verb == "get":
+        assert verb == "pipeline"
+        step = body["steps"][0]
+        if step["verb"] == "get":
             return {
+                "status": "ok",
+                "rows": {
+                    "status": "ok",
+                    "items": [
+                        {
+                            "id": "n_1",
+                            "snippet": json.dumps(
+                                {"name": "Kriek", "style": "Fruit Beer", "brewery_id": "storm_brewing"}
+                            ),
+                        }
+                    ],
+                },
+            }
+        assert "query" not in step["params"]
+        return {
+            "status": "ok",
+            "found": {"items": [{"id": "n_1", "name": "Kriek"}], "node_ids": ["n_1"], "truncated": False},
+            "rows": {
                 "status": "ok",
                 "items": [
                     {
@@ -287,8 +341,8 @@ def test_list_find_has_no_query_and_detail_uses_get() -> None:
                         ),
                     }
                 ],
-            }
-        return {"items": [{"id": "n_1", "name": "Kriek"}], "truncated": False}
+            },
+        }
 
     listed = asyncio.run(execute_list("Beer", 2, fetch))
     assert listed["items"][0]["style"] == "Fruit Beer"

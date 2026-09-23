@@ -140,12 +140,12 @@ INSTRUCTIONS = (
     "no secrets in results or checklist evidence; semantic cache stays off. "
     "scaffold_app / smoke_test_agent emit ZeusRuntime + run_turn, not V1 ZeusClient / run_agent. "
     "TravelPlan / demo_travel_sample is the agent-plane (LLM chat UI) example; "
-    "demo_beer_sample is the data-plane Direct (zero-LLM find→get) example — "
+    "demo_beer_sample is the data-plane catalog example (zero-LLM pipeline of find/search then get) — "
     "https://docs.koten.ai/zeus-client/using-zeus-client. "
     "Bootstrap default is UI: use_sample clones public demo_travel_sample when missing "
     "and sets DEMO_TRAVEL_SAMPLE_DIR (optional project_name for the clone directory). "
     "Beer / website + no LLM: start_project(sample=beer) → use_sample(sample=beer) writes "
-    "demo_beer_sample Direct catalog UI (find→get, no pipeline, no LLM key); "
+    "demo_beer_sample catalog UI (one public pipeline per search, no LLM key); "
     "never clone demo_travel_sample on that path. "
     "Direct websites may copy TravelPlan BFF/same-origin/config shape only — "
     "do not copy run_turn unless this is an agent app. "
@@ -407,7 +407,7 @@ def start_project(
         out["llm_required"] = False
         out["note"] = (
             "Beer Direct track (zero LLM): after prereqs/readiness, "
-            "use_sample(sample=beer) writes demo_beer_sample (find→get BFF + static). "
+            "use_sample(sample=beer) writes demo_beer_sample (pipeline BFF + static). "
             "smoke_test_agent is not required on this track."
         )
         if rerouted_from_travel:
@@ -733,7 +733,7 @@ def use_sample(
     """UI sample: travel clone or beer Direct template.
 
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
-    sample=beer — write demo_beer_sample Direct catalog UI (no LLM; find→get).
+    sample=beer — write demo_beer_sample catalog UI (no LLM; one pipeline per search).
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     """
