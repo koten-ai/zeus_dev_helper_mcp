@@ -1,8 +1,10 @@
-"""Beer-sample Direct catalog UI template (ZDM-6 / ZDM-7).
+"""Beer-sample Direct catalog UI template (ZDM-6).
 
 Zero-LLM same-origin FastAPI BFF + static page. Sequential find → get
-(+ FTS fallback). Never POST pipeline. NL questions use a Hub-Chat-like
-deterministic planner (tokenize / stopwords / where.style / FTS tokens).
+(+ FTS on content words). Never POST pipeline. A question whose content
+tokens are exactly one beer style or category is find where. A bare token
+such as fruit or IPA stays a name lookup. The raw question is never
+find.query or search.query_text.
 """
 
 from __future__ import annotations
@@ -57,195 +59,6 @@ def prereqs_prefer_beer_direct(prereqs: dict[str, Any] | None) -> bool:
     return is_beer_sample(sample) or bucket in BEER_BUCKET_HINTS
 
 
-# --- NL planner (ZDM-7); mirrored inside _MAIN_PY for the written sample ---
-
-BEER_NL_STOPWORDS = frozenset(
-    {
-        "a",
-        "an",
-        "the",
-        "of",
-        "and",
-        "or",
-        "to",
-        "in",
-        "on",
-        "for",
-        "with",
-        "from",
-        "by",
-        "at",
-        "as",
-        "is",
-        "are",
-        "was",
-        "were",
-        "be",
-        "been",
-        "what",
-        "which",
-        "who",
-        "where",
-        "when",
-        "how",
-        "why",
-        "made",
-        "make",
-        "makes",
-        "using",
-        "use",
-        "used",
-        "beer",
-        "beers",
-        "brew",
-        "brews",
-        "show",
-        "list",
-        "find",
-        "get",
-        "give",
-        "me",
-        "please",
-        "any",
-        "some",
-        "all",
-        "that",
-        "this",
-        "those",
-        "these",
-        "do",
-        "does",
-        "can",
-        "you",
-        "i",
-        "we",
-        "there",
-        "about",
-        "like",
-        "have",
-        "has",
-        "had",
-    }
-)
-
-BEER_KNOWN_STYLES: dict[str, str] = {
-    "ipa": "American IPA",
-    "american ipa": "American IPA",
-    "porter": "Porter",
-    "stout": "Stout",
-    "lager": "Lager",
-    "pilsner": "Pilsner",
-    "wheat": "Wheat Beer",
-    "wheat beer": "Wheat Beer",
-    "fruit": "Fruit Beer",
-    "fruit beer": "Fruit Beer",
-    "pumpkin": "Pumpkin Beer",
-    "pumpkin beer": "Pumpkin Beer",
-    "sour": "Sour Beer",
-    "belgian": "Belgian Ale",
-    "pale ale": "American Pale Ale",
-    "apa": "American Pale Ale",
-}
-
-_BEER_TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-
-def tokenize_beer_query(q: str) -> list[str]:
-    return _BEER_TOKEN_RE.findall((q or "").lower())
-
-
-def beer_content_tokens(q: str) -> list[str]:
-    return [t for t in tokenize_beer_query(q) if t not in BEER_NL_STOPWORDS]
-
-
-def resolve_beer_style(q: str, tokens: list[str] | None = None) -> str | None:
-    key = (q or "").strip().lower()
-    if not key:
-        return None
-    if key in BEER_KNOWN_STYLES:
-        return BEER_KNOWN_STYLES[key]
-    for canon in BEER_KNOWN_STYLES.values():
-        if key == canon.lower():
-            return canon
-    toks = list(tokens) if tokens is not None else beer_content_tokens(q)
-    for n in range(min(3, len(toks)), 0, -1):
-        for i in range(0, len(toks) - n + 1):
-            phrase = " ".join(toks[i : i + n])
-            if phrase in BEER_KNOWN_STYLES:
-                return BEER_KNOWN_STYLES[phrase]
-    return None
-
-
-def plan_beer_query(q: str) -> dict[str, Any]:
-    """Hub-Chat-like plan: where.style / short find.query / FTS tokens — never NL as find.query."""
-    raw = (q or "").strip()
-    tokens = beer_content_tokens(raw)
-    style = resolve_beer_style(raw, tokens)
-    fts_query_text = " ".join(tokens)
-    plan: dict[str, Any] = {
-        "raw": raw,
-        "tokens": tokens,
-        "style": style,
-        "fts_query_text": fts_query_text,
-        "find_query": None,
-        "mode": "empty",
-    }
-    if not raw:
-        return plan
-    if style:
-        plan["mode"] = "where_style"
-        return plan
-    if len(tokens) == 1:
-        plan["find_query"] = tokens[0]
-        plan["mode"] = "find_query"
-        return plan
-    if fts_query_text:
-        plan["mode"] = "fts"
-        return plan
-    return plan
-
-
-def select_beer_get_ids(data: dict[str, Any]) -> list[str]:
-    """Prefer result.node_ids / file:: over item-local n_* when both appear."""
-    def _clean(raw: Any) -> list[str]:
-        out: list[str] = []
-        if isinstance(raw, list):
-            for x in raw:
-                s = str(x).strip()
-                if s:
-                    out.append(s)
-        return out
-
-    top = _clean(data.get("node_ids") or data.get("ids") or [])
-    item_ids: list[str] = []
-    items = data.get("items") or data.get("nodes") or []
-    if isinstance(items, list):
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            node = item.get("node") if isinstance(item.get("node"), dict) else item
-            if not isinstance(node, dict):
-                continue
-            for key in ("id", "node_id"):
-                s = str(node.get(key) or item.get(key) or "").strip()
-                if s:
-                    item_ids.append(s)
-                    break
-
-    candidates = top if top else item_ids
-    if not candidates:
-        return []
-    non_n = [i for i in candidates if not i.startswith("n_")]
-    n_ids = [i for i in candidates if i.startswith("n_")]
-    if non_n and n_ids:
-        non_n = sorted(non_n, key=lambda s: (0 if s.startswith("file::") else 1, s))
-        return non_n
-    if non_n:
-        return sorted(non_n, key=lambda s: (0 if s.startswith("file::") else 1, s))
-    return candidates
-
-
-
 BEER_MARKERS = (
     "README.md",
     "main.py",
@@ -266,18 +79,21 @@ SAMPLE_BEER = {
     ],
 }
 
-_MAIN_PY = '''#!/usr/bin/env python3
+_APP_HEAD = '''#!/usr/bin/env python3
 """Beer-sample Direct catalog UI — FastAPI BFF (zero LLM).
 
-Sequential find → get (+ FTS fallback). Direct-safe: no multi-step DAG verb.
-NL questions use a Hub-Chat-like planner (tokenize / stopwords / where.style /
-FTS tokens) — never find.query=full sentence (ZDM-7).
+Sequential find, then get. Questions whose words are exactly one style or
+category use find where. Other text is a name lookup, then that where when
+the name lookup is empty, then FTS on the content words. The raw question is
+never find.query or search.query_text.
 Scaffolded by zeus_dev_helper_mcp use_sample(sample=beer).
+The planner inlined below is zeus_dev_helper_mcp.beer_plan.
 """
 from __future__ import annotations
 
+import json
 import os
-import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -296,45 +112,20 @@ ZEUS_SCOPE = os.environ.get("ZEUS_SCOPE") or "_default"
 ZEUS_COLLECTION = os.environ.get("ZEUS_COLLECTION") or "_default"
 PORT = int(os.environ.get("PORT") or "8090")
 
-# Chip label / short token → find where.style value (equality-only).
-KNOWN_STYLES: dict[str, str] = {
-    "ipa": "American IPA",
-    "american ipa": "American IPA",
-    "porter": "Porter",
-    "stout": "Stout",
-    "lager": "Lager",
-    "pilsner": "Pilsner",
-    "wheat": "Wheat Beer",
-    "wheat beer": "Wheat Beer",
-    "fruit": "Fruit Beer",
-    "fruit beer": "Fruit Beer",
-    "pumpkin": "Pumpkin Beer",
-    "pumpkin beer": "Pumpkin Beer",
-    "sour": "Sour Beer",
-    "belgian": "Belgian Ale",
-    "pale ale": "American Pale Ale",
-    "apa": "American Pale Ale",
-}
-
-STOPWORDS = frozenset(
-    {
-        "a", "an", "the", "of", "and", "or", "to", "in", "on", "for", "with",
-        "from", "by", "at", "as", "is", "are", "was", "were", "be", "been",
-        "what", "which", "who", "where", "when", "how", "why",
-        "made", "make", "makes", "using", "use", "used",
-        "beer", "beers", "brew", "brews",
-        "show", "list", "find", "get", "give", "me", "please",
-        "any", "some", "all", "that", "this", "those", "these",
-        "do", "does", "can", "you", "i", "we", "there",
-        "about", "like", "have", "has", "had",
-    }
-)
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
-
 app = FastAPI(title="Beer Direct catalog UI", version="0.1.0")
 _static = _ROOT / "static"
 if _static.is_dir():
     app.mount("/static", StaticFiles(directory=str(_static)), name="static")
+
+_cache: dict[str, tuple[float, dict[str, Any], str | None]] = {}
+
+
+def _cache_ttl() -> float:
+    raw = (os.environ.get("CELLAR_CACHE_TTL") or "600").strip()
+    try:
+        return float(raw)
+    except ValueError:
+        return 600.0
 
 
 def _auth() -> tuple[str, str] | None:
@@ -370,138 +161,43 @@ def _unwrap(payload: Any) -> dict[str, Any]:
     return payload
 
 
-def _items(data: dict[str, Any]) -> list[Any]:
-    raw = data.get("items") or data.get("nodes") or []
-    return list(raw) if isinstance(raw, list) else []
-
-
-def _select_get_ids(data: dict[str, Any]) -> list[str]:
-    """Prefer result.node_ids / file:: over item-local n_* when both appear."""
-    def _clean(raw: Any) -> list[str]:
-        out: list[str] = []
-        if isinstance(raw, list):
-            for x in raw:
-                s = str(x).strip()
-                if s:
-                    out.append(s)
-        return out
-
-    top = _clean(data.get("node_ids") or data.get("ids") or [])
-    item_ids: list[str] = []
-    for item in _items(data):
-        if not isinstance(item, dict):
-            continue
-        node = item.get("node") if isinstance(item.get("node"), dict) else item
-        if not isinstance(node, dict):
-            continue
-        for key in ("id", "node_id"):
-            s = str(node.get(key) or item.get(key) or "").strip()
-            if s:
-                item_ids.append(s)
-                break
-
-    candidates = top if top else item_ids
-    if not candidates:
-        return []
-    non_n = [i for i in candidates if not i.startswith("n_")]
-    n_ids = [i for i in candidates if i.startswith("n_")]
-    if non_n and n_ids:
-        return sorted(non_n, key=lambda s: (0 if s.startswith("file::") else 1, s))
-    if non_n:
-        return sorted(non_n, key=lambda s: (0 if s.startswith("file::") else 1, s))
-    return candidates
-
-
-def _parse_doc_key(doc_key: str) -> dict[str, str]:
-    """Turn FTS doc_key (e.g. beer::21st_amendment_brewery_cafe-21a_ipa) into a card."""
-    key = (doc_key or "").strip()
-    title = key
-    if "::" in key:
-        title = key.split("::", 1)[1]
-    elif ":" in key:
-        title = key.split(":", 1)[1]
-    pretty = title.replace("_", " ").replace("-", " ").strip() or key
-    return {"id": key, "name": pretty, "doc_key": key, "source": "doc_key"}
-
-
-def _card_from_node(node: Any) -> dict[str, Any] | None:
-    if not isinstance(node, dict):
-        return None
-    nested = node.get("node") if isinstance(node.get("node"), dict) else None
-    body = node.get("body") if isinstance(node.get("body"), dict) else None
-    if body is None and nested is not None and isinstance(nested.get("body"), dict):
-        body = nested.get("body")
-    if body is None:
-        body = nested if nested is not None else node
-    if not isinstance(body, dict):
-        body = {}
-    nid = str(
-        node.get("id")
-        or (nested or {}).get("id")
-        or body.get("id")
-        or ""
-    ).strip()
-    doc_key = str(
-        node.get("doc_key")
-        or body.get("doc_key")
-        or (nested or {}).get("doc_key")
-        or ""
-    ).strip()
-    name = body.get("name") or body.get("title") or node.get("name")
-    if not name and doc_key:
-        return _parse_doc_key(doc_key)
-    if not name and nid:
-        name = nid
-    if not name:
-        return None
-    card: dict[str, Any] = {
-        "id": nid or doc_key or str(name),
-        "name": str(name),
-        "style": body.get("style") or node.get("style"),
-        "abv": body.get("abv") or node.get("abv"),
-        "ibu": body.get("ibu") or node.get("ibu"),
-        "description": body.get("description") or body.get("desc") or node.get("description"),
-        "brewery": body.get("brewery") or body.get("brewery_id") or node.get("brewery"),
-        "doc_key": doc_key or None,
-        "source": "get" if nid.startswith("n_") else "find",
-    }
-    return card
-
-
-def _cards_from_find_or_fts(data: dict[str, Any], *, source: str) -> list[dict[str, Any]]:
-    cards: list[dict[str, Any]] = []
-    for item in _items(data):
-        if not isinstance(item, dict):
-            continue
-        node = item.get("node") if isinstance(item.get("node"), dict) else item
-        if not isinstance(node, dict):
-            continue
-        nid = str(node.get("id") or item.get("id") or "").strip()
-        doc_key = str(node.get("doc_key") or item.get("doc_key") or "").strip()
-        # FTS often returns doc_key with empty graph ids — card from doc_key, never get.
-        if doc_key and not nid.startswith("n_"):
-            card = _parse_doc_key(doc_key)
-            card["source"] = source
-            cards.append(card)
-            continue
-        card = _card_from_node(item)
-        if card:
-            card["source"] = source
-            cards.append(card)
-    return cards
+def _force_closed(text: str) -> bool:
+    return "session_force_closed" in (text or "").lower()
 
 
 async def _post_verb(verb: str, body: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    """POST one public-API verb. Cache successful reads. Surface session_force_closed only after Zeus says it."""
+    ttl = _cache_ttl()
+    key = json.dumps({"verb": verb, "body": body}, sort_keys=True, default=str)
+    now = time.time()
+    if ttl > 0:
+        hit = _cache.get(key)
+        if hit is not None:
+            ts, cached, rid = hit
+            if now - ts <= ttl:
+                return cached, rid
+            _cache.pop(key, None)
     url = _verb_url(verb)
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
         r = await client.post(url, json=body, headers=_headers(), auth=_auth())
     req_id = r.headers.get("X-Zeus-Req-Id") or r.headers.get("x-zeus-req-id")
+    text = r.text or ""
+    if _force_closed(text):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "session_force_closed",
+                "body_preview": text[:400],
+                "req_id": req_id,
+                "url": url,
+            },
+        )
     if r.status_code >= 400:
         raise HTTPException(
             status_code=502,
             detail={
                 "error": f"zeus {verb} HTTP {r.status_code}",
-                "body_preview": (r.text or "")[:400],
+                "body_preview": text[:400],
                 "req_id": req_id,
                 "url": url,
             },
@@ -510,79 +206,18 @@ async def _post_verb(verb: str, body: dict[str, Any]) -> tuple[dict[str, Any], s
         payload = r.json()
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"invalid JSON from Zeus {verb}: {e}") from e
-    return _unwrap(payload), req_id
+    data = _unwrap(payload)
+    if _force_closed(json.dumps(data)):
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "session_force_closed", "req_id": req_id, "url": url},
+        )
+    if ttl > 0:
+        _cache[key] = (now, data, req_id)
+    return data, req_id
+'''
 
-
-async def _find(body: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
-    return await _post_verb("find", body)
-
-
-async def _get(ids: list[str]) -> tuple[dict[str, Any], str | None]:
-    # abort_if_empty: never get on empty node_ids
-    if not ids:
-        return {"items": [], "node_ids": []}, None
-    return await _post_verb("get", {"ids": ids[:50], "include": ["body"]})
-
-
-async def _fts(query_text: str) -> tuple[dict[str, Any], str | None]:
-    return await _post_verb(
-        "search",
-        {"strategy": "fts", "query_text": query_text, "limit": 20},
-    )
-
-
-def _content_tokens(q: str) -> list[str]:
-    return [t for t in _TOKEN_RE.findall((q or "").lower()) if t not in STOPWORDS]
-
-
-def _resolve_style(q: str, tokens: list[str] | None = None) -> str | None:
-    key = (q or "").strip().lower()
-    if not key:
-        return None
-    if key in KNOWN_STYLES:
-        return KNOWN_STYLES[key]
-    for canon in KNOWN_STYLES.values():
-        if key == canon.lower():
-            return canon
-    toks = list(tokens) if tokens is not None else _content_tokens(q)
-    for n in range(min(3, len(toks)), 0, -1):
-        for i in range(0, len(toks) - n + 1):
-            phrase = " ".join(toks[i : i + n])
-            if phrase in KNOWN_STYLES:
-                return KNOWN_STYLES[phrase]
-    return None
-
-
-def plan_query(q: str) -> dict[str, Any]:
-    """Deterministic NL plan — Hub Chat style, never find.query=full sentence."""
-    raw = (q or "").strip()
-    tokens = _content_tokens(raw)
-    style = _resolve_style(raw, tokens)
-    fts_query_text = " ".join(tokens)
-    plan: dict[str, Any] = {
-        "raw": raw,
-        "tokens": tokens,
-        "style": style,
-        "fts_query_text": fts_query_text,
-        "find_query": None,
-        "mode": "empty",
-    }
-    if not raw:
-        return plan
-    if style:
-        plan["mode"] = "where_style"
-        return plan
-    if len(tokens) == 1:
-        plan["find_query"] = tokens[0]
-        plan["mode"] = "find_query"
-        return plan
-    if fts_query_text:
-        plan["mode"] = "fts"
-        return plan
-    return plan
-
-
-@app.get("/healthz")
+_APP_TAIL = '''@app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
@@ -595,139 +230,91 @@ async def api_config() -> dict[str, Any]:
         "scope": ZEUS_SCOPE,
         "collection": ZEUS_COLLECTION,
         "llm_required": False,
-        "styles": sorted(set(KNOWN_STYLES.values())),
-        "chips": ["ipa", "porter", "stout", "lager", "Fruit Beer", "pale ale", "sour"],
+        "page_cap": PAGE_CAP,
+        "chips": [
+            "Fruit Beer",
+            "Pumpkin Beer",
+            "Belgian and French Ale",
+            "ipa",
+            "porter",
+            "Duvel",
+        ],
     }
 
 
 @app.get("/api/search")
-async def api_search(q: str = Query("", min_length=0, max_length=200)) -> dict[str, Any]:
-    """Catalog search via NL plan: where.style / short find.query / FTS tokens.
-
-    Never calls get when node_ids is empty (abort_if_empty behavior).
-    On empty find: FTS fallback; doc_key-only hits become cards without get.
-    Never sends a full NL sentence as find.query.
-    """
-    query = (q or "").strip()
-    if not query:
-        return {"ok": True, "query": query, "cards": [], "path": [], "req_ids": [], "plan": {}}
-
-    path: list[str] = []
+async def api_search(
+    q: str = Query("", max_length=200),
+    limit: int = Query(PAGE_CAP, ge=1, le=PAGE_CAP),
+    entity: str = Query("Beer"),
+) -> dict[str, Any]:
+    """Catalog search. Never sends the raw question as find.query or search.query_text."""
+    plan = plan_beer_query(q, entity=entity)
     req_ids: list[str] = []
-    plan = plan_query(query)
-    path.append(f"plan:{plan['mode']}")
 
-    find_data: dict[str, Any] | None = None
-    ids: list[str] = []
-
-    if plan["mode"] == "where_style":
-        style = plan["style"]
-        find_body: dict[str, Any] = {
-            "entity_type": "Beer",
-            "where": {"style": style},
-            "return": "ids",
-            "limit": 20,
-        }
-        path.append(f"find:where.style={style}")
-        find_data, rid = await _find(find_body)
+    async def fetch(verb: str, body: dict[str, Any]) -> dict[str, Any]:
+        data, rid = await _post_verb(verb, body)
         if rid:
             req_ids.append(rid)
-        ids = _select_get_ids(find_data)
-    elif plan["mode"] == "find_query":
-        token = plan["find_query"]
-        find_body = {
-            "entity_type": "Beer",
-            "query": token,
-            "return": "ids",
-            "limit": 20,
-        }
-        path.append(f"find:query={token}")
-        find_data, rid = await _find(find_body)
+        return data
+
+    out = await execute_search(plan, limit, fetch)
+    out["req_ids"] = req_ids
+    return out
+
+
+@app.get("/api/beers")
+async def api_beers(limit: int = Query(PAGE_CAP, ge=1, le=PAGE_CAP)) -> dict[str, Any]:
+    return await _catalog_list("Beer", limit)
+
+
+@app.get("/api/breweries")
+async def api_breweries(limit: int = Query(PAGE_CAP, ge=1, le=PAGE_CAP)) -> dict[str, Any]:
+    return await _catalog_list("Brewery", limit)
+
+
+async def _catalog_list(entity: str, limit: int) -> dict[str, Any]:
+    req_ids: list[str] = []
+
+    async def fetch(verb: str, body: dict[str, Any]) -> dict[str, Any]:
+        data, rid = await _post_verb(verb, body)
         if rid:
             req_ids.append(rid)
-        ids = _select_get_ids(find_data)
-    # mode fts / empty: skip find.query for multi-word NL
+        return data
 
-    # abort_if_empty: empty find → do not get; try FTS with content tokens
-    if not ids:
-        if find_data is not None:
-            path.append("abort_if_empty")
-        fts_q = plan["fts_query_text"]
-        if fts_q:
-            fts_data, frid = await _fts(fts_q)
-            if frid:
-                req_ids.append(frid)
-            path.append(f"search:fts={fts_q}")
-            fts_ids = _select_get_ids(fts_data)
-            if fts_ids:
-                get_data, grid = await _get(fts_ids)
-                if grid:
-                    req_ids.append(grid)
-                path.append("get")
-                cards = []
-                for item in _items(get_data):
-                    card = _card_from_node(item if isinstance(item, dict) else {})
-                    if card:
-                        cards.append(card)
-                if not cards:
-                    cards = _cards_from_find_or_fts(fts_data, source="fts")
-                return {
-                    "ok": True,
-                    "query": query,
-                    "cards": cards,
-                    "path": path,
-                    "req_ids": req_ids,
-                    "node_ids": fts_ids,
-                    "plan": plan,
-                }
-            # node_ids=[] but items may carry doc_key — parse into cards; never get
-            cards = _cards_from_find_or_fts(fts_data, source="fts_doc_key")
-            if cards:
-                path.append("doc_key")
-            return {
-                "ok": True,
-                "query": query,
-                "cards": cards,
-                "path": path,
-                "req_ids": req_ids,
-                "node_ids": [],
-                "plan": plan,
-                "note": "FTS doc_key-only or empty; skipped get",
-            }
-        return {
-            "ok": True,
-            "query": query,
-            "cards": [],
-            "path": path,
-            "req_ids": req_ids,
-            "node_ids": [],
-            "plan": plan,
-            "note": "No content tokens / empty plan",
-        }
+    out = await execute_list(entity, limit, fetch)
+    out["req_ids"] = req_ids
+    return out
 
-    get_data, grid = await _get(ids)
-    if grid:
-        req_ids.append(grid)
-    path.append("get")
-    cards = []
-    for item in _items(get_data):
-        card = _card_from_node(item if isinstance(item, dict) else {})
-        if card:
-            cards.append(card)
-    if not cards and find_data is not None:
-        cards = _cards_from_find_or_fts(find_data, source="find")
-    return {
-        "ok": True,
-        "query": query,
-        "cards": cards,
-        "path": path,
-        "req_ids": req_ids,
-        "node_ids": ids,
-        "plan": plan,
-    }
+
+@app.get("/api/beer/{item_id}")
+async def api_beer(item_id: str) -> dict[str, Any]:
+    return await _catalog_detail("Beer", item_id)
+
+
+@app.get("/api/brewery/{item_id}")
+async def api_brewery(item_id: str) -> dict[str, Any]:
+    return await _catalog_detail("Brewery", item_id)
+
+
+async def _catalog_detail(entity: str, item_id: str) -> dict[str, Any]:
+    req_ids: list[str] = []
+
+    async def fetch(verb: str, body: dict[str, Any]) -> dict[str, Any]:
+        data, rid = await _post_verb(verb, body)
+        if rid:
+            req_ids.append(rid)
+        return data
+
+    out = await execute_detail(entity, item_id, fetch)
+    if not out.get("ok"):
+        raise HTTPException(status_code=404, detail=out.get("error") or "not found")
+    out["req_ids"] = req_ids
+    return out
 
 
 @app.get("/")
+@app.get("/search")
 async def index() -> FileResponse:
     index_path = _static / "index.html"
     if not index_path.is_file():
@@ -745,6 +332,11 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 '''
+
+_PLANNER_SRC = Path(__file__).with_name("beer_plan.py").read_text(encoding="utf-8")
+if not _PLANNER_SRC.endswith("\n"):
+    _PLANNER_SRC += "\n"
+_MAIN_PY = _APP_HEAD + "\n" + _PLANNER_SRC + "\n" + _APP_TAIL
 
 _INDEX_HTML = """\
 <!DOCTYPE html>
@@ -802,11 +394,23 @@ _INDEX_HTML = """\
       background: var(--card); border: 1px solid #4a3a2c; border-radius: 12px;
       padding: 0.9rem 1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.25);
     }
-    .card h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
-    .card .style { color: var(--accent); font-size: 0.85rem; margin-bottom: 0.35rem; }
-    .card p { margin: 0; color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
+    .card h3 { margin: 0 0 0.2rem; font-size: 1.05rem; }
+    .card .eyebrow {
+      color: var(--muted); font-size: 0.72rem; letter-spacing: 0.04em;
+      text-transform: uppercase; margin-bottom: 0.25rem;
+    }
+    .card .style { color: var(--accent); font-size: 0.85rem; margin: 0.15rem 0 0.35rem; }
+    .card p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
+    .lede { margin: 0 0 0.35rem; color: var(--ink); font-size: 1rem; }
     .empty { color: var(--muted); padding: 2rem 0; text-align: center; }
     footer { max-width: 960px; margin: 0 auto; padding: 0 1.25rem 2rem; color: var(--muted); font-size: 0.8rem; }
+    @media (max-width: 640px) {
+      header, main, footer { padding-left: 0.75rem; padding-right: 0.75rem; }
+      h1 { font-size: 1.45rem; }
+      .search-row { flex-direction: column; }
+      .cards { grid-template-columns: 1fr; }
+      input[type=search], button { width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -816,7 +420,7 @@ _INDEX_HTML = """\
   </header>
   <main>
     <div class="search-row">
-      <input id="q" type="search" placeholder="Search beers (ipa, porter, fruit…)" autocomplete="off" />
+      <input id="q" type="search" placeholder="What beers are made from fruits?" autocomplete="off" />
       <button id="go" type="button">Search</button>
     </div>
     <div class="chips" id="chips"></div>
@@ -827,13 +431,13 @@ _INDEX_HTML = """\
     Same-origin BFF proxies Zeus public API :8080. Semantic cache off. Contract hash never invented here.
   </footer>
   <script>
-    const CHIPS = ["ipa", "porter", "stout", "lager", "Fruit Beer", "pale ale", "sour"];
+    const CHIPS = ["Fruit Beer", "Pumpkin Beer", "Belgian and French Ale", "ipa", "porter", "Duvel"];
     const chipsEl = document.getElementById("chips");
     const cardsEl = document.getElementById("cards");
     const metaEl = document.getElementById("meta");
     const qEl = document.getElementById("q");
     const goEl = document.getElementById("go");
-    let activeChip = "";
+    const pageParams = new URLSearchParams(location.search);
 
     CHIPS.forEach((label) => {
       const b = document.createElement("button");
@@ -841,7 +445,6 @@ _INDEX_HTML = """\
       b.className = "chip";
       b.textContent = label;
       b.addEventListener("click", () => {
-        activeChip = label;
         qEl.value = label;
         [...chipsEl.children].forEach((c) => c.classList.toggle("on", c.textContent === label));
         search(label);
@@ -849,35 +452,45 @@ _INDEX_HTML = """\
       chipsEl.appendChild(b);
     });
 
+    function abvText(value) {
+      if (value == null || value === "" || Number(value) === 0) return "ABV —";
+      return "ABV " + value;
+    }
+
     async function search(q) {
       const query = (q ?? qEl.value ?? "").trim();
+      qEl.value = query;
       goEl.disabled = true;
       metaEl.textContent = "Searching…";
       cardsEl.innerHTML = "";
       try {
-        const res = await fetch("/api/search?q=" + encodeURIComponent(query));
+        const params = new URLSearchParams();
+        params.set("q", query);
+        if (pageParams.get("entity")) params.set("entity", pageParams.get("entity"));
+        if (pageParams.get("limit")) params.set("limit", pageParams.get("limit"));
+        const res = await fetch("/api/search?" + params.toString());
         const data = await res.json();
         if (!res.ok) throw new Error((data && data.detail && JSON.stringify(data.detail)) || res.statusText);
-        const cards = data.cards || [];
+        const cards = data.items || data.cards || [];
         const path = (data.path || []).join(" → ");
         const reqs = (data.req_ids || []).filter(Boolean).join(", ");
-        metaEl.innerHTML = cards.length
-          ? `<span>${cards.length} result(s)</span> · <code>${path || "—"}</code>` +
-            (reqs ? ` · req_id <code>${reqs}</code>` : "")
-          : `No rows · <code>${path || "—"}</code>`;
+        const lede = data.lede || "";
+        const count = cards.length ? `<span>${cards.length} result(s)</span> · ` : "";
+        metaEl.innerHTML = (lede ? `<p class="lede">${escapeHtml(lede)}</p>` : "") +
+          count + `<code>${path || "—"}</code>` +
+          (reqs ? ` · req_id <code>${reqs}</code>` : "");
         if (!cards.length) {
-          cardsEl.innerHTML = '<div class="empty">No beers matched. Try a style chip or a short token.</div>';
+          cardsEl.innerHTML = '<div class="empty">No beers matched.</div>';
           return;
         }
         cardsEl.innerHTML = cards.map((c) => {
+          const eyebrow = c.category ? `<div class="eyebrow">${escapeHtml(String(c.category))}</div>` : "";
           const style = c.style ? `<div class="style">${escapeHtml(String(c.style))}</div>` : "";
-          const bits = [];
-          if (c.abv != null) bits.push("ABV " + c.abv);
-          if (c.ibu != null) bits.push("IBU " + c.ibu);
+          const bits = [abvText(c.abv)];
+          if (c.ibu != null && c.ibu !== "" && Number(c.ibu) !== 0) bits.push("IBU " + c.ibu);
           if (c.brewery) bits.push(String(c.brewery));
           const desc = c.description ? `<p>${escapeHtml(String(c.description).slice(0, 160))}</p>` : "";
-          const sub = bits.length ? `<p>${escapeHtml(bits.join(" · "))}</p>` : "";
-          return `<article class="card"><h3>${escapeHtml(String(c.name || c.id || "beer"))}</h3>${style}${sub}${desc}</article>`;
+          return `<article class="card">${eyebrow}<h3>${escapeHtml(String(c.name || c.id || "beer"))}</h3>${style}<p>${escapeHtml(bits.join(" · "))}</p>${desc}</article>`;
         }).join("");
       } catch (err) {
         metaEl.textContent = "Error: " + (err && err.message ? err.message : err);
@@ -894,6 +507,10 @@ _INDEX_HTML = """\
 
     goEl.addEventListener("click", () => search());
     qEl.addEventListener("keydown", (e) => { if (e.key === "Enter") search(); });
+    if (pageParams.get("q")) {
+      qEl.value = pageParams.get("q");
+      search(pageParams.get("q"));
+    }
   </script>
 </body>
 </html>
@@ -933,8 +550,9 @@ uvicorn main:app --host 127.0.0.1 --port ${{PORT:-8090}}
 # or: python main.py
 ```
 
-Open `http://127.0.0.1:8090/`. Try chips **ipa** / **porter** / **Fruit Beer**,
-a short token, or NL like “What beers are made from fruit?”. Cards show `req_id`.
+Open `http://127.0.0.1:8090/`. Try **Fruit Beer**, **ipa**, **Duvel**, or
+“What beers are made from fruits?”. The search box keeps the question.
+`/search?q=…` opens the same page.
 
 ## Env
 
@@ -945,6 +563,7 @@ a short token, or NL like “What beers are made from fruit?”. Cards show `req
 | `ZEUS_SCOPE` | `_default` | |
 | `ZEUS_COLLECTION` | `_default` | |
 | `PORT` | `8090` | BFF listen port |
+| `CELLAR_CACHE_TTL` | `600` | Seconds to cache successful Zeus reads |
 | `ZEUS_USERNAME` / `ZEUS_PASSWORD` | — | Optional basic auth |
 | `ZEUS_BEARER_TOKEN` | — | Optional bearer |
 
@@ -952,19 +571,21 @@ No `LLM_API_KEY` / OpenAI key is required for first paint.
 
 ## Search path (BFF)
 
-1. **NL plan** (tokenize → drop stopwords) — never `find.query=` a full sentence
-2. Known styles (chip / alias / content token, incl. **Fruit Beer** / **Pumpkin Beer**) → `find` `where.style=…`
-3. Single content token → `find` with `query=` that token only
-4. Multi-token without style → FTS `query_text` = content tokens joined (not the sentence)
-5. Empty `node_ids` → **abort_if_empty** (skip `get`) → FTS / `doc_key` cards
-6. Prefer `result.node_ids` / `file::` ids for `get` over item-local `n_*` when both appear
-7. Never call `get` when `node_ids` is empty
+Page size is 50 (`/api/search` default and cap). `find` uses `return: "rows"`, then one `get` of the row `n_*` ids.
 
-### NL plan note
+1. Tokenize on `[a-z0-9]+`. Drop function words. Fold a trailing `s` (`fruits` → `fruit`, `beers` → `beer`). Drop `beer` / `ale` / `lager` / `style` / `brew` / `brewing`. Expand only `ipa`, `pilsner`, `fruity`, and `wit`.
+2. A question (contains `?`, or starts with what/which/who/where/when/why/how/list/show/find) whose content tokens **exactly** match one style or category → `find` `where`. Style wins over category. `fruit` matches **Fruit Beer** and does not match **Belgian-Style Fruit Lambic**.
+3. The text is itself the label (`Fruit Beer`, `Belgian and French Ale`) → that `where` immediately.
+4. Otherwise `find` `query`. A question uses the content words (`What is Duvel?` → `duvel`). A bare token uses the raw string (`fruit`, `IPA`, `Duvel`).
+5. If that name lookup is empty and a facet matched (`fruits`) → the same `where`.
+6. If still empty → FTS `strategy: "fts"`, `query_text` = content words, `timeout_ms: 8000`. Never the raw question.
+7. Empty ids → **abort_if_empty** (skip `get`). FTS doc keys become cards; detail resolves a doc key with `find` `where.name`.
 
-**0 rows on a sentence** (e.g. “What beers are made from fruit?”) usually means a **bad plan** —
-`find.query` stuffed with the full sentence — **not** an empty Zeus. Use this planner:
-stopwords out → `where.style=Fruit Beer` and/or FTS `query_text=fruit`.
+### Bad plan
+
+**0 rows on a sentence** such as “What beers are made from fruits?” is a **bad plan**, not an empty Zeus. `find.query` only matches name and snippet, so the sentence returns 0. The plan above sends `where.style` = `Fruit Beer`.
+
+List routes `GET /api/beers` and `GET /api/breweries` are `find` with `return: "rows"` and no `query`. `GET /api/beer/{{id}}` hydrates an `n_*` id with `get`.
 
 ## Docs
 
@@ -1087,6 +708,7 @@ ZEUS_BUCKET={cfg.default_bucket or "beer-sample"}
 ZEUS_SCOPE={cfg.default_scope or "_default"}
 ZEUS_COLLECTION={cfg.default_collection or "_default"}
 PORT=8090
+CELLAR_CACHE_TTL=600
 # ZEUS_USERNAME=
 # ZEUS_PASSWORD=
 # ZEUS_BEARER_TOKEN=
