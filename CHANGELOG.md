@@ -1,11 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.7.4
 
 ### Changed
 - **[ZDM-8](https://kotenai.atlassian.net/browse/ZDM-8)** Host install docs no longer pin `localhost:8080` as the only `ZEUS_URL` example. README / `docs/HOST-MATRIX.md` lead with remote-host examples (`http://<zeus-host>:8080` / `http://192.168.0.219:8080`), note localhost only for same-machine Zeus, add Cursor `.cursor/mcp.json`, keep Grok `--` / `uvx zeus-dev-helper-mcp` gotchas, and document day-one `set_prereq` with the user’s URL plus Travel+LLM vs Direct+beer paths. `server.json` placeholder is `http://<zeus-host>:8080`. `doctor` stored-vs-effective URL note points at ZDM-3.
 - **[ZDM-10](https://kotenai.atlassian.net/browse/ZDM-10)** Treat [docs.koten.ai/zeus-client](https://docs.koten.ai/zeus-client) as the live human docs hub. Removed “placeholder while wiring” from `AGENTS.md` / `docs_links.py` / DESIGN blurbs. Day-one load order prefers Helper tools + published hub + live `:8080`; `agent-index.yaml` remains a machine map only (do not clone `koten_docs` for first green). `first_green` prompt + server `INSTRUCTIONS` name the hub. `doctor` docs include `zeus_client_hub` / `dev_helper_mcp`. Optional `scripts/docs_link_smoke.py` GETs key pages (not wired into CI).
 - **[ZDM-9](https://kotenai.atlassian.net/browse/ZDM-9)** Coach wording: TravelPlan / `demo_travel_sample` is the **agent-plane** (LLM + `run_turn`) example; `demo_beer_sample` is the **data-plane Direct** example. Direct websites may copy TravelPlan BFF/same-origin/config only — **do not copy `run_turn`** unless this is an agent app. Beer / website / no LLM never clones `demo_travel_sample`. Glossary topics `demo_travel_sample` / `demo_beer_sample`; `first_green`, server instructions, LIST, AGENTS, README, TOOLS.
+- **[ZDM-2](https://kotenai.atlassian.net/browse/ZDM-2)** `recommend_surface(needs_llm=false)` steers to Direct / beer. `start_project` reroutes the default travel track when prereqs are beer-sample with `has_llm_key=false`. `next_step` does not push `smoke_test_agent` on that path.
+- **[ZDM-5](https://kotenai.atlassian.net/browse/ZDM-5)** Application-user beer prompts: zero-vocabulary samples with expected Helper sequences. `first_green` teaches the beer website utterance.
+- **[ZDM-3](https://kotenai.atlassian.net/browse/ZDM-3)** When the user named a URL or sample, coach order is `doctor` → `set_prereq` → `start_project` → `next_step`.
+
 ### Fixed
 - **[ZDM-3](https://kotenai.atlassian.net/browse/ZDM-3)** Persisted `set_prereq(zeus_url/bucket/scope/…)` now **overrides** MCP host `ZEUS_*` env defaults. Stale `ZEUS_URL=http://localhost:8080` no longer shadows a lab URL for `doctor` / `readiness_check`. `set_prereq` also mirrors those fields into process env. `doctor` reports `url_routing` (`stored` / `env` / `effective`) and flags when host env differs from `set_prereq`.
 - Beer Direct search no longer sends `What beers are made from fruits?` as a name lookup. That sentence is `find` `where.style="Fruit Beer"` (`return: "rows"`, page of 50). Bare `fruit`, `IPA`, and `Duvel` stay name lookups. `fruits` falls through to the style filter only after the name search misses. `Belgian and French Ale` uses `where.category`. FTS uses content tokens only (`strategy: "fts"`, `timeout_ms: 8000`). `get` uses the find row's `n_*` id.
@@ -13,6 +17,8 @@
 ### Added
 - **[ZDM-7](https://kotenai.atlassian.net/browse/ZDM-7)** Beer Direct NL planner — `plan_beer_query` (tokenize / stopwords / `where.style` incl. Fruit Beer + Pumpkin Beer / FTS `query_text`=tokens) mirrored in the `demo_beer_sample` BFF. Golden “What beers are made from fruit?” maps to `where.style=Fruit Beer`, never `find.query=` the full sentence. Prefer `result.node_ids` / `file::` over item-local `n_*` for `get`. README + `diagnose_error(empty_find_get)` treat “0 rows on a sentence” as a bad plan, not empty Zeus.
 - **[ZDM-6](https://kotenai.atlassian.net/browse/ZDM-6)** Beer Direct UI — `start_project(sample=beer)` sets track `ui-direct`; `use_sample(sample=beer)` writes `demo_beer_sample` (FastAPI same-origin BFF + static catalog page). BFF uses sequential `find` → `get` with FTS fallback, `abort_if_empty` (never `get` on empty `node_ids`), and `doc_key` cards when FTS returns no graph ids. **No `pipeline`**, **no LLM key**. Walkthrough recommends `use_sample` on 0.2/3.1 and does not push `smoke_test_agent` as primary on this track.
+- **[ZDM-4](https://kotenai.atlassian.net/browse/ZDM-4)** `diagnose_error` maps beer Direct lab failures to `session_force_closed`, `empty_find_get`, and `fts_doc_key_only` (docs anchors and coach `next_action`) ahead of generic `dispatch_failed`.
+- **[ZDM-1](https://kotenai.atlassian.net/browse/ZDM-1)** Design note for beer-sample first green: locked Direct path is sequential `find` → `get` (never `pipeline`).
 
 ## 0.7.3
 
