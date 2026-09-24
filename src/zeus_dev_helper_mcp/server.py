@@ -141,15 +141,14 @@ INSTRUCTIONS = (
     "no secrets in results or checklist evidence; semantic cache stays off. "
     "scaffold_app / smoke_test_agent emit ZeusRuntime + run_turn, not V1 ZeusClient / run_agent. "
     "TravelPlan / demo_travel_sample is the agent-plane (LLM chat UI) example; "
-    "demo_beer_sample is the data-plane catalog example (zero-LLM pipeline of find/search then get) — "
+    "demo_beer_sample is the beer-sample catalog UI. Its search follows travel: "
+    "rt.agent.run_turn with chat_request omitted so catalog.load_for_turn merges "
+    "SCOPE BRIEF + MINI-SCHEMA. An LLM key is required. The BFF does not build a pipeline body — "
     "https://docs.koten.ai/zeus-client/using-zeus-client. "
     "Bootstrap default is UI: use_sample clones public demo_travel_sample when missing "
     "and sets DEMO_TRAVEL_SAMPLE_DIR (optional project_name for the clone directory). "
-    "Beer / website + no LLM: start_project(sample=beer) → use_sample(sample=beer) writes "
-    "demo_beer_sample catalog UI (one public pipeline per search, no LLM key); "
-    "never clone demo_travel_sample on that path. "
-    "Direct websites may copy TravelPlan BFF/same-origin/config shape only — "
-    "do not copy run_turn unless this is an agent app. "
+    "Beer / website: start_project(sample=beer) → use_sample(sample=beer) writes "
+    "demo_beer_sample (same run_turn search as travel; do not clone demo_travel_sample). "
     "API-only: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python) "
     "(FastAPI POST /turn). Other coding languages are not scaffolded yet. "
     "Never pass username/password/token into MCP tools — env + set_prereq presence flags only. "
@@ -301,7 +300,7 @@ def start_project(
 
     sample:
       - travel (default) — UI path via demo_travel_sample / use_sample
-      - beer — zero-LLM Direct catalog UI (use_sample sample=beer)
+      - beer — beer-sample catalog UI; search is run_turn + MINI-SCHEMA (use_sample sample=beer)
       - api — API-only FastAPI scaffold (scaffold_app app_kind=api)
       - yelp / multi — gated until single-agent smokes green unless force_multi
 
@@ -407,9 +406,10 @@ def start_project(
         out["app_kind"] = "ui"
         out["llm_required"] = False
         out["note"] = (
-            "Beer Direct track (zero LLM): after prereqs/readiness, "
-            "use_sample(sample=beer) writes demo_beer_sample (pipeline BFF + static). "
-            "smoke_test_agent is not required on this track."
+            "Beer catalog UI: after prereqs/readiness, use_sample(sample=beer) writes "
+            "demo_beer_sample. Search is rt.agent.run_turn with chat_request omitted so "
+            "catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA (same as travel). "
+            "Put LLM_API_KEY in .env. The BFF does not build a pipeline body."
         )
         if rerouted_from_travel:
             out["note"] = (
@@ -734,7 +734,7 @@ def use_sample(
     """UI sample: travel clone or beer Direct template.
 
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
-    sample=beer — write demo_beer_sample catalog UI (no LLM; one pipeline per search).
+    sample=beer — write demo_beer_sample catalog UI. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     """

@@ -92,7 +92,7 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         base["use_sample_args_hint"] = {
             "sample": "beer",
             "project_name": "demo_beer_sample",
-            "note": "Zero-LLM catalog UI (one pipeline per search); travel and smoke_test_agent stay off this track",
+            "note": "Beer catalog UI. Search is rt.agent.run_turn with chat_request omitted (MINI-SCHEMA merge). Do not clone travel.",
         }
     elif sample == "beer" and item_id in ("5.2", "6.1"):
         # Direct track: agent smoke is not the primary next step

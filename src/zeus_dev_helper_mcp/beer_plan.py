@@ -1,14 +1,16 @@
 """Beer-sample catalog search planner.
 
-Standalone (stdlib only) so ``use_sample(sample=beer)`` can inline this file
-into ``demo_beer_sample/main.py``. Plans one public ``pipeline`` per attempt
-(recall step, then ``get`` of ``@found.node_ids``). Does not call Zeus.
+Standalone stdlib planner kept for tests and diagnosis. The written beer
+sample does not inline it; search there is ``rt.agent.run_turn``. Plans Direct
+verbs only: ``find`` or FTS
+``search``, then ``get`` of the ``n_*`` ids from that recall. Does not call
+Zeus and does not build a ``pipeline``.
 
 ``find.query`` matches name and snippet only. A question whose content tokens
 are exactly one style or category uses ``where``. Anything else is a name
 lookup, then that ``where`` if the name lookup is empty and a facet matched,
 then FTS on the content words. The raw question is never ``find.query`` or
-``search.query_text``.
+``search.query_text``. Empty recall skips ``get``.
 """
 
 import json
@@ -853,43 +855,9 @@ def step_path(step: dict[str, Any]) -> str:
     return f"search:fts={body.get('query_text')}"
 
 
-def pipeline_body(verb: str, params: dict[str, Any]) -> dict[str, Any]:
-    """One ``POST /pipeline``: recall, then ``get`` bound to ``@found.node_ids``.
-
-    ``abort_if_empty`` skips ``get`` when the recall step has no items.
-    ``on_error: continue`` keeps doc-key hits when ``node_ids`` is empty, so
-    those keys are never sent to ``get``.
-    """
-    return {
-        "steps": [
-            {
-                "as": "found",
-                "verb": verb,
-                "params": params,
-                "abort_if_empty": True,
-            },
-            {
-                "as": "rows",
-                "verb": "get",
-                "params": {"ids": "@found.node_ids", "include": ["body"]},
-                "on_error": "continue",
-            },
-        ],
-        "return": ["found", "rows"],
-    }
-
-
-def split_pipeline(payload: dict[str, Any]) -> tuple[str, dict[str, Any], dict[str, Any]]:
-    """Return ``(status, found, rows)`` from a pipeline envelope."""
-    status = str(payload.get("status") or "ok").lower()
-    if status in {"aborted", "failed"}:
-        sofar = payload.get("results_so_far") if isinstance(payload.get("results_so_far"), dict) else {}
-        found = sofar.get("found") if isinstance(sofar.get("found"), dict) else {}
-        rows = sofar.get("rows") if isinstance(sofar.get("rows"), dict) else {}
-        return status, found, rows
-    found = payload.get("found") if isinstance(payload.get("found"), dict) else {}
-    rows = payload.get("rows") if isinstance(payload.get("rows"), dict) else {}
-    return status, found, rows
+def get_body(ids: list[str]) -> dict[str, Any]:
+    """Hydrate known ``n_*`` ids. Direct ``get`` — never a ``pipeline`` step."""
+    return {"ids": list(ids), "include": ["body"]}
 
 
 def _public_plan(plan: dict[str, Any]) -> dict[str, Any]:
@@ -923,8 +891,24 @@ def _done(
     return out
 
 
+async def _recall_then_get(
+    fetch: Any, verb: str, body: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    """One Direct recall. ``get`` runs only when the recall returned ``n_*`` ids."""
+    found = await fetch(verb, body)
+    if not isinstance(found, dict):
+        found = {}
+    ids = select_beer_get_ids(found)
+    if not ids:
+        return found, {}, ids
+    rows = await fetch("get", get_body(ids))
+    if not isinstance(rows, dict):
+        rows = {}
+    return found, rows, ids
+
+
 async def execute_search(plan: dict[str, Any], limit: int | None, fetch: Any) -> dict[str, Any]:
-    """Run the plan. Each attempt is one ``fetch("pipeline", pipeline_body)``."""
+    """Run the plan as Direct ``find`` / ``search`` / ``get``. No pipeline verb."""
     ent = str(plan.get("entity") or "Beer")
     steps = search_steps(plan, limit)
     path = [f"plan:{plan.get('mode') or 'empty'}"]
@@ -944,15 +928,12 @@ async def execute_search(plan: dict[str, Any], limit: int | None, fetch: Any) ->
     if not steps:
         return base
     for index, step in enumerate(steps):
-        data = await fetch("pipeline", pipeline_body(str(step["verb"]), step["body"]))
-        if not isinstance(data, dict):
-            data = {}
-        status, found, rows = split_pipeline(data)
-        path.append("pipeline:" + step_path(step))
-        ids = select_beer_get_ids(found)
-        if step["verb"] == "find":
+        verb = str(step["verb"])
+        found, rows, ids = await _recall_then_get(fetch, verb, step["body"])
+        path.append(step_path(step))
+        if verb == "find":
             if not ids:
-                path.append("abort_if_empty")
+                path.append("skip_get")
                 if index < len(steps) - 1:
                     continue
                 base["path"] = path
@@ -977,8 +958,8 @@ async def execute_search(plan: dict[str, Any], limit: int | None, fetch: Any) ->
             items = cards_from_doc_keys(found)
             if items:
                 path.append("doc_key")
-            elif status == "aborted":
-                path.append("abort_if_empty")
+            else:
+                path.append("skip_get")
         if items or index == len(steps) - 1:
             match = step.get("match") if items else None
             return _done(base, path, items, match, result_truncated(found), partial, ent)
@@ -989,11 +970,7 @@ async def execute_search(plan: dict[str, Any], limit: int | None, fetch: Any) ->
 async def execute_list(entity: str, limit: int | None, fetch: Any) -> dict[str, Any]:
     ent = normalize_entity(entity)
     body = list_find_body(ent, limit)
-    data = await fetch("pipeline", pipeline_body("find", body))
-    if not isinstance(data, dict):
-        data = {}
-    _status, found, rows = split_pipeline(data)
-    ids = select_beer_get_ids(found)
+    found, rows, ids = await _recall_then_get(fetch, "find", body)
     partial = False
     if ids:
         items = hydrate_cards(found, rows)
@@ -1009,33 +986,21 @@ async def execute_list(entity: str, limit: int | None, fetch: Any) -> dict[str, 
     }
 
 
-def pipeline_get_body(params: dict[str, Any]) -> dict[str, Any]:
-    """Hydrate ids that are already known. One ``get`` step inside ``pipeline``."""
-    return {
-        "steps": [{"as": "rows", "verb": "get", "params": params}],
-        "return": ["rows"],
-    }
-
-
 async def execute_detail(entity: str, item_id: str, fetch: Any) -> dict[str, Any]:
     look = detail_lookup(entity, item_id)
     partial = False
     if look["kind"] == "get":
-        data = await fetch("pipeline", pipeline_get_body(look["body"]))
+        data = await fetch("get", look["body"])
         if not isinstance(data, dict):
             data = {}
-        _status, _found, rows = split_pipeline(data)
-        partial = result_partial(rows)
-        items = [card for item in _items(rows) if (card := card_from_payload(item))]
+        partial = result_partial(data)
+        items = [card for item in _items(data) if (card := card_from_payload(item))]
         requested = (look["body"].get("ids") or [None])[0]
         if items and requested and str(requested).startswith("n_"):
             items[0]["id"] = requested
     else:
-        data = await fetch("pipeline", pipeline_body("find", look["body"]))
-        if not isinstance(data, dict):
-            data = {}
-        _status, found, rows = split_pipeline(data)
-        if not select_beer_get_ids(found):
+        found, rows, ids = await _recall_then_get(fetch, "find", look["body"])
+        if not ids:
             return {"ok": False, "error": "not_found"}
         partial = result_partial(rows)
         items = hydrate_cards(found, rows)

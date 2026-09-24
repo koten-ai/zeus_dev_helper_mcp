@@ -87,8 +87,8 @@ def recommend_surface(
         notes.append("Single V2 verb on Direct (find/get/describe/search/…). pipeline is not on Direct.")
         if needs_llm is False:
             notes.append(
-                "Website + sample + no LLM → beer catalog BFF posts one public /pipeline "
-                "(find or search, then get). rt.data.verb still rejects pipeline."
+                "beer-sample catalog search is use_sample(sample=beer): rt.agent.run_turn "
+                "with chat_request omitted. rt.data.verb still rejects pipeline."
             )
     elif key == "multi_step":
         surface = "agent-for-pipeline"
@@ -100,9 +100,9 @@ def recommend_surface(
         )
         if needs_llm is False:
             notes.append(
-                "needs_llm=false with multi_step: the beer catalog BFF posts the public "
-                "/pipeline HTTP verb (find or search, then get). Do not send that call through "
-                "rt.data.verb (060010). use_sample(sample=beer), and leave the travel agent off."
+                "beer-sample search is use_sample(sample=beer): rt.agent.run_turn with "
+                "chat_request omitted so MINI-SCHEMA is merged. Do not POST pipeline through "
+                "rt.data.verb (060010). Do not clone demo_travel_sample."
             )
     else:
         # nl_question
@@ -115,10 +115,10 @@ def recommend_surface(
                 "Use intent=typeahead for suggest UI."
             )
             notes.append(
-                "Website + named sample (e.g. beer-sample) + no LLM → Direct catalog UI "
-                "(use_sample sample=beer), not demo_travel_sample / smoke_test_agent. "
-                "Copy TravelPlan BFF/same-origin/config shape only; do not copy run_turn "
-                "unless this is an agent app (TravelPlan = agent-plane; beer = data-plane Direct)."
+                "Website + named sample (e.g. beer-sample) → use_sample(sample=beer), "
+                "not a clone of demo_travel_sample. The written beer search follows travel: "
+                "rt.agent.run_turn with chat_request omitted so catalog.load_for_turn merges "
+                "SCOPE BRIEF + MINI-SCHEMA. An LLM key is required for that search."
             )
         else:
             surface = "rt.agent.run_turn"

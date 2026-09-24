@@ -214,11 +214,11 @@ TOPICS: dict[str, dict[str, str]] = {
     },
     "demo_beer_sample": {
         "summary": (
-            "demo_beer_sample is the data-plane catalog UI example (zero LLM): "
-            "FastAPI same-origin BFF. Each search is one public pipeline "
-            "(find or FTS search, then get of @found.node_ids). No run_turn. "
-            "use_sample(sample=beer) writes it. When shaping a catalog website you may copy "
-            "TravelPlan’s BFF/same-origin/config layout only — not the agent loop."
+            "demo_beer_sample is the data-plane catalog UI for beer-sample: "
+            "FastAPI same-origin BFF. Search follows travel — rt.agent.run_turn with "
+            "chat_request omitted so catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA. "
+            "An LLM key is required. The BFF does not build a pipeline body. "
+            "use_sample(sample=beer) writes it. Do not clone demo_travel_sample for this bucket."
         ),
         "doc": "zeus-client/using-zeus-client.md",
     },

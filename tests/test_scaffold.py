@@ -101,9 +101,11 @@ def test_use_sample_beer_direct(tmp_path: Path) -> None:
     root = Path(out["local_dir"])
     assert (root / "main.py").is_file()
     main = (root / "main.py").read_text()
-    assert '"pipeline"' in main
-    assert "@found.node_ids" in main
-    assert "abort_if_empty" in main
+    assert "HttpxZeusPort" in main
+    assert "agent.run_turn" in main
+    assert "catalog.load_for_turn" in main
+    assert "chat_request=" not in main
+    assert "pipeline_body" not in main
 
 
 def test_scaffold_api_fastapi(tmp_path: Path) -> None:

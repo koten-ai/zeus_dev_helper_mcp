@@ -21,10 +21,10 @@ Hard constraints:
 
 App kind (important):
 - **TravelPlan / demo_travel_sample = agent-plane example** (LLM chat UI: ZeusRuntime + rt.agent.run_turn). Default when the user does not say API vs UI and wants a chat app: **UI** → start_project(sample=travel) → use_sample (clones public demo_travel_sample when missing; optional project_name; sets DEMO_TRAVEL_SAMPLE_DIR). Docs: Agent = run_turn; Direct = rt.data.find/search/get (no LLM) — https://docs.koten.ai/zeus-client/using-zeus-client
-- **demo_beer_sample = data-plane catalog example** (zero-LLM catalog UI: one public `pipeline` per search, find or FTS then get; no LLM key). The Python client `rt.data.verb` still rejects `pipeline` (060010); this sample posts the HTTP verb. Never the default for every “make a website from this endpoint” utterance when beer-sample / no LLM is named.
+- **demo_beer_sample = beer-sample catalog UI.** Search follows travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges SCOPE BRIEF + MINI-SCHEMA. An LLM key is required. The BFF does not build a pipeline body. Do not clone `demo_travel_sample` for this bucket.
 - If the user asks for an **API** / REST / FastAPI Zeus app: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python). Output is a FastAPI app (GET /healthz, POST /turn) on kotenai-zeus-client (zeus_client_python).
-- Application-user class (zero Zeus vocabulary): “I have Zeus at HOST:8080 and beer-sample enabled — make a sample website” (or “don’t use an LLM / show cards”). Prefer Direct/beer over travel. Call set_prereq with the user’s URL + bucket=beer-sample + scope=_default + has_llm_key=false when they said no LLM. **Do not clone demo_travel_sample** and do not require an LLM key for first paint. recommend_surface(needs_llm=false) → Direct (not travel agent). Disk path: start_project(sample=beer) → use_sample(sample=beer) writes demo_beer_sample. Named beer bucket + has_llm_key=false wins over the travel default.
-- When building a **Direct website**, you may copy TravelPlan’s BFF / same-origin / config.json shape only. **Do not copy rt.agent.run_turn** unless this is an agent (LLM) app.
+- Application-user class (zero Zeus vocabulary): “I have Zeus at HOST:8080 and beer-sample enabled — make a sample website” (or “show cards”). Prefer the beer catalog UI over cloning travel. Call set_prereq with the user’s URL + bucket=beer-sample + scope=_default. **Do not clone demo_travel_sample.** Disk path: start_project(sample=beer) → use_sample(sample=beer) writes demo_beer_sample. Search in that app is rt.agent.run_turn with chat_request omitted so catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA. An LLM key belongs in .env. Named beer bucket wins over the travel default.
+- Beer search uses the same `rt.agent.run_turn` call as TravelPlan (omit `chat_request`). Do not clone `demo_travel_sample` to get that call.
 - coding_language other than python (golang, node, …): do not invent scaffolds — report unsupported and keep python or the UI sample.
 
 Order:
@@ -36,7 +36,7 @@ Order:
 6. Read zeus-helper://checklist and zeus-helper://glossary/{topic} / verbs/* instead of dumping encyclopedia tools or grepping Zeus docs
 7. bind_contract from a Hub-stamped catalog when on the agent path (never compute_local). Direct catalog UI does not need an invented hash for first paint.
 8. use_sample (UI travel or beer Direct) OR scaffold_app(app_kind=api) (API) OR scaffold_app(app_kind=cli) as fallback
-9. smoke_test_zeus; smoke_test_agent only when an LLM key exists and the surface is agent — if has_llm_key=false / sample=beer, stay on Direct and do not treat travel + smoke_test_agent as the only path
+9. smoke_test_zeus, then smoke_test_agent when search is rt.agent.run_turn (travel and the beer catalog UI). Beer still must not clone demo_travel_sample. If has_llm_key=false, say an LLM key is required for that search rather than switching the beer app back to bare Direct verbs.
 
 Prefer next_step over get_checklist. Knowledge lives on zeus-helper:// resources. After 5.1+5.2 green, data-plane and multi-agent are handoffs only.
 """

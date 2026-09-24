@@ -151,7 +151,7 @@ doctor → (if user named URL/sample) set_prereq → start_project → next_step
 Prefer `next_step` over dumping the full checklist. Two first-green paths (TravelPlan is **not** the only path):
 
 - **Travel + LLM (UI default):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`. Needs an LLM key for `smoke_test_agent`.
-- **Direct + named sample (beer / website, no LLM):** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF; one public `pipeline` per search — find or FTS, then get; static catalog UI; no LLM key; `smoke_test_agent` not required).
+- **Beer catalog UI:** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF). Search matches travel: `rt.agent.run_turn` with `chat_request` omitted so the client merges MINI-SCHEMA. An LLM key is required. Do not clone `demo_travel_sample`.
 - **API-only:** user asks for an API/REST app → `start_project(sample=api)` → `scaffold_app(app_kind=api, coding_language=python)` (FastAPI `POST /turn` on `kotenai-zeus-client`). Other languages not scaffolded yet.
 - Credentials from chat → process env / gitignored `.env`; `set_prereq` presence flags only. Pass the user’s Zeus URL into `set_prereq(zeus_url=…)`.
 - Integrating into an arbitrary existing repo is **out of scope**.

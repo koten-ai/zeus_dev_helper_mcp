@@ -50,7 +50,7 @@ If the user already gave a Zeus URL or sample name, call `set_prereq` with **tho
 | User intent | `start_project` | Project on disk |
 | --- | --- | --- |
 | Unspecified / UI / “show me the app” (**default**, **agent-plane**) | `sample=travel` | `use_sample` → **`demo_travel_sample`** / TravelPlan (LLM + `run_turn`) |
-| Website + beer-sample / no LLM (**data-plane catalog**) | `sample=beer` | `use_sample(sample=beer)` → **`demo_beer_sample`** (one public `pipeline` per search; never clone travel) |
+| Website + beer-sample (**catalog UI**) | `sample=beer` | `use_sample(sample=beer)` → **`demo_beer_sample`**. Search is `rt.agent.run_turn` with `chat_request` omitted (`catalog.load_for_turn` merges MINI-SCHEMA). LLM key required. Do not clone travel. |
 | “API” / REST / FastAPI | `sample=api` | `scaffold_app(app_kind=api, coding_language=python)` |
 | Minimal CLI fallback | (travel unavailable) | `scaffold_app(app_kind=cli)` |
 
@@ -139,7 +139,7 @@ Prefer a **live Zeus stamp**. `zeus_chat_request` is min templates only.
 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
-| `use_sample` | Travel: locate or **clone** public `demo_travel_sample`; set `DEMO_TRAVEL_SAMPLE_DIR`; prepare standalone Docker when needed. Beer: **write** `demo_beer_sample` catalog UI (FastAPI BFF; one public `pipeline` per search; static page; no LLM) | `sample=travel\|beer`, optional `sample_dir`, `project_name` (dir name), `parent_dir`, `clone_if_missing=true` (travel) | `state` + process env + disk (beer write / travel Docker rewrite) | Default UI path is travel. `sample=beer` defaults `project_name=demo_beer_sample`. Existing non-empty dir must look like the beer sample or fails. Yelp/multi → `handoff_to_multi` gate. |
+| `use_sample` | Travel: locate or **clone** public `demo_travel_sample`; set `DEMO_TRAVEL_SAMPLE_DIR`; prepare standalone Docker when needed. Beer: **write** `demo_beer_sample` catalog UI (FastAPI BFF + static page). Search matches travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges SCOPE BRIEF + MINI-SCHEMA. LLM key required. The BFF does not build a pipeline body | `sample=travel\|beer`, optional `sample_dir`, `project_name` (dir name), `parent_dir`, `clone_if_missing=true` (travel) | `state` + process env + disk (beer write / travel Docker rewrite) | Default UI path is travel. `sample=beer` defaults `project_name=demo_beer_sample`. Existing non-empty dir must look like the beer sample or fails. Yelp/multi → `handoff_to_multi` gate. |
 | `travel_golden_path` | Same ensure/clone + golden-path phases | same as `use_sample` travel args | `state` + env if layout ok (marks 0.2 / 3.1) | Same track as `use_sample` for travel. Then readiness + smokes with the sample’s bucket/scope. |
 | `scaffold_app` | ZeusRuntime middle-man on disk | `target_dir`, `project_name`, `force=false`, `app_kind=cli\|api`, `coding_language=python` | `disk`, `state` | **`api`**: FastAPI `GET /healthz` + `POST /turn`. **`cli`**: one-shot `main.py`. Only **python** / `kotenai-zeus-client` today; other languages → `unsupported_coding_language`. UI demos use `use_sample`, not this tool. |
 | `write_env` | Write `.env.example` from prereqs | `target_dir` | `disk` | After scaffold/sample. Never writes secret values. |

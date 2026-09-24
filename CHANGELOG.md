@@ -6,7 +6,7 @@
 - **[ZDM-11](https://kotenai.atlassian.net/browse/ZDM-11)** Helper MCP tool failures write one stderr line, `zeus_dev_helper.tool.failed`, in the Zeus Client family text shape. `source.file` is package-relative (`zeus_dev_helper_mcp/<module>.py`) and the line omits `error.code`. stdout stays the MCP JSON-RPC stream. Domain `ok: false` results (lint, diagnose, blocked handoff) are not logged as errors.
 
 ### Changed
-- Beer catalog search posts one public `pipeline` per attempt (`find` or FTS `search`, then `get` of `@found.node_ids`). `What beers are made from fruit?` stays `find` `where.style="Fruit Beer"` inside that pipeline, so the raw sentence is not a name lookup (that lookup returns 0). `rt.data.verb` still rejects `pipeline` (060010); the sample calls the HTTP verb.
+- Beer catalog search follows `demo_travel_sample`: `use_sample(sample=beer)` writes a BFF that calls `rt.agent.run_turn` and omits `chat_request`, so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA into the model request. An LLM key is required. The BFF does not build a pipeline body. Cards are taken from the turn's tool results.
 
 ## 0.7.4
 

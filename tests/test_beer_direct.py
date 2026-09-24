@@ -24,7 +24,7 @@ def test_use_sample_beer_writes_tree(tmp_path: Path) -> None:
     )
     assert out["ok"] is True
     assert out.get("track") == "ui-direct"
-    assert out.get("llm_required") is False
+    assert out.get("llm_required") is True
     root = Path(out["local_dir"])
     assert root.name == "demo_beer_sample"
     assert (root / "main.py").is_file()
@@ -34,42 +34,75 @@ def test_use_sample_beer_writes_tree(tmp_path: Path) -> None:
     assert (root / "README.md").is_file()
 
 
-def test_beer_sources_post_pipeline_find_then_get(tmp_path: Path) -> None:
+def test_beer_sources_use_direct_find_then_get(tmp_path: Path) -> None:
     cfg = HelperConfig(state_dir=tmp_path / "state", default_bucket="beer-sample")
     out = write_beer_sample(cfg, tmp_path / "demo_beer_sample")
     assert out["ok"] is True
     root = Path(out["local_dir"])
     main = (root / "main.py").read_text(encoding="utf-8")
-    html = (root / "static" / "index.html").read_text(encoding="utf-8")
     reqs = (root / "requirements.txt").read_text(encoding="utf-8")
     env = (root / ".env.example").read_text(encoding="utf-8")
     readme = (root / "README.md").read_text(encoding="utf-8")
 
-    assert '"pipeline"' in main or "'pipeline'" in main
-    assert "abort_if_empty" in main
-    assert "@found.node_ids" in main
-    assert "doc_key" in main
-    assert "/find" in main or '"find"' in main
-    assert "/get" in main or '"get"' in main
-    assert "strategy" in main and "fts" in main
-    assert "plan_beer_query" in main
+    assert "pipeline_body" not in main
+    assert 'fetch("pipeline"' not in main
+    assert "chat_request=" not in main
+    assert "HttpxZeusPort" in main
+    assert "HttpxCatalogRemote" in main
+    assert "FsCatalogStore" in main
+    assert "OpenAICompatibleLlmClient" in main
+    assert "agent.run_turn" in main
+    assert "catalog.load_for_turn" in main
+    assert "MINI-SCHEMA" in main
     assert "Fruit Beer" in main
     assert "Pumpkin Beer" in main
-    assert "select_beer_get_ids" in main
+    assert "collect_beer_cards" in main
     assert "CELLAR_CACHE_TTL" in env
     assert "fastapi" in reqs
     assert "uvicorn" in reqs
-    assert "httpx" in reqs
+    assert "kotenai-zeus-client>=2.4.0,<2.5" in reqs
+    cfg_text = (root / "config.json").read_text(encoding="utf-8")
+    assert "client-floor-6.1" in cfg_text
+    assert "durable_sessions" in cfg_text
+    assert "chat_requests_dir" in cfg_text
+    assert "LLM_API_KEY" in cfg_text
+    catalog = root / "data" / "chat_requests" / "chat_request_analytics_v2.json"
+    assert catalog.is_file()
+    catalog_text = catalog.read_text(encoding="utf-8")
+    assert "## MINI-SCHEMA" not in catalog_text
+    assert "## SCOPE BRIEF" not in catalog_text
     assert "ZEUS_URL" in env
     assert "ZEUS_BUCKET=beer-sample" in env
     assert "PORT" in env
-    assert "LLM_API_KEY" not in env
-    assert "no llm" in readme.lower()
+    assert "LLM_API_KEY=" in env
+    assert "mini-schema" in readme.lower()
+    assert "run_turn" in readme
     assert "PORT" in readme
     assert "ZEUS_URL" in readme
-    assert "bad plan" in readme.lower() or "0 rows on a sentence" in readme.lower()
     assert "pipeline" not in reqs.lower()
     assert "pipeline" not in env.lower()
+    assert "pipeline" not in cfg_text.lower()
+
+
+def test_beer_old_pipeline_bff_is_rewritten(tmp_path: Path) -> None:
+    root = tmp_path / "demo_beer_sample"
+    (root / "static").mkdir(parents=True)
+    (root / "main.py").write_text(
+        'fetch("pipeline", {"steps": []})\nabort_if_empty\n@found.node_ids\n',
+        encoding="utf-8",
+    )
+    (root / "README.md").write_text("beer sample\n", encoding="utf-8")
+    (root / "requirements.txt").write_text("fastapi\n", encoding="utf-8")
+    (root / "static" / "index.html").write_text("<html></html>\n", encoding="utf-8")
+    (root / ".env").write_text("ZEUS_URL=http://lab.example:8080\n", encoding="utf-8")
+    cfg = HelperConfig(state_dir=tmp_path / "state", default_bucket="beer-sample")
+    out = write_beer_sample(cfg, root)
+    assert out["ok"] is True
+    assert out.get("upgraded") is True
+    main = (root / "main.py").read_text(encoding="utf-8")
+    assert "HttpxZeusPort" in main
+    assert "pipeline_body" not in main
+    assert (root / ".env").read_text(encoding="utf-8") == "ZEUS_URL=http://lab.example:8080\n"
 
 
 def test_beer_existing_dir_ok_if_looks_like_sample(tmp_path: Path) -> None:

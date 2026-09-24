@@ -288,13 +288,13 @@ def use_sample(
         info["sample"] = "beer"
         info["app_kind"] = "ui"
         info["track"] = "ui-direct"
-        info["llm_required"] = False
+        info["llm_required"] = True
         return {
             "ok": bool(ensured.get("ok")),
             "sample": info,
             "app_kind": "ui",
             "track": "ui-direct",
-            "llm_required": False,
+            "llm_required": bool(ensured.get("llm_required", True)),
             "local_dir": ensured.get("local_dir") or ensured.get("target_dir"),
             "written": ensured.get("written"),
             "project_name": ensured.get("project_name"),
@@ -306,7 +306,8 @@ def use_sample(
             "error": ensured.get("error"),
             "next_action": ensured.get("next_action")
             or (
-                "Set ZEUS_URL in .env (no LLM key), run uvicorn, then smoke_test_zeus. "
+                "Set ZEUS_URL and LLM_API_KEY in .env, run uvicorn. "
+                "Search is rt.agent.run_turn with chat_request omitted. "
                 "smoke_test_agent is not required on this Direct track."
             ),
             "checklist_hint": "Mark 3.1 done after the beer Direct UI is on disk",
