@@ -88,7 +88,7 @@ def test_diagnose_empty_find_get_node_ids_required() -> None:
     )
     assert out["failure_class"] == "empty_find_get"
     assert out["doc_anchor"] == "err-empty-find-get"
-    assert "abort_if_empty" in out["next_action"]
+    assert "never get" in out["next_action"].lower()
     assert "bad plan" in out["next_action"].lower() or "not empty zeus" in out["next_action"].lower()
 
 

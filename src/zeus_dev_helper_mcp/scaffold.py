@@ -237,7 +237,7 @@ def use_sample(
     """UI sample path: travel clone or beer Direct template.
 
     travel: locate/clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
-    beer: write zero-LLM Direct catalog UI (default dir demo_beer_sample).
+    beer: write demo_beer_sample catalog UI (run_turn, chat_request omitted; LLM key required).
     For API-only apps use scaffold_app(app_kind=api).
     """
     sample = (sample or "travel").lower().strip()
@@ -343,7 +343,7 @@ def use_sample(
         "ok": False,
         "sample": sample,
         "next_action": (
-            "Use sample=travel (LLM UI), sample=beer (Direct catalog UI), "
+            "Use sample=travel (LLM UI), sample=beer (catalog UI, run_turn), "
             "or scaffold_app for custom domain"
         ),
     }

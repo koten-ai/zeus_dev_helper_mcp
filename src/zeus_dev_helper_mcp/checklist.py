@@ -164,7 +164,11 @@ def next_step(cfg: HelperConfig) -> dict[str, Any]:
 def _hint_for(item_id: str, cfg: HelperConfig) -> str:
     hints = {
         "0.1": "Read using-zeus-client.md; stay single-agent until green.",
-        "1.2": "Set ZEUS_URL (port 8080) and LLM key; run validate_env.",
+        "1.2": (
+            "If no Zeus URL is stored, the tool form asks for the public :8080 URL. "
+            "Credentials stay in ZEUS_USERNAME / ZEUS_PASSWORD or ZEUS_BEARER_TOKEN; "
+            "the form does not collect the password. Then validate_env."
+        ),
         "2.1": "curl $ZEUS_URL/healthz — not Hub :9091.",
         "4.1": "list_catalog_modes / fetch_chat_request from zeus_chat_request; then stamp on Zeus.",
         "5.2": "rt.agent.run_turn one turn; log session_id; see recipe 01.",

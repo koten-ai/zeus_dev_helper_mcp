@@ -9,12 +9,12 @@
 
 > Zeus is at `$HOST:8080`, `beer-sample` is enabled. Make a sample website from that endpoint. Don’t require an LLM.
 
-Target: first paint via Helper coach tools in minutes, without grepping the Zeus engine repo, cloning travel, or asking for an LLM key.
+Target: first paint via Helper coach tools in minutes, without grepping the Zeus engine repo or cloning travel. Search in the written app is a client turn, so an LLM key is required.
 
 ## Locked decisions
 
-1. **BFF → Zeus posts one public `pipeline` per search attempt** (`find` or FTS `search`, then `get` of `@found.node_ids`, with `abort_if_empty` when the recall step has no items). A fruit question is `find` `where.style = "Fruit Beer"` inside that pipeline. The raw sentence is never `find.query`. The Python client `rt.data.verb` still rejects `pipeline` (ErrorCode `060010`); this sample calls the HTTP verb.
-2. **“Direct” here means zero-LLM catalog UI** (same-origin BFF + page). The sample showcases `pipeline` on the public API. `rt.data.verb("pipeline")` stays rejected.
+1. **BFF search follows `demo_travel_sample`.** `use_sample(sample=beer)` writes a FastAPI BFF that calls `rt.agent.run_turn` and omits `chat_request`, so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. The raw question is the turn message. The BFF does not build a pipeline body and does not call `rt.data.verb`. `rt.data.verb("pipeline")` stays rejected (ErrorCode `060010`). Cards come from the turn's tool results. `client_floor` is `client-floor-6.1` on `kotenai-zeus-client>=2.4.0,<2.5`. An older pipeline BFF is rewritten on the next `use_sample(sample=beer)`. `plan_beer_query` stays for tests and diagnosis and is not inlined.
+2. **Catalog UI, LLM required for search.** Same-origin BFF + static page. Do not clone `demo_travel_sample`. If there is no LLM key, say one is required for this search. Do not switch the BFF to bare Direct verbs.
 3. **Beer sample delivery (v1):** template written by `use_sample(sample=beer)` inside Helper (scaffold-style). Optional later: public `demo_beer_sample` clone (travel pattern).
 4. **Stacked branches** (one per ticket):
 
@@ -33,7 +33,7 @@ main
 | Intent | `start_project` | On disk |
 | --- | --- | --- |
 | UI travel (default when unspecified) | `sample=travel` | `use_sample` → `demo_travel_sample` (LLM) |
-| Website + beer / named sample / no LLM | `sample=beer` | `use_sample` → Direct catalog UI |
+| Website + beer-sample | `sample=beer` | `use_sample` → `demo_beer_sample` (`run_turn`, `chat_request` omitted, LLM key) |
 | API / REST | `sample=api` | `scaffold_app(app_kind=api)` |
 
 ## Child tickets
@@ -43,8 +43,8 @@ main
 | [ZDM-5](https://kotenai.atlassian.net/browse/ZDM-5) | `zdm-5/application-user-prompts` | Application-user prompt samples + `first_green` + host-matrix note |
 | [ZDM-4](https://kotenai.atlassian.net/browse/ZDM-4) | `zdm-4/diagnose-lab-errors` | `session_force_closed`, empty find→get, FTS `doc_key`-only |
 | [ZDM-3](https://kotenai.atlassian.net/browse/ZDM-3) | `zdm-3/coach-utterance` | doctor → set_prereq (user URL) → start_project → next_step |
-| [ZDM-6](https://kotenai.atlassian.net/browse/ZDM-6) | `zdm-6/beer-direct-ui` | Beer catalog UI template (pipeline: find/search then get) |
-| [ZDM-2](https://kotenai.atlassian.net/browse/ZDM-2) | `zdm-2/recommend-surface-direct` | website + sample + no LLM → Direct, not travel agent |
+| [ZDM-6](https://kotenai.atlassian.net/browse/ZDM-6) | `zdm-6/beer-direct-ui` | Beer catalog UI template (now `run_turn`; the ticket first shipped Direct find/search then get) |
+| [ZDM-2](https://kotenai.atlassian.net/browse/ZDM-2) | `zdm-2/recommend-surface-direct` | website + beer-sample → beer catalog UI, not a travel clone |
 
 ## Non-goals
 
@@ -57,4 +57,4 @@ main
 
 ## Success bar
 
-Agent stays on Helper tools. Browser search `ipa` / style chip returns rows with `req_id`. NL-ish “fruit” maps or FTS-falls-back without raw `STEP_FAILED`. No Zeus repo grep, no travel clone, no LLM key required.
+Agent stays on Helper tools. Browser search sends the question through `run_turn` and shows beer cards from the turn. No Zeus repo grep, no travel clone. An LLM key is required. The BFF does not build a pipeline body.

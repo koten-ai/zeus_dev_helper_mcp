@@ -98,8 +98,8 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         # Direct track: agent smoke is not the primary next step
         tools = ["smoke_test_zeus", "recommend_surface", "diagnose_error"]
         base["note"] = (
-            "Beer Direct track does not require smoke_test_agent; "
-            "prefer smoke_test_zeus + browser search on the BFF."
+            "Beer catalog search is rt.agent.run_turn with chat_request omitted. "
+            "An LLM key is required. Do not clone travel or switch the BFF to bare Direct verbs."
         )
     if sample == "api":
         base["app_track"] = "api"
@@ -123,12 +123,12 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
                 tools = ["use_sample", "recommend_surface", "smoke_test_zeus"]
                 base["use_sample_args_hint"] = {
                     "sample": "beer",
-                    "note": "has_llm_key=false + beer bucket → Direct, not travel agent",
+                    "note": "has_llm_key=false + beer bucket → beer catalog UI, not a travel clone",
                 }
                 base["app_track"] = "ui-direct"
                 base["note"] = (
-                    "Prereqs prefer beer Direct (no LLM). "
-                    "use_sample(sample=beer); do not clone travel or run smoke_test_agent."
+                    "Prereqs name beer-sample and have no LLM key. "
+                    "use_sample(sample=beer); search still needs an LLM key. Do not clone travel."
                 )
             else:
                 base["note"] = (

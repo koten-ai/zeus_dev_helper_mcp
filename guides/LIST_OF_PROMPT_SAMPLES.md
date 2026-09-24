@@ -27,21 +27,21 @@ MCP prompts: `first_green`, `smoke_question`, `support_pack`. Resources: `zeus-h
 
 Copy-paste prompts for someone who only has a public Zeus URL and a sample name. They will not say Helper tool names. The agent should stay on the coach path (see [`docs/DESIGN-zdm-1-beer-first-green.md`](../docs/DESIGN-zdm-1-beer-first-green.md)).
 
-**Plane reminder (ZDM-9):** TravelPlan / `demo_travel_sample` = **agent-plane** (LLM + `run_turn`). `demo_beer_sample` = **data-plane catalog** (one public `pipeline` per search, no LLM). Docs: [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client). A catalog website may copy TravelPlan’s BFF/same-origin/config shape only — **do not copy `run_turn`** unless this is an agent app. Beer / website / no LLM **never clones** `demo_travel_sample`.
+**Plane reminder (ZDM-9):** TravelPlan / `demo_travel_sample` = **agent-plane** (LLM + `run_turn`; pipeline recovery stays in the SDK). `demo_beer_sample` = **beer-sample catalog UI**. Its search follows travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. An LLM key is required. The BFF does not build a pipeline body. Docs: [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client). Copy TravelPlan’s BFF/same-origin/config shape. Beer / website **never clones** `demo_travel_sample`. Do not switch the beer app back to bare Direct verbs.
 
 ### Make a website from beer-sample
 
 1. I have Zeus running at `http://192.168.0.219:8080` and beer-sample enabled. Make a sample website from that endpoint.
 
-**Expected tool sequence:** `doctor` → `set_prereq(zeus_url=http://192.168.0.219:8080, bucket=beer-sample, scope=_default, has_llm_key=false)` (user URL, not localhost) → `start_project(sample=beer)` (named beer + no LLM also reroutes default travel → beer) → `next_step` → only the recommended tool (`readiness_check` / `use_sample(sample=beer)` / `smoke_test_zeus` / `recommend_surface(needs_llm=false)`). Do not grep the Zeus engine repo or hand-roll curl until readiness/smoke say so. Do not ask for an LLM key for first paint. **Never** `use_sample(sample=travel)` / clone `demo_travel_sample` on this path.
+**Expected tool sequence:** `doctor` → `set_prereq(zeus_url=http://192.168.0.219:8080, bucket=beer-sample, scope=_default)` (user URL, not localhost; `has_llm_key` true when `LLM_API_KEY` is set) → `start_project(sample=beer)` → `next_step` → only the recommended tool (`readiness_check` / `use_sample(sample=beer)` / `smoke_test_zeus`). Search in that app is `rt.agent.run_turn` with `chat_request` omitted. Put `LLM_API_KEY` in `.env`. Do not grep the Zeus engine repo or hand-roll curl until readiness/smoke say so. **Never** `use_sample(sample=travel)` / clone `demo_travel_sample` on this path.
 
 2. Don’t use an LLM. Browse beer-sample with find/search and show cards.
 
-**Expected tool sequence:** Same coach order as (1). `recommend_surface(intent=typeahead|single_verb, needs_llm=false)` → Direct catalog UI via `use_sample(sample=beer)`. Never `smoke_test_agent` / travel clone as the primary path.
+**Expected tool sequence:** Same coach order as (1): `use_sample(sample=beer)`, not a travel clone. The written search is still `rt.agent.run_turn`. If there is no LLM key, say one is required for that search. Do not rebuild the BFF as bare Direct `find` / `search` / `get`.
 
 3. What beers are made from fruit?
 
-**Expected tool sequence:** Only after a catalog site exists. Answer via the site’s pipeline (style `where` or FTS fallback inside `find`/`search` then `get`) — not `smoke_test_agent` unless the user asked for chat. On failure, `diagnose_error` (empty find→get, FTS `doc_key`-only).
+**Expected tool sequence:** Only after the catalog site exists. The page sends the raw question to `rt.agent.run_turn` (`chat_request` omitted; the client merges MINI-SCHEMA). Do not plan `where.style` in the BFF. On failure, `diagnose_error`.
 
 ---
 

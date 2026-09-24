@@ -114,7 +114,9 @@ def _resource_uris(server) -> set[str]:
     resources = _run(server.list_resources())
     uris = {str(getattr(r, "uri", r)) for r in resources}
     templates = _run(server.list_resource_templates())
-    uris |= {str(getattr(t, "uriTemplate", getattr(t, "uri_template", t))) for t in templates}
+    uris |= {
+        str(getattr(t, "uriTemplate", getattr(t, "uri_template", t))) for t in templates
+    }
     return uris
 
 
@@ -137,7 +139,10 @@ def test_resources_list_and_read(tmp_path, monkeypatch) -> None:
     page = list(_run(server.read_resource("zeus-helper://glossary/contract_hash")))
     topic = json.loads(page[0].content)
     assert topic.get("found") is True
-    assert "hash" in (topic.get("summary") or "").lower() or "fingerprint" in (topic.get("summary") or "").lower()
+    assert (
+        "hash" in (topic.get("summary") or "").lower()
+        or "fingerprint" in (topic.get("summary") or "").lower()
+    )
 
     policy = list(_run(server.read_resource("zeus-helper://policy/hash-boundary")))
     body = json.loads(policy[0].content)
@@ -171,8 +176,12 @@ def test_prompts_list_and_get() -> None:
     assert "has_llm_key=false" in blob or "has_llm_key" in blob
     assert "docs.koten.ai/zeus-client" in blob
     assert "placeholder while wiring" not in blob.lower()
-    smoke = _run(server.get_prompt("smoke_question", {"question": "What entities exist?"}))
-    smoke_text = json.dumps(smoke.model_dump() if hasattr(smoke, "model_dump") else str(smoke))
+    smoke = _run(
+        server.get_prompt("smoke_question", {"question": "What entities exist?"})
+    )
+    smoke_text = json.dumps(
+        smoke.model_dump() if hasattr(smoke, "model_dump") else str(smoke)
+    )
     assert "entities" in smoke_text.lower() or "smoke_test_agent" in smoke_text
 
 
@@ -199,7 +208,9 @@ def test_readiness_check_missing_url_is_error(tmp_path, monkeypatch) -> None:
 def test_envelope_keys_on_doctor() -> None:
     server = create_mcp_server(["core"])
     result = _run(server.call_tool("doctor", {}))
-    structured = getattr(result, "structured_content", None) or getattr(result, "structuredContent", None)
+    structured = getattr(result, "structured_content", None) or getattr(
+        result, "structuredContent", None
+    )
     if structured is None and hasattr(result, "model_dump"):
         dumped = result.model_dump(by_alias=True)
         structured = dumped.get("structuredContent") or dumped.get("structured_content")
@@ -214,7 +225,9 @@ def test_parse_toolsets_always_includes_core(monkeypatch) -> None:
     monkeypatch.delenv("ZEUS_DEV_HELPER_TOOLSETS", raising=False)
     assert parse_toolsets() == frozenset({"core"})
     assert "core" in parse_toolsets("lint")
-    assert parse_toolsets("all") >= frozenset({"core", "lint", "catalog", "travel", "support", "handoff"})
+    assert parse_toolsets("all") >= frozenset(
+        {"core", "lint", "catalog", "travel", "support", "handoff"}
+    )
 
 
 def test_next_step_includes_resource_links(tmp_path, monkeypatch) -> None:
@@ -246,6 +259,266 @@ def test_doctor_detail_env(tmp_path, monkeypatch) -> None:
 
 def test_execution_failure_helper() -> None:
     assert "bind_contract" in EXECUTION_FAIL_TOOLS
-    payload = as_envelope({"ok": False, "failure_class": "contract_hash_invent_forbidden"})
+    payload = as_envelope(
+        {"ok": False, "failure_class": "contract_hash_invent_forbidden"}
+    )
     assert is_execution_failure("bind_contract", payload)
     assert not is_execution_failure("diagnose_error", payload)
+
+
+def _structured(result: Any) -> dict[str, Any]:
+    structured = getattr(result, "structured_content", None) or getattr(
+        result, "structuredContent", None
+    )
+    if structured is None and hasattr(result, "model_dump"):
+        dumped = result.model_dump(by_alias=True)
+        structured = dumped.get("structuredContent") or dumped.get("structured_content")
+    assert isinstance(structured, dict)
+    return structured
+
+
+def _elicit_ctx(server: Any, *, form: bool, params: Any = None) -> Any:
+    from mcp.server.connection import Connection
+    from mcp.server.context import ServerRequestContext
+    from mcp.server.mcpserver import Context
+
+    caps: dict[str, Any] = {"elicitation": {"form": {}}} if form else {}
+    connection = Connection.from_envelope(
+        "2026-07-28", {"name": "test", "version": "0"}, caps
+    )
+
+    class _Session:
+        client_capabilities = connection.client_capabilities
+
+    request = ServerRequestContext(
+        session=_Session(),
+        lifespan_context={},
+        protocol_version="2026-07-28",
+        method="tools/call",
+        request_id="1",
+    )
+    return Context(request_context=request, mcp_server=server, input_params=params)
+
+
+def _isolate_prereqs(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.delenv("ZEUS_URL", raising=False)
+    for name in (
+        "ZEUS_USERNAME",
+        "ZEUS_USER",
+        "ZEUS_PASSWORD",
+        "ZEUS_BEARER_TOKEN",
+        "ZEUS_TOKEN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_start_project_schema_hides_clarification_and_secrets() -> None:
+    tools = _run(create_mcp_server(["core"]).list_tools())
+    tool = next(item for item in tools if item.name == "start_project")
+    props = set((tool.input_schema or {}).get("properties") or {})
+    assert "clarification" not in props
+    assert "password" not in props
+    assert "username" not in props
+    assert "token" not in props
+    blob = json.dumps(tool.input_schema).lower()
+    assert "password" not in blob
+    assert "zeus_username" not in blob
+
+
+def test_start_project_asks_for_zeus_url(tmp_path, monkeypatch) -> None:
+    from mcp_types import InputRequiredResult
+
+    _isolate_prereqs(tmp_path, monkeypatch)
+    server = create_mcp_server(["core"])
+    result = _run(
+        server.call_tool(
+            "start_project", {"sample": "beer"}, context=_elicit_ctx(server, form=True)
+        )
+    )
+    assert isinstance(result, InputRequiredResult)
+    request = next(iter((result.input_requests or {}).values()))
+    message = request.params.message
+    assert "Zeus URL" in message
+    assert "8080" in message
+    assert set(request.params.requested_schema["properties"]) == {"zeus_url"}
+    assert not (tmp_path / "demo_beer_sample").exists()
+    from zeus_dev_helper_mcp.config import reload_config
+    from zeus_dev_helper_mcp.prereqs import load_prereqs
+
+    assert "zeus_url" not in load_prereqs(reload_config())
+
+
+def test_accepted_url_is_stored_and_not_asked_again(tmp_path, monkeypatch) -> None:
+    from mcp_types import ElicitResult, InputRequiredResult, InputResponseRequestParams
+
+    from zeus_dev_helper_mcp.config import reload_config
+    from zeus_dev_helper_mcp.prereqs import load_prereqs
+
+    _isolate_prereqs(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "zeus_dev_helper_mcp.clarify.probe_auth_required",
+        lambda *args, **kwargs: "open",
+    )
+    server = create_mcp_server(["core"])
+    first = _run(
+        server.call_tool(
+            "start_project", {"sample": "beer"}, context=_elicit_ctx(server, form=True)
+        )
+    )
+    assert isinstance(first, InputRequiredResult)
+    key = next(iter(first.input_requests or {}))
+    accepted = InputResponseRequestParams(
+        input_responses={
+            key: ElicitResult(
+                action="accept", content={"zeus_url": "http://192.168.0.219:8080"}
+            )
+        },
+        request_state=first.request_state,
+    )
+    second = _run(
+        server.call_tool(
+            "start_project",
+            {"sample": "beer"},
+            context=_elicit_ctx(server, form=True, params=accepted),
+        )
+    )
+    assert not isinstance(second, InputRequiredResult)
+    body = _structured(second)
+    assert body["started"] is True
+    assert load_prereqs(reload_config()).get("zeus_url") == "http://192.168.0.219:8080"
+    third = _run(
+        server.call_tool(
+            "start_project", {"sample": "beer"}, context=_elicit_ctx(server, form=True)
+        )
+    )
+    assert not isinstance(third, InputRequiredResult)
+    assert _structured(third)["started"] is True
+
+
+def test_declined_url_does_not_start(tmp_path, monkeypatch) -> None:
+    from mcp_types import ElicitResult, InputRequiredResult, InputResponseRequestParams
+
+    from zeus_dev_helper_mcp.config import reload_config
+    from zeus_dev_helper_mcp.prereqs import load_prereqs
+
+    _isolate_prereqs(tmp_path, monkeypatch)
+    server = create_mcp_server(["core"])
+    first = _run(
+        server.call_tool(
+            "start_project", {"sample": "beer"}, context=_elicit_ctx(server, form=True)
+        )
+    )
+    assert isinstance(first, InputRequiredResult)
+    key = next(iter(first.input_requests or {}))
+    declined = InputResponseRequestParams(
+        input_responses={key: ElicitResult(action="decline")},
+        request_state=first.request_state,
+    )
+    result = _run(
+        server.call_tool(
+            "start_project",
+            {"sample": "beer"},
+            context=_elicit_ctx(server, form=True, params=declined),
+        )
+    )
+    body = _structured(result)
+    assert body["ok"] is False
+    assert body["started"] is False
+    assert getattr(result, "is_error", False) is False
+    assert "zeus_url" not in load_prereqs(reload_config())
+    assert not (tmp_path / "demo_beer_sample").exists()
+
+
+def test_missing_elicitation_capability_returns_coach_text(
+    tmp_path, monkeypatch
+) -> None:
+    _isolate_prereqs(tmp_path, monkeypatch)
+    server = create_mcp_server(["core"])
+    result = _run(
+        server.call_tool(
+            "start_project", {"sample": "beer"}, context=_elicit_ctx(server, form=False)
+        )
+    )
+    body = _structured(result)
+    assert body["ok"] is False
+    assert body["started"] is False
+    assert "8080" in (body.get("next_action") or "")
+    assert getattr(result, "is_error", False) is False
+
+
+def test_auth_form_blocks_use_sample_until_env_has_credentials(
+    tmp_path, monkeypatch
+) -> None:
+    from mcp_types import ElicitResult, InputRequiredResult, InputResponseRequestParams
+
+    from zeus_dev_helper_mcp.config import reload_config
+    from zeus_dev_helper_mcp.prereqs import load_prereqs
+
+    _isolate_prereqs(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "zeus_dev_helper_mcp.clarify.probe_auth_required",
+        lambda *args, **kwargs: "unauthorized",
+    )
+
+    def _forbid_write(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise AssertionError("use_sample_impl called")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.server.use_sample_impl", _forbid_write)
+    server = create_mcp_server(["core"])
+    args = {
+        "sample": "beer",
+        "parent_dir": str(tmp_path),
+        "project_name": "demo_beer_sample",
+    }
+    first = _run(
+        server.call_tool("use_sample", args, context=_elicit_ctx(server, form=True))
+    )
+    assert isinstance(first, InputRequiredResult)
+    url_key = next(iter(first.input_requests or {}))
+    url_answer = InputResponseRequestParams(
+        input_responses={
+            url_key: ElicitResult(
+                action="accept", content={"zeus_url": "http://192.168.0.219:8080"}
+            )
+        },
+        request_state=first.request_state,
+    )
+    second = _run(
+        server.call_tool(
+            "use_sample",
+            args,
+            context=_elicit_ctx(server, form=True, params=url_answer),
+        )
+    )
+    assert isinstance(second, InputRequiredResult)
+    auth_key = next(iter(second.input_requests or {}))
+    auth_request = second.input_requests[auth_key]
+    props = auth_request.params.requested_schema["properties"]
+    assert set(props) == {"auth_mode", "credentials_ready"}
+    assert "password" not in props
+    assert "username" not in props
+    assert "token" not in props
+    ready = InputResponseRequestParams(
+        input_responses={
+            url_key: ElicitResult(
+                action="accept", content={"zeus_url": "http://192.168.0.219:8080"}
+            ),
+            auth_key: ElicitResult(
+                action="accept",
+                content={"auth_mode": "basic", "credentials_ready": True},
+            ),
+        },
+        request_state=second.request_state,
+    )
+    result = _run(
+        server.call_tool(
+            "use_sample", args, context=_elicit_ctx(server, form=True, params=ready)
+        )
+    )
+    body = _structured(result)
+    assert body["ok"] is False
+    assert body["written"] is False
+    stored = load_prereqs(reload_config())
+    assert stored.get("has_password") is not True
+    assert not (tmp_path / "demo_beer_sample").exists()

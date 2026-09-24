@@ -76,9 +76,9 @@ def recommend_surface(
         notes.append("Typeahead / suggest is Direct interactive — no LLM round.")
         if needs_llm is False:
             notes.append(
-                "Catalog/website browse with no LLM: stay on Direct search; "
-                "do not clone travel or call smoke_test_agent. "
-                "For beer-sample use use_sample(sample=beer)."
+                "beer-sample catalog search is use_sample(sample=beer): rt.agent.run_turn "
+                "with chat_request omitted. An LLM key is required. Do not clone travel. "
+                "Typeahead suggest stays rt.data.search."
             )
     elif key == "single_verb":
         surface = "rt.data.verb"
@@ -161,9 +161,9 @@ def recommend_surface(
             "for_ai_agents": docs_url("zeus-client/for-ai-agents.md"),
         },
         "next_action": (
-            "use_sample(sample=beer) or explain_verb / lint_verb_args for Direct catalog UI; "
-            "rt.agent.run_turn only when needs_llm; never pipeline on Direct; "
-            "do not default to travel when needs_llm=false"
+            "use_sample(sample=beer) for the beer catalog UI "
+            "(run_turn, chat_request omitted; LLM key required); "
+            "do not clone travel; never pipeline on Direct"
             if needs_llm is False
             else (
                 "explain_verb / lint_verb_args for Direct; "

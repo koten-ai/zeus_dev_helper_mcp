@@ -67,6 +67,29 @@ def _write_monorepo_travel_packaging(root: Path) -> None:
     )
 
 
+def test_already_standalone_upgrades_client_pin(tmp_path: Path) -> None:
+    root = tmp_path / "apps" / "travel-ui"
+    root.mkdir(parents=True)
+    (root / "Dockerfile").write_text(
+        "FROM python:3.12-slim\nWORKDIR /app\nCOPY pyproject.toml requirements.txt LICENSE ./\n",
+        encoding="utf-8",
+    )
+    (root / "pyproject.toml").write_text(
+        '[project]\ndependencies = [\n  "kotenai-zeus-client>=2.3.0",\n]\n',
+        encoding="utf-8",
+    )
+    (root / "requirements.txt").write_text("kotenai-zeus-client>=2.3.0\nflask==3.1.0\n", encoding="utf-8")
+    out = prepare_standalone_docker(root)
+    assert out["ok"] is True
+    assert out["prepared"] is True
+    assert out["reason"] == "upgraded_client_pin"
+    assert "kotenai-zeus-client>=2.4.0,<2.5" in (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert "kotenai-zeus-client>=2.4.0,<2.5" in (root / "requirements.txt").read_text(encoding="utf-8")
+    again = prepare_standalone_docker(root)
+    assert again["prepared"] is False
+    assert again["skipped"] == "already_standalone"
+
+
 def test_needs_standalone_when_monorepo_sibling_missing(tmp_path: Path) -> None:
     root = tmp_path / "apps" / "my-first-zeus-app"
     _write_monorepo_travel_packaging(root)
@@ -115,7 +138,8 @@ def test_prepare_rewrites_standalone_packaging(tmp_path: Path) -> None:
 
     pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
     assert "file:../zeus_client_python" not in pyproject
-    assert "kotenai-zeus-client>=2.3.0" in pyproject
+    assert "kotenai-zeus-client>=2.4.0,<2.5" in pyproject
+    assert "does not POST /pipeline" in dockerfile
 
     dockerignore = (root / ".dockerignore").read_text(encoding="utf-8")
     assert "\ndata\n" not in f"\n{dockerignore}\n"

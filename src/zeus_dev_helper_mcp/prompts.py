@@ -17,25 +17,25 @@ Hard constraints:
 - No secrets in tool results or checklist evidence.
 - Semantic cache stays off.
 - scaffold_app / smoke_test_agent emit ZeusRuntime + rt.agent.run_turn (not V1 ZeusClient / run_agent).
-- Credentials: if the user pasted Zeus URL / username / password in chat, put secrets in the host env or a gitignored .env. Call set_prereq with zeus_url + auth_mode + has_username/has_password (booleans only). NEVER pass password/username/token values into MCP tools.
+- Credentials: if the user pasted Zeus URL / username / password in chat, put secrets in the host env or a gitignored .env. Call set_prereq with zeus_url + auth_mode + has_username/has_password (booleans only). NEVER pass password/username/token values into MCP tools. If the user did not name a Zeus URL, leave zeus_url empty and wait for the form. Do not copy the host ZEUS_URL into set_prereq. The form asks for the public :8080 URL, and for auth mode when the scope returns 401 or 403. It does not collect a password.
 
 App kind (important):
 - **TravelPlan / demo_travel_sample = agent-plane example** (LLM chat UI: ZeusRuntime + rt.agent.run_turn). Default when the user does not say API vs UI and wants a chat app: **UI** → start_project(sample=travel) → use_sample (clones public demo_travel_sample when missing; optional project_name; sets DEMO_TRAVEL_SAMPLE_DIR). Docs: Agent = run_turn; Direct = rt.data.find/search/get (no LLM) — https://docs.koten.ai/zeus-client/using-zeus-client
-- **demo_beer_sample = beer-sample catalog UI.** Search follows travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges SCOPE BRIEF + MINI-SCHEMA. An LLM key is required. The BFF does not build a pipeline body. Do not clone `demo_travel_sample` for this bucket.
+- **demo_beer_sample = beer-sample catalog UI.** Search follows travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges SCOPE BRIEF + MINI-SCHEMA. An LLM key is required. The BFF does not build a pipeline body. Do not clone `demo_travel_sample` for this bucket. Never the default unless the user named beer-sample or a beer catalog website.
 - If the user asks for an **API** / REST / FastAPI Zeus app: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python). Output is a FastAPI app (GET /healthz, POST /turn) on kotenai-zeus-client (zeus_client_python).
 - Application-user class (zero Zeus vocabulary): “I have Zeus at HOST:8080 and beer-sample enabled — make a sample website” (or “show cards”). Prefer the beer catalog UI over cloning travel. Call set_prereq with the user’s URL + bucket=beer-sample + scope=_default. **Do not clone demo_travel_sample.** Disk path: start_project(sample=beer) → use_sample(sample=beer) writes demo_beer_sample. Search in that app is rt.agent.run_turn with chat_request omitted so catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA. An LLM key belongs in .env. Named beer bucket wins over the travel default.
-- Beer search uses the same `rt.agent.run_turn` call as TravelPlan (omit `chat_request`). Do not clone `demo_travel_sample` to get that call.
+- Beer search uses the same `rt.agent.run_turn` call as TravelPlan (omit `chat_request`). Copy TravelPlan’s BFF / same-origin / config.json shape. Do not clone `demo_travel_sample`. Do not build a pipeline body. Do not switch the beer app back to bare Direct verbs.
 - coding_language other than python (golang, node, …): do not invent scaffolds — report unsupported and keep python or the UI sample.
 
 Order:
 1. doctor
-2. If the user gave a Zeus URL and/or sample/bucket name: call set_prereq with those values first (zeus_url from the user sentence — not Helper’s default localhost; bucket/scope; has_llm_key true/false). Do not explore the Zeus source tree or hand-roll curl OpenAPI for first green.
-3. start_project — sample=travel (default UI), sample=api (API-only), or sample=beer when the user named beer-sample / website + no LLM
+2. If the user gave a Zeus URL and/or sample/bucket name: call set_prereq with those values first (zeus_url from the user sentence — not the host ZEUS_URL and not localhost; bucket/scope; has_llm_key true/false). If the user did not name a Zeus URL, leave zeus_url empty and wait for the form. Do not pass a password. Do not explore the Zeus source tree or hand-roll curl OpenAPI for first green.
+3. start_project — sample=travel (default UI), sample=api (API-only), or sample=beer when the user named beer-sample or a beer catalog website
 4. next_step — then only the recommended tool
 5. validate_env / readiness_check / recommend_surface as next_step directs
 6. Read zeus-helper://checklist and zeus-helper://glossary/{topic} / verbs/* instead of dumping encyclopedia tools or grepping Zeus docs
-7. bind_contract from a Hub-stamped catalog when on the agent path (never compute_local). Direct catalog UI does not need an invented hash for first paint.
-8. use_sample (UI travel or beer Direct) OR scaffold_app(app_kind=api) (API) OR scaffold_app(app_kind=cli) as fallback
+7. bind_contract from a Hub-stamped catalog when on the agent path (never compute_local). The beer catalog UI loads the catalog inside `run_turn` (omit `chat_request`) and does not need an invented hash for first paint.
+8. use_sample (UI travel or beer catalog) OR scaffold_app(app_kind=api) (API) OR scaffold_app(app_kind=cli) as fallback
 9. smoke_test_zeus, then smoke_test_agent when search is rt.agent.run_turn (travel and the beer catalog UI). Beer still must not clone demo_travel_sample. If has_llm_key=false, say an LLM key is required for that search rather than switching the beer app back to bare Direct verbs.
 
 Prefer next_step over get_checklist. Knowledge lives on zeus-helper:// resources. After 5.1+5.2 green, data-plane and multi-agent are handoffs only.

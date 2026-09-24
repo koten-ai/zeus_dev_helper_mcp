@@ -162,13 +162,15 @@ _NEXT: dict[str, str] = {
         "Helper smokes must not burn the shared lab budget."
     ),
     "empty_find_get": (
-        "abort_if_empty on find; treat aborted/empty ids as an empty list; never get on empty node_ids. "
+        "Skip get when recall returns no n_* ids; never get on empty node_ids. "
         "0 rows on a sentence is a bad plan, not empty Zeus. "
         "Fold a trailing s (fruits → fruit). where.style or where.category only when the question's "
         "content tokens exactly match one label (Fruit Beer, Pumpkin Beer) or the text is that label. "
         "Bare fruit, IPA, and Duvel stay find.query of the raw string. "
         "FTS query_text is those content tokens only — never the raw question. "
-        "See plan_beer_query / use_sample(sample=beer)."
+        "That plan is plan_beer_query (diagnosis only). "
+        "use_sample(sample=beer) does not inline it; search there is rt.agent.run_turn "
+        "with chat_request omitted."
     ),
     "fts_doc_key_only": (
         "FTS returned items with empty node_ids and doc_key only. Parse doc_key into cards; "

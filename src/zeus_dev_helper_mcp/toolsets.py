@@ -22,7 +22,7 @@ CORE_CAP = 15
 # name, toolsets (comma), read_only, destructive, idempotent, open_world
 _ROWS: tuple[tuple[str, str, bool, bool, bool, bool], ...] = (
     ("doctor", CORE, True, False, True, False),
-    ("start_project", CORE, False, True, False, False),
+    ("start_project", CORE, False, True, False, True),
     ("get_checklist", SUPPORT, True, False, True, False),
     ("next_step", CORE, True, False, True, False),
     ("gap_report", SUPPORT, True, False, True, False),
@@ -35,8 +35,8 @@ _ROWS: tuple[tuple[str, str, bool, bool, bool, bool], ...] = (
     ("fetch_chat_request", CATALOG, True, False, True, False),
     ("explain", CATALOG, True, False, True, False),
     ("bootstrap_scope", CATALOG, False, False, True, True),
-    ("scaffold_app", CORE, False, True, False, False),
-    ("use_sample", CORE, False, False, True, False),
+    ("scaffold_app", CORE, False, True, False, True),
+    ("use_sample", CORE, False, False, True, True),
     ("travel_golden_path", TRAVEL, False, False, True, False),
     ("write_env", SUPPORT, False, False, True, False),
     ("verify_local_setup", SUPPORT, True, False, True, False),

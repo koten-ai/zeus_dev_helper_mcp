@@ -45,13 +45,17 @@ _MONOREPO_DOCKER_MARKERS = (
     "zeus_client_python",
     "file:../zeus_client_python",
 )
-_STANDALONE_CLIENT_DEP = "kotenai-zeus-client>=2.3.0"
+# 2.4.x has parse_pipeline_envelope. 2.3.0 is not enough for the TravelPlan BFF
+# (LL-2026-08-25-001 / LL-2026-08-25-003). The BFF calls run_turn; it does not POST /pipeline.
+_STANDALONE_CLIENT_DEP = "kotenai-zeus-client>=2.4.0,<2.5"
 _STANDALONE_DOCKERFILE = """\
 FROM python:3.12-slim
 
 WORKDIR /app
 
 # Standalone build: compose context is this app directory (Helper-prepared).
+# pip installs kotenai-zeus-client 2.4.x. Pipeline envelope recovery stays in
+# that SDK. This BFF calls rt.agent.run_turn and does not POST /pipeline.
 COPY pyproject.toml requirements.txt LICENSE ./
 COPY src ./src
 COPY data ./data
@@ -480,7 +484,7 @@ def docker_install_next_action(root: Path, *, host_port: int = 5050) -> str:
         "cp config.example.json config.json; set llm_provider.api_key and zeus.url; "
         f"then `docker compose up --build` and open http://localhost:{host_port} "
         f"(tracer: http://localhost:{host_port}/?debug=true). "
-        "Or install 'kotenai-zeus-client>=2.3.0' / zeus-dev-helper-mcp[agent] and retry smoke_test_agent."
+        "Or install 'kotenai-zeus-client>=2.4.0,<2.5' / zeus-dev-helper-mcp[agent] and retry smoke_test_agent."
     )
 
 
@@ -586,20 +590,36 @@ def needs_standalone_docker_setup(root: Path | None) -> bool:
     return _packaging_has_monorepo_markers(root)
 
 
+def _pin_standalone_client(text: str) -> str:
+    """Point a standalone clone at PyPI 2.4.x (envelope recovery). Leave other deps."""
+    new = _PYPROJECT_FILE_DEP_RE.sub(f'"{_STANDALONE_CLIENT_DEP}"', text)
+    new = new.replace(
+        "kotenai-zeus-client @ file:../zeus_client_python",
+        _STANDALONE_CLIENT_DEP,
+    )
+    new = new.replace("kotenai-zeus-client>=2.3.0", _STANDALONE_CLIENT_DEP)
+    return new
+
+
 def _rewrite_pyproject_client_dep(root: Path) -> bool:
     path = root / "pyproject.toml"
     if not path.is_file():
         return False
     text = _read_text(path)
-    new_text, n = _PYPROJECT_FILE_DEP_RE.subn(f'"{_STANDALONE_CLIENT_DEP}"', text)
-    if n == 0 and "file:../zeus_client_python" in text:
-        new_text = text.replace(
-            "kotenai-zeus-client @ file:../zeus_client_python",
-            _STANDALONE_CLIENT_DEP,
-        )
-        if new_text == text:
-            return False
-    elif n == 0:
+    new_text = _pin_standalone_client(text)
+    if new_text == text:
+        return False
+    path.write_text(new_text, encoding="utf-8")
+    return True
+
+
+def _rewrite_requirements_client_dep(root: Path) -> bool:
+    path = root / "requirements.txt"
+    if not path.is_file():
+        return False
+    text = _read_text(path)
+    new_text = _pin_standalone_client(text)
+    if new_text == text:
         return False
     path.write_text(new_text, encoding="utf-8")
     return True
@@ -651,12 +671,31 @@ def prepare_standalone_docker(root: Path, *, force: bool = False) -> dict[str, A
         }
 
     if _is_standalone_docker_packaging(root) and not _packaging_has_monorepo_markers(root) and not force:
+        pinned: list[str] = []
+        if _rewrite_pyproject_client_dep(root):
+            pinned.append("pyproject.toml")
+        if _rewrite_requirements_client_dep(root):
+            pinned.append("requirements.txt")
+        if pinned:
+            return {
+                "ok": True,
+                "prepared": True,
+                "local_dir": str(root),
+                "reason": "upgraded_client_pin",
+                "client_dep": _STANDALONE_CLIENT_DEP,
+                "files_written": pinned,
+                "next_action": (
+                    f"Pinned {_STANDALONE_CLIENT_DEP} in {root} so the image has "
+                    "pipeline envelope recovery. The BFF still calls rt.agent.run_turn."
+                ),
+            }
         return {
             "ok": True,
             "prepared": False,
             "skipped": "already_standalone",
             "local_dir": str(root),
             "reason": "already_standalone",
+            "client_dep": _STANDALONE_CLIENT_DEP,
             "next_action": docker_install_next_action(root),
             "files_written": [],
         }
@@ -693,6 +732,8 @@ def prepare_standalone_docker(root: Path, *, force: bool = False) -> dict[str, A
 
     if _rewrite_pyproject_client_dep(root):
         written.append("pyproject.toml")
+    if _rewrite_requirements_client_dep(root):
+        written.append("requirements.txt")
     if _rewrite_dockerignore(root):
         written.append(".dockerignore")
 

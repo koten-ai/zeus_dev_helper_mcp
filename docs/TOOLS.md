@@ -54,7 +54,7 @@ If the user already gave a Zeus URL or sample name, call `set_prereq` with **tho
 | “API” / REST / FastAPI | `sample=api` | `scaffold_app(app_kind=api, coding_language=python)` |
 | Minimal CLI fallback | (travel unavailable) | `scaffold_app(app_kind=cli)` |
 
-Direct websites may copy TravelPlan’s BFF/same-origin/config shape only — **do not copy `run_turn`** unless this is an agent app. Agent vs Direct: [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client).
+Beer catalog search uses the same `rt.agent.run_turn` call as travel (omit `chat_request`). Do not clone `demo_travel_sample` for beer-sample. Do not build a pipeline body. Agent vs Direct: [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client).
 
 Credentials in the user message → env / gitignored `.env` + `set_prereq` **presence flags** only (never password values in MCP args). Existing-repo integration is **out of scope**.
 
@@ -81,7 +81,7 @@ Resources (not default tools): `zeus-helper://checklist` / `glossary/{topic}` / 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
 | `doctor` | Version, public config (no secrets), catalog reachability | — | `catalog` | First call. Then `start_project`. |
-| `start_project` | Init or reset the first-app checklist | `goal=single-agent`, `sample=travel\|beer\|api`, `force_multi=false` | `state` | After doctor. Default **`travel`** (UI). `sample=beer` → Direct/`ui-direct` (no LLM). `sample=api` → API track. Then `set_prereq`. Never turns semantic cache on. Multi / `sample=yelp` gated until 5.1+5.2 unless `force_multi`. |
+| `start_project` | Init or reset the first-app checklist | `goal=single-agent`, `sample=travel\|beer\|api`, `force_multi=false` | `state`, form | After doctor. Default **`travel`** (UI). `sample=beer` → catalog UI (`ui-direct`): search is `rt.agent.run_turn` with `chat_request` omitted; an LLM key is required; the BFF does not build a pipeline body. `sample=api` → API track. Then `set_prereq`. When no Zeus URL is stored, the call asks for the public `:8080` URL and, on HTTP 401/403, for auth mode, before the checklist starts. Never turns semantic cache on. Multi / `sample=yelp` gated until 5.1+5.2 unless `force_multi`. |
 | `helper_metrics` | Local time-to-green (never leaves the machine) | — | none (reads `state`) | Anytime. Events are recorded on start / smoke green. |
 
 **Do not:** treat `doctor` as a Zeus cluster health check (`readiness_check` does that). Do not pass passwords into `start_project`.
@@ -108,13 +108,13 @@ Phases: **0** intent → **1** prereqs → **2** platform → **3** project on d
 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
-| `set_prereq` | Store non-secret prereqs | `zeus_url`, `auth_mode`, `bucket`, `scope`, `collection`, `mode`, `role`, presence flags (`has_llm_key`, `has_bearer`, `has_username`, `has_password`) | `state` | After `start_project` (or right after `doctor` when the user already named a URL/sample). Persisted `zeus_url` / `bucket` / `scope` **override** MCP host `ZEUS_*` env defaults (common `localhost:8080` must not win). Secrets stay in env (`ZEUS_PASSWORD`, `ZEUS_BEARER_TOKEN`, `LLM_API_KEY`). Then `validate_env`. |
+| `set_prereq` | Store non-secret prereqs | `zeus_url`, `auth_mode`, `bucket`, `scope`, `collection`, `mode`, `role`, presence flags (`has_llm_key`, `has_bearer`, `has_username`, `has_password`) | `state`, form | After `start_project` (or right after `doctor` when the user already named a URL/sample). Persisted `zeus_url` / `bucket` / `scope` **override** MCP host `ZEUS_*` env defaults (common `localhost:8080` must not win). An empty `zeus_url` with nothing stored shows a form; host `ZEUS_URL` is a prefill, not a confirmation. Secrets stay in env (`ZEUS_PASSWORD`, `ZEUS_BEARER_TOKEN`, `LLM_API_KEY`). Then `validate_env`. |
 | `validate_env` | Shape check: URL port, LLM key presence, bucket/scope, catalog templates | — | `catalog` | After `set_prereq`. Then `readiness_check`. Flags `:9091` as `wrong_port_hub_vs_public`. |
 | `readiness_check` | Live gates: healthz / readyz / version, auth, bootstrap, chat_request | `update_checklist=true` | `live GET`, optional `state` | After env looks sane. Then catalogs or `bootstrap_scope`. |
 | `compat_check` | `GET /version` + `/healthz` plus static 0.7 feature gates | `zeus_url` (optional override) | `live GET` | Before relying on 0.7 behaviour (req-id policy, V1 session gone, semantic cache floor). **Not** a COMPAT matrix row. |
 | `bootstrap_scope` | Live `GET /v1/ai/bootstrap/scope/{bucket}/{scope}` + chat_request summary | `bucket`, `scope`, `mode`, `detail=summary\|full`, `update_checklist=true` | `live GET`, optional `state` | After readiness. Prefer `summary`. Then stamp on Hub; Helper does not stamp. |
 
-**Do not:** store secret *values* via `set_prereq` (presence flags only). Do not point `zeus_url` at Hub `:9091`. Do not treat `compat_check` as permission to invent a COMPAT row.
+**Do not:** store secret *values* via `set_prereq` (presence flags only). Do not pass a password into the URL or auth form. Do not point `zeus_url` at Hub `:9091`. Do not treat a host `ZEUS_URL` as the user having named a cluster. Do not treat `compat_check` as permission to invent a COMPAT row.
 
 ---
 
@@ -139,9 +139,9 @@ Prefer a **live Zeus stamp**. `zeus_chat_request` is min templates only.
 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
-| `use_sample` | Travel: locate or **clone** public `demo_travel_sample`; set `DEMO_TRAVEL_SAMPLE_DIR`; prepare standalone Docker when needed. Beer: **write** `demo_beer_sample` catalog UI (FastAPI BFF + static page). Search matches travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges SCOPE BRIEF + MINI-SCHEMA. LLM key required. The BFF does not build a pipeline body | `sample=travel\|beer`, optional `sample_dir`, `project_name` (dir name), `parent_dir`, `clone_if_missing=true` (travel) | `state` + process env + disk (beer write / travel Docker rewrite) | Default UI path is travel. `sample=beer` defaults `project_name=demo_beer_sample`. Existing non-empty dir must look like the beer sample or fails. Yelp/multi → `handoff_to_multi` gate. |
+| `use_sample` | Travel: locate or **clone** public `demo_travel_sample`; set `DEMO_TRAVEL_SAMPLE_DIR`; prepare standalone Docker when needed (PyPI client `>=2.4.0,<2.5` so pipeline recovery stays in `run_turn`). Beer: **write** `demo_beer_sample` catalog UI (FastAPI BFF + static page). Search matches travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges SCOPE BRIEF + MINI-SCHEMA. LLM key required. The BFF does not build a pipeline body | `sample=travel\|beer`, optional `sample_dir`, `project_name` (dir name), `parent_dir`, `clone_if_missing=true` (travel) | `state` + process env + disk (beer write / travel Docker rewrite), form | Default UI path is travel. `sample=beer` defaults `project_name=demo_beer_sample`. Asks for the Zeus URL when none is stored, and for auth mode when the scope returns 401 or 403, before writing or cloning. Existing non-empty dir must look like the beer sample or fails. Yelp/multi → `handoff_to_multi` gate. |
 | `travel_golden_path` | Same ensure/clone + golden-path phases | same as `use_sample` travel args | `state` + env if layout ok (marks 0.2 / 3.1) | Same track as `use_sample` for travel. Then readiness + smokes with the sample’s bucket/scope. |
-| `scaffold_app` | ZeusRuntime middle-man on disk | `target_dir`, `project_name`, `force=false`, `app_kind=cli\|api`, `coding_language=python` | `disk`, `state` | **`api`**: FastAPI `GET /healthz` + `POST /turn`. **`cli`**: one-shot `main.py`. Only **python** / `kotenai-zeus-client` today; other languages → `unsupported_coding_language`. UI demos use `use_sample`, not this tool. |
+| `scaffold_app` | ZeusRuntime middle-man on disk | `target_dir`, `project_name`, `force=false`, `app_kind=cli\|api`, `coding_language=python` | `disk`, `state`, form | **`api`**: FastAPI `GET /healthz` + `POST /turn`. **`cli`**: one-shot `main.py`. Only **python** / `kotenai-zeus-client` today; other languages → `unsupported_coding_language`. Asks for the Zeus URL when none is stored, and for auth mode when a known scope returns 401 or 403, before writing. UI demos use `use_sample`, not this tool. |
 | `write_env` | Write `.env.example` from prereqs | `target_dir` | `disk` | After scaffold/sample. Never writes secret values. |
 | `verify_local_setup` | `zeus_client` import + optional scaffold files | `target_dir` | none | After files exist, before smokes. |
 | `lint_runtime_config` | Lint `config.json`: `:8080`, `auth_mode`, env **names**, cheap path, cache off | `path` | none (redacts secrets) | Before agent smoke. Hub port is an error. |
@@ -157,7 +157,7 @@ These tools do **not** run Zeus data-plane verbs (except `lint_verb_args` may op
 
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
-| `recommend_surface` | Intent → Client surface + Trace-Class + do-not list | `intent` (`nl_question` \| `typeahead` \| `single_verb` \| `multi_step`), optional `qps`, `needs_llm` | none | Before writing app code. High `qps` stays off `run_turn`. **Website + named sample (beer-sample) + `needs_llm=false` → Direct**, not travel agent — then `use_sample(sample=beer)`. |
+| `recommend_surface` | Intent → Client surface + Trace-Class + do-not list | `intent` (`nl_question` \| `typeahead` \| `single_verb` \| `multi_step`), optional `qps`, `needs_llm` | none | Before writing app code. High `qps` stays off `run_turn`. **Website + beer-sample → `use_sample(sample=beer)`**, not a travel clone. That app's search is `run_turn`, so an LLM key is required even when the utterance said no LLM. |
 | `explain_verb` | Static V2 encyclopedia: path class, demux, Direct vs pipeline | `name` (`find`, `search`, `get`, `describe`, `pipeline`, …) | none | When drafting a verb. `find`: `return` is the router; `where` is equality-only. |
 | `lint_verb_args` | Lint a would-be JSON body | `verb`, `body` (JSON string), optional `mini_schema` | optional `live POST` describe (schema only) | After `explain_verb`. Rejects `$gt` / non-equality `where`, FTS `biz:` keys as node ids, pipeline on Direct. `posted=false`. |
 | `suggest_verb_call` | Draft a **legal** JSON body from a goal | `goal`, optional `mini_schema` | none | Guidance only — **does not POST**. Then the **app** calls `rt.data.verb` / agent. |
@@ -171,7 +171,7 @@ These tools do **not** run Zeus data-plane verbs (except `lint_verb_args` may op
 | `single_verb` | `rt.data.verb` | `direct.read` |
 | `multi_step` | `agent-for-pipeline` | `agent` |
 
-**ZDM-2 case:** website + sample + no LLM → `needs_llm=false` → Direct Trace-Class; `start_project` / `next_step` must not recommend `use_sample(travel)` or `smoke_test_agent` as the primary path. Named `beer-sample` bucket + `has_llm_key=false` reroutes default travel to `sample=beer`.
+**Beer catalog:** named `beer-sample` uses `sample=beer`. Do not clone travel and do not fall back to bare Direct verbs. Search is `rt.agent.run_turn` with `chat_request` omitted. If `has_llm_key=false`, say an LLM key is required for that search.
 
 **Do not:** pipeline on Direct; `agent_memory` on Direct/typeahead; composite hop ids (`base:1`); invent `contract_hash`.
 

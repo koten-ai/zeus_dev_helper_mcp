@@ -150,8 +150,8 @@ doctor → (if user named URL/sample) set_prereq → start_project → next_step
 
 Prefer `next_step` over dumping the full checklist. Two first-green paths (TravelPlan is **not** the only path):
 
-- **Travel + LLM (UI default):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`. Needs an LLM key for `smoke_test_agent`.
-- **Beer catalog UI:** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF). Search matches travel: `rt.agent.run_turn` with `chat_request` omitted so the client merges MINI-SCHEMA. An LLM key is required. Do not clone `demo_travel_sample`.
+- **Travel + LLM (UI default):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`. Needs an LLM key for `smoke_test_agent`. Standalone clones pin `kotenai-zeus-client>=2.4.0,<2.5` so `run_turn` can recover a fenced pipeline inside the SDK.
+- **Beer catalog UI:** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF + static page). Search matches travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. An LLM key is required. The BFF does not build a pipeline body. Do not clone `demo_travel_sample`.
 - **API-only:** user asks for an API/REST app → `start_project(sample=api)` → `scaffold_app(app_kind=api, coding_language=python)` (FastAPI `POST /turn` on `kotenai-zeus-client`). Other languages not scaffolded yet.
 - Credentials from chat → process env / gitignored `.env`; `set_prereq` presence flags only. Pass the user’s Zeus URL into `set_prereq(zeus_url=…)`.
 - Integrating into an arbitrary existing repo is **out of scope**.
@@ -165,12 +165,12 @@ Live `tools/list` is the call contract. Default surface is **12 tools** (`ZEUS_D
 | Tool | Job |
 | --- | --- |
 | `doctor` | Health. `detail=health\|env\|compat\|cache\|all` (env/compat/cache fold lint-toolset checks) |
-| `start_project` | Init checklist; `sample=travel` (UI default), `sample=beer` (Direct), or `sample=api` |
+| `start_project` | Init checklist; `sample=travel` (UI default), `sample=beer` (catalog UI, `run_turn`), or `sample=api` |
 | `next_step` | Current item plus recommended tools and resource links |
 | `set_prereq` | Store non-secret prereqs (presence flags only for secrets) |
 | `readiness_check` | Live gates: healthz / readyz / version, auth, bootstrap |
 | `scaffold_app` | CLI or FastAPI (`app_kind=cli\|api`) ZeusRuntime app; python only |
-| `use_sample` | Travel UI clone or beer Direct catalog UI template |
+| `use_sample` | Travel UI clone, or beer catalog UI (`run_turn`, `chat_request` omitted) |
 | `bind_contract` | Copy a stamped `contract.hash` only; refuses empty / local compute |
 | `recommend_surface` | Intent → Client surface + do-not list |
 | `smoke_test_zeus` | No LLM: readiness plus a read-only describe |

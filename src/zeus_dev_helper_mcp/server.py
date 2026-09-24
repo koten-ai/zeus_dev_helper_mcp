@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Iterable
 from functools import wraps
-from typing import Any
+from typing import Annotated, Any
 
 from zeus_dev_helper_mcp import __version__
 from zeus_dev_helper_mcp.bootstrap import bootstrap_scope as bootstrap_scope_impl
@@ -23,6 +23,14 @@ from zeus_dev_helper_mcp.catalog import (
 from zeus_dev_helper_mcp.checklist import (
     load_checklist,
     set_item_status,
+)
+from zeus_dev_helper_mcp.clarify import (
+    HAS_ELICIT as _HAS_ELICIT,
+)
+from zeus_dev_helper_mcp.clarify import (
+    UNASKED,
+    interpret_gate,
+    persist_gate,
 )
 from zeus_dev_helper_mcp.compat import compat_check as compat_check_impl
 from zeus_dev_helper_mcp.config import HelperConfig, reload_config
@@ -134,6 +142,8 @@ INSTRUCTIONS = (
     "If the user named a Zeus URL or sample (e.g. beer-sample), call set_prereq with that "
     "zeus_url/bucket/scope — do not keep localhost defaults and do not grep the Zeus source tree "
     "or hand-roll curl for first green; use readiness_check / smoke_test_zeus / zeus-helper://. "
+    "If the user did not name a Zeus URL, leave zeus_url empty and wait for the form. "
+    "Do not copy the host ZEUS_URL into set_prereq. "
     "Call recommend_surface before choosing Travel LLM vs Direct UI vs FastAPI. "
     "If has_llm_key=false, do not offer smoke_test_agent / travel as the only path. "
     "Hard constraints: public API is :8080 not Hub :9091; never invent contract_hash; "
@@ -160,6 +170,35 @@ INSTRUCTIONS = (
 
 def _cfg() -> HelperConfig:
     return reload_config()
+
+
+def _apply_gate(outcome: Any, *, kind: str) -> tuple[Any, dict[str, Any] | None]:
+    """Persist a confirmed URL or auth mode. Return an envelope when the tool must stop."""
+    gate = interpret_gate(outcome)
+    if gate.direct:
+        return gate, None
+    if (
+        gate.save_url
+        or gate.save_auth
+        or gate.has_username is not None
+        or gate.has_password is not None
+        or gate.has_bearer is not None
+    ):
+        persist_gate(gate)
+    if gate.proceed:
+        return gate, None
+    out: dict[str, Any] = {
+        "ok": False,
+        "failure_class": None,
+        "next_action": gate.next_action,
+    }
+    if kind == "start":
+        out["started"] = False
+    elif kind == "prereq":
+        out["saved"] = False
+    else:
+        out["written"] = False
+    return gate, out
 
 
 DOCTOR_DETAILS = ("health", "env", "compat", "cache", "all")
@@ -191,6 +230,7 @@ def _url_routing_view(cfg: HelperConfig) -> dict[str, Any]:
         "stored_zeus_url": stored,
         "env_zeus_url": env_url,
         "effective_zeus_url": effective,
+        "zeus_url_confirmed": bool(stored),
         "issues": issues,
     }
 
@@ -306,7 +346,23 @@ def start_project(
 
     Multi-agent goals (goal=multi or sample=yelp) are gated until single-agent
     smokes are green, unless force_multi=true (ZDH-11).
+
+    When no Zeus URL is stored, the MCP call asks for the public :8080 URL
+    before the checklist starts. Leave zeus_url empty when the user did not
+    name one. Do not copy the host ZEUS_URL. Do not pass a password.
     """
+    return _start_project_body(goal=goal, sample=sample, force_multi=force_multi)
+
+
+def _start_project_body(
+    goal: str = "single-agent",
+    sample: str = "travel",
+    force_multi: bool = False,
+    gate_outcome: Any = UNASKED,
+) -> dict[str, Any]:
+    _gate, blocked = _apply_gate(gate_outcome, kind="start")
+    if blocked is not None:
+        return blocked
     cfg = _cfg()
     goal_l = (goal or "single-agent").lower().strip()
     sample_raw = (sample or "travel").lower().strip()
@@ -564,10 +620,45 @@ def set_prereq(
 
     Put real secrets in environment variables (ZEUS_PASSWORD, ZEUS_BEARER_TOKEN, LLM_API_KEY).
     When the user named a Zeus URL or sample in chat, pass that zeus_url / bucket / scope here
-    (not Helper localhost defaults). Persisted values override MCP host ZEUS_* env defaults
-    so readiness/doctor hit the user's cluster (ZDM-3). Presence flags only for credentials
-    and LLM key.
+    (not Helper localhost defaults). If the user did not name a URL, leave zeus_url empty
+    and wait for the form. Do not copy the host ZEUS_URL. Persisted values override MCP
+    host ZEUS_* env defaults so readiness/doctor hit the user's cluster (ZDM-3).
+    Presence flags only for credentials and LLM key.
     """
+    return _set_prereq_body(
+        zeus_url=zeus_url,
+        auth_mode=auth_mode,
+        bucket=bucket,
+        scope=scope,
+        collection=collection,
+        mode=mode,
+        role=role,
+        has_llm_key=has_llm_key,
+        has_bearer=has_bearer,
+        has_username=has_username,
+        has_password=has_password,
+    )
+
+
+def _set_prereq_body(
+    zeus_url: str = "",
+    auth_mode: str = "",
+    bucket: str = "",
+    scope: str = "",
+    collection: str = "",
+    mode: str = "",
+    role: str = "",
+    has_llm_key: bool | None = None,
+    has_bearer: bool | None = None,
+    has_username: bool | None = None,
+    has_password: bool | None = None,
+    gate_outcome: Any = UNASKED,
+) -> dict[str, Any]:
+    gate, blocked = _apply_gate(gate_outcome, kind="prereq")
+    if blocked is not None:
+        return blocked
+    if not gate.direct and gate.zeus_url and not (zeus_url or "").strip():
+        zeus_url = gate.zeus_url
     cfg = _cfg()
     payload: dict[str, Any] = {}
     if zeus_url:
@@ -713,7 +804,29 @@ def scaffold_app(
 
     app_kind=cli (default) or api (FastAPI POST /turn). coding_language=python only today.
     UI demos use use_sample / demo_travel_sample, not this tool.
+    When no Zeus URL is stored, the MCP call asks before writing files.
+    Do not pass a password.
     """
+    return _scaffold_app_body(
+        target_dir,
+        project_name=project_name,
+        force=force,
+        app_kind=app_kind,
+        coding_language=coding_language,
+    )
+
+
+def _scaffold_app_body(
+    target_dir: str,
+    project_name: str = "zeus_first_app",
+    force: bool = False,
+    app_kind: str = "cli",
+    coding_language: str = "python",
+    gate_outcome: Any = UNASKED,
+) -> dict[str, Any]:
+    _gate, blocked = _apply_gate(gate_outcome, kind="scaffold")
+    if blocked is not None:
+        return blocked
     return scaffold_app_impl(
         _cfg(),
         target_dir,
@@ -737,7 +850,29 @@ def use_sample(
     sample=beer — write demo_beer_sample catalog UI. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
+    When no Zeus URL is stored, the MCP call asks before writing or cloning.
+    Do not pass a password.
     """
+    return _use_sample_body(
+        sample=sample,
+        sample_dir=sample_dir,
+        project_name=project_name,
+        parent_dir=parent_dir,
+        clone_if_missing=clone_if_missing,
+    )
+
+
+def _use_sample_body(
+    sample: str = "travel",
+    sample_dir: str = "",
+    project_name: str = "",
+    parent_dir: str = "",
+    clone_if_missing: bool = True,
+    gate_outcome: Any = UNASKED,
+) -> dict[str, Any]:
+    _gate, blocked = _apply_gate(gate_outcome, kind="sample")
+    if blocked is not None:
+        return blocked
     return use_sample_impl(
         _cfg(),
         sample=sample,
@@ -1028,6 +1163,108 @@ def _wrap_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapped
 
 
+_MCP_OVERRIDES: dict[str, Any] = {}
+
+if _HAS_ELICIT:
+    from mcp.server.elicitation import ElicitationResult
+    from mcp.server.mcpserver.resolve import Resolve
+
+    from zeus_dev_helper_mcp.clarify import (
+        Clarification,
+        clarify_project,
+        clarify_scaffold,
+        clarify_url_argument,
+    )
+
+    def set_prereq_mcp(
+        zeus_url: str = "",
+        auth_mode: str = "",
+        bucket: str = "",
+        scope: str = "",
+        collection: str = "",
+        mode: str = "",
+        role: str = "",
+        has_llm_key: bool | None = None,
+        has_bearer: bool | None = None,
+        has_username: bool | None = None,
+        has_password: bool | None = None,
+        clarification: Annotated[
+            ElicitationResult[Clarification], Resolve(clarify_url_argument)
+        ] = UNASKED,
+    ) -> dict[str, Any]:
+        return _set_prereq_body(
+            zeus_url=zeus_url,
+            auth_mode=auth_mode,
+            bucket=bucket,
+            scope=scope,
+            collection=collection,
+            mode=mode,
+            role=role,
+            has_llm_key=has_llm_key,
+            has_bearer=has_bearer,
+            has_username=has_username,
+            has_password=has_password,
+            gate_outcome=clarification,
+        )
+
+    def start_project_mcp(
+        goal: str = "single-agent",
+        sample: str = "travel",
+        force_multi: bool = False,
+        clarification: Annotated[ElicitationResult[Clarification], Resolve(clarify_project)] = UNASKED,
+    ) -> dict[str, Any]:
+        return _start_project_body(
+            goal=goal,
+            sample=sample,
+            force_multi=force_multi,
+            gate_outcome=clarification,
+        )
+
+    def use_sample_mcp(
+        sample: str = "travel",
+        sample_dir: str = "",
+        project_name: str = "",
+        parent_dir: str = "",
+        clone_if_missing: bool = True,
+        clarification: Annotated[ElicitationResult[Clarification], Resolve(clarify_project)] = UNASKED,
+    ) -> dict[str, Any]:
+        return _use_sample_body(
+            sample=sample,
+            sample_dir=sample_dir,
+            project_name=project_name,
+            parent_dir=parent_dir,
+            clone_if_missing=clone_if_missing,
+            gate_outcome=clarification,
+        )
+
+    def scaffold_app_mcp(
+        target_dir: str,
+        project_name: str = "zeus_first_app",
+        force: bool = False,
+        app_kind: str = "cli",
+        coding_language: str = "python",
+        clarification: Annotated[ElicitationResult[Clarification], Resolve(clarify_scaffold)] = UNASKED,
+    ) -> dict[str, Any]:
+        return _scaffold_app_body(
+            target_dir,
+            project_name=project_name,
+            force=force,
+            app_kind=app_kind,
+            coding_language=coding_language,
+            gate_outcome=clarification,
+        )
+
+    for _mcp_fn, _public_name, _public in (
+        (set_prereq_mcp, "set_prereq", set_prereq),
+        (start_project_mcp, "start_project", start_project),
+        (use_sample_mcp, "use_sample", use_sample),
+        (scaffold_app_mcp, "scaffold_app", scaffold_app),
+    ):
+        _mcp_fn.__name__ = _public_name
+        _mcp_fn.__doc__ = _public.__doc__
+        _MCP_OVERRIDES[_public_name] = _mcp_fn
+
+
 def create_mcp_server(toolsets: Iterable[str] | None = None) -> Any:
     """Build an MCP server with static toolsets, resources, and prompts."""
     raw = None if toolsets is None else ",".join(toolsets)
@@ -1041,7 +1278,7 @@ def create_mcp_server(toolsets: Iterable[str] | None = None) -> Any:
     for meta in TOOL_REGISTRY:
         if not meta.enabled_for(enabled):
             continue
-        fn = g.get(meta.name)
+        fn = _MCP_OVERRIDES.get(meta.name) or g.get(meta.name)
         if fn is None or not callable(fn):
             continue
         annotations = make_tool_annotations(

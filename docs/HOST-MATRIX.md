@@ -18,14 +18,15 @@ Local only: tool **ids** in `helper_metrics` / `metrics.jsonl`. No prompts, bodi
 | --- | --- |
 | Outcome | Working Direct catalog UI hand-rolled (~22 min to first paint); Helper coach path mostly skipped |
 | Helper tools used | `doctor` once (`detail=health`); **not** `start_project`, `set_prereq`, `next_step`, `recommend_surface`, `use_sample`, `smoke_test_zeus`, `diagnose_error` |
-| Miss (pre-ZDM-6) | Agent grepped Zeus docs/API and curled verbs; travel default would have been wrong (LLM + other bucket); beer Direct UI slot now lands via `use_sample(sample=beer)` |
+| Miss (pre-ZDM-6) | Agent grepped Zeus docs/API and curled verbs; travel default would have been wrong (other bucket); beer catalog UI now lands via `use_sample(sample=beer)` |
+| Current writer | Search is `rt.agent.run_turn` with `chat_request` omitted (SCOPE BRIEF + MINI-SCHEMA). An LLM key is required. The BFF does not build a pipeline body |
 | Epic | [ZDM-1](https://kotenai.atlassian.net/browse/ZDM-1) · prompts [ZDM-5](https://kotenai.atlassian.net/browse/ZDM-5) · design [`DESIGN-zdm-1-beer-first-green.md`](DESIGN-zdm-1-beer-first-green.md) |
 
 **Re-measure after** coach + `use_sample(sample=beer)` land (ZDM-3 / ZDM-6 / ZDM-2). Record time-to-green here when the utterance first-greens on the Helper path.
 
 ### Coach compliance (Grok / Claude)
 
-After `doctor`, if the user named a URL or sample: **`set_prereq` with the user’s URL/bucket/scope → `start_project` → `next_step`**. Do not skip to grepping Zeus docs/API or curling verbs by hand until `readiness_check` / `smoke_test_zeus` (or `next_step`) say so. Call `recommend_surface` before Travel LLM vs Direct UI vs FastAPI. If `has_llm_key=false`, do not offer `smoke_test_agent` / travel as the only path.
+After `doctor`, if the user named a URL or sample: **`set_prereq` with the user’s URL/bucket/scope → `start_project` → `next_step`**. Do not skip to grepping Zeus docs/API or curling verbs by hand until `readiness_check` / `smoke_test_zeus` (or `next_step`) say so. Call `recommend_surface` before Travel LLM vs beer catalog UI vs FastAPI. Beer search is `rt.agent.run_turn`; if `has_llm_key=false`, say an LLM key is required rather than cloning travel or switching that BFF to bare Direct verbs.
 
 ## Current demo (Grok, 2026-09-15)
 
