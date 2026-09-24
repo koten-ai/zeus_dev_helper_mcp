@@ -54,6 +54,7 @@ from zeus_dev_helper_mcp.envelope import (
     is_execution_failure,
     raise_tool_error,
 )
+from zeus_dev_helper_mcp.error_log import log_tool_exception, log_tool_failure
 from zeus_dev_helper_mcp.explain import explain_topic
 from zeus_dev_helper_mcp.handoff import (
     emit_mcp_config as emit_mcp_config_impl,
@@ -1010,11 +1011,17 @@ def _wrap_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
             record_metric(_cfg(), "tool_call", tool=fn.__name__)
         except Exception:  # noqa: BLE001, S110 — metrics must not break tools
             pass
-        result = fn(*args, **kwargs)
+        try:
+            result = fn(*args, **kwargs)
+        except Exception as exc:
+            # stdout is the MCP JSON-RPC stream; the family line goes to stderr.
+            log_tool_exception(fn, exc)
+            raise
         if not isinstance(result, dict):
             return result
         payload = as_envelope(result)
         if is_execution_failure(fn.__name__, payload):
+            log_tool_failure(fn, payload)
             raise_tool_error(payload)
         return payload
 
