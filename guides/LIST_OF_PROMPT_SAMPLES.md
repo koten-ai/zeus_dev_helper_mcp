@@ -27,17 +27,17 @@ MCP prompts: `first_green`, `smoke_question`, `support_pack`. Resources: `zeus-h
 
 Copy-paste prompts for someone who only has a public Zeus URL and a sample name. They will not say Helper tool names. The agent should stay on the coach path (see [`docs/DESIGN-zdm-1-beer-first-green.md`](../docs/DESIGN-zdm-1-beer-first-green.md)).
 
-**Plane reminder (ZDM-9):** TravelPlan / `demo_travel_sample` = **agent-plane** (LLM + `run_turn`; pipeline recovery stays in the SDK). `demo_beer_sample` = **beer-sample catalog UI**. Its search follows travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. An LLM key is required. The BFF does not build a pipeline body. Docs: [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client). Copy TravelPlan’s BFF/same-origin/config shape. Beer / website **never clones** `demo_travel_sample`. Do not switch the beer app back to bare Direct verbs.
+**Plane reminder (ZDM-9):** TravelPlan / `demo_travel_sample` = **agent-plane** (LLM + `run_turn`; pipeline recovery stays in the SDK). `demo_beer_sample` = **beer-sample catalog UI**. Its search follows travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. An LLM key is required in the Helper process and in the app `.env`. `config.json` `llm.api_key_env` stays that variable name. `has_llm_key=true` does not count. The BFF does not build a pipeline body. Docs: [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client). Copy TravelPlan’s BFF/same-origin/config shape. Beer / website **never clones** `demo_travel_sample`. Do not switch the beer app back to bare Direct verbs.
 
 ### Make a website from beer-sample
 
 1. I have Zeus running at `http://192.168.0.219:8080` and beer-sample enabled. Make a sample website from that endpoint.
 
-**Expected tool sequence:** `doctor` → `set_prereq(zeus_url=http://192.168.0.219:8080, bucket=beer-sample, scope=_default)` (user URL, not localhost; `has_llm_key` true when `LLM_API_KEY` is set) → `start_project(sample=beer)` → `next_step` → only the recommended tool (`readiness_check` / `use_sample(sample=beer)` / `smoke_test_zeus`). Search in that app is `rt.agent.run_turn` with `chat_request` omitted. Put `LLM_API_KEY` in `.env`. Do not grep the Zeus engine repo or hand-roll curl until readiness/smoke say so. **Never** `use_sample(sample=travel)` / clone `demo_travel_sample` on this path.
+**Expected tool sequence:** `doctor` → `set_prereq(zeus_url=http://192.168.0.219:8080, bucket=beer-sample, scope=_default)` (user URL, not localhost; set `has_llm_key` true only when `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is already in this process — the flag alone does not close checklist 1.2) → `start_project(sample=beer)` → `next_step` → only the recommended tool (`validate_env` / `readiness_check` / `use_sample(sample=beer)` / `verify_local_setup` / `smoke_test_zeus`). Search in that app is `rt.agent.run_turn` with `chat_request` omitted. Put the secret in the app `.env` as `LLM_API_KEY`. Leave `config.json` `llm.api_key_env` as `LLM_API_KEY`. Run `verify_local_setup` on that directory before uvicorn or Pour. Do not grep the Zeus engine repo or hand-roll curl until readiness/smoke say so. **Never** `use_sample(sample=travel)` / clone `demo_travel_sample` on this path.
 
 2. Don’t use an LLM. Browse beer-sample with find/search and show cards.
 
-**Expected tool sequence:** Same coach order as (1): `use_sample(sample=beer)`, not a travel clone. The written search is still `rt.agent.run_turn`. If there is no LLM key, say one is required for that search. Do not rebuild the BFF as bare Direct `find` / `search` / `get`.
+**Expected tool sequence:** Same coach order as (1): `use_sample(sample=beer)`, not a travel clone. The written search is still `rt.agent.run_turn`. Beer still needs the process key (checklist 1.2) and the app `.env` key (checklist 3.2) even though the user said not to use an LLM. Do not rebuild the BFF as bare Direct `find` / `search` / `get`.
 
 3. What beers are made from fruit?
 
@@ -113,6 +113,8 @@ Mark a checklist item blocked with a reason.
 
 1. Mark `2.3` blocked: scope is not enabled on this cluster. Suggest the next Helper tool.
 2. I cannot run `smoke_test_agent` because there is no LLM key. Mark `5.2` blocked with that reason.
+
+**Expected:** Mark `5.2` blocked with no secret in the evidence. Also say checklist **1.2** stays open until `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is in this process. `has_llm_key=true` does not satisfy that. For the written app, checklist **3.2** stays open until `.env` has that name and `llm.api_key_env` is still the name.
 3. Block item `4.2` — we only have a `TO_BE_FILLED` template hash, not a live stamp. Do not invent a hash.
 
 ---
@@ -125,19 +127,19 @@ Store non-secret prereqs for readiness. Does not store password or token values.
 
 1. Record prereqs: Zeus URL `http://localhost:8080`, bucket `travel-sample`, scope `inventory`, mode `analytics`, role `dev`. Do not store secrets.
 2. Save that we have username+password auth present in env (flags only), public API `:8080`, collection `_default`.
-3. Set prereqs for `beer-sample` / `_default` on `:8080` with `auth_mode=basic` and `has_llm_key=true`. Then tell me to run `validate_env`.
+3. Set prereqs for `beer-sample` / `_default` on `:8080` with `auth_mode=basic` and `has_llm_key=true`. Then tell me to run `validate_env`. The flag does not replace `LLM_API_KEY` in this process.
 
 ### `validate_env`
 
-Validate Helper env + stored prereqs shape (presence only — no secret values).
+Validate Helper env + stored prereqs shape (presence only — no secret values). A missing `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is an error (`llm_key_missing`) when the path calls `run_turn` (travel, beer, API, yelp demo). Beer still errors when `has_llm_key=false`. A stored `has_llm_key=true` does not count. A non-beer Direct opt-out warns instead of failing.
 
 1. Validate my Helper environment. Flag Hub `:9091`, missing `ZEUS_URL`, missing LLM key, and catalog template problems.
-2. Is env ready for `readiness_check`? Check presence of Zeus URL, bucket/scope, and catalog templates without printing secrets.
+2. Is env ready for `readiness_check`? Check presence of Zeus URL, bucket/scope, the process LLM key, and catalog templates without printing secrets.
 3. Run `validate_env` and explain every issue with its `failure_class`.
 
 ### `readiness_check`
 
-Live Zeus platform gates: healthz / readyz / version, auth, bootstrap, chat_request. Never returns secrets.
+Live Zeus platform gates: healthz / readyz / version, auth, bootstrap, chat_request. Never returns secrets. With `update_checklist=true`, marks checklist 1.2 done only when `ZEUS_URL` is set and, on a `run_turn` path, this process has the LLM key. Does not close 1.2 from the URL alone on those paths.
 
 1. Run a live readiness check against Zeus `:8080` and update the checklist.
 2. Probe platform gates without updating the checklist (`update_checklist=false`). Tell me which gate is red.
@@ -260,11 +262,11 @@ Write `.env.example` from prereqs (no secrets).
 
 ### `verify_local_setup`
 
-Check `zeus_client` import and optional scaffold files.
+Check `zeus_client` import, scaffold files, and the app LLM key. Pass the project directory. The check reports presence only. It marks checklist 3.2 done when `.env` has a non-empty value for the variable named by `config.json` `llm.api_key_env`, and that name is an env-var name such as `LLM_API_KEY`. A secret in `api_key_env` blocks 3.2.
 
-1. Verify local setup for `./zeus_first_app`: can we import the client and are scaffold files present?
-2. Check whether `kotenai-zeus-client` is installed and whether the target dir looks like a Helper scaffold.
-3. Run `verify_local_setup` with no target dir — just tell me if the Zeus Client import works.
+1. Verify local setup for `./zeus_first_app`: can we import the client, are scaffold files present, and is `LLM_API_KEY` set in `.env` without `api_key_env` holding the secret?
+2. Check whether `kotenai-zeus-client` is installed and whether the target dir looks like a Helper scaffold. Do not print the key.
+3. Run `verify_local_setup` with no target dir — just tell me if the Zeus Client import works. That call does not close checklist 3.2.
 
 ---
 
@@ -280,7 +282,7 @@ Smoke Zeus without LLM: readiness + `POST /v2/{bucket}/{scope}/describe`.
 
 ### `smoke_test_agent`
 
-One Zeus Client `rt.agent.run_turn` (needs `kotenai-zeus-client>=2.3.0` + LLM key).
+One Zeus Client `rt.agent.run_turn` (needs `kotenai-zeus-client>=2.3.0`). When that package imports, a missing `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` in this process returns `llm_key_missing`. A stored `has_llm_key` flag does not count.
 
 1. Run one agent smoke turn: "In one short sentence, what data is available in this scope?"
 2. Smoke the agent with "A fun beach destination in Mexico, in April, under $300." Capture `session_id` / `req_id` only — no secrets.
@@ -481,7 +483,7 @@ Emit a safe-by-default MCP config fragment for a future data-plane server.
 | `mark_done` | Mark `5.1` done with a `req_id` only. |
 | `mark_blocked` | Mark `2.3` blocked: scope not enabled. |
 | `set_prereq` | Save `:8080` + bucket/scope flags, no secrets. |
-| `validate_env` | Validate env without printing secrets. |
+| `validate_env` | Validate env without printing secrets. Missing process LLM key is an error on `run_turn` paths. |
 | `readiness_check` | Live platform gates on `:8080`. |
 | `compat_check` | Probe version/healthz for 0.7 gates. |
 | `bootstrap_scope` | Bootstrap `travel-sample` / `inventory`. |
@@ -495,9 +497,9 @@ Emit a safe-by-default MCP config fragment for a future data-plane server.
 | `use_sample` | Point at the travel sample. |
 | `travel_golden_path` | Walk travel golden-path phases. |
 | `write_env` | Write `.env.example` with no secrets. |
-| `verify_local_setup` | Can we import Zeus Client? |
+| `verify_local_setup` | Import Zeus Client, and check the app `.env` key plus `llm.api_key_env` name. |
 | `smoke_test_zeus` | Describe-scope smoke, no LLM. |
-| `smoke_test_agent` | One `run_turn` to first green. |
+| `smoke_test_agent` | One `run_turn` to first green. Needs the process LLM key. |
 | `diagnose_error` | Map 401 / `060010` / `base:1` to classes. |
 | `recommend_surface` | Typeahead vs NL question vs pipeline. |
 | `explain_verb` | Explain `find` / `pipeline` / `get`. |

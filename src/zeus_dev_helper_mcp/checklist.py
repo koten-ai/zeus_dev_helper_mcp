@@ -41,7 +41,11 @@ PHASES: list[dict[str, Any]] = [
         "title": "Project on disk",
         "items": [
             {"id": "3.1", "title": "Scaffold or clone sample", "status": "todo"},
-            {"id": "3.2", "title": "Config / env template present", "status": "todo"},
+            {
+                "id": "3.2",
+                "title": "App .env has the LLM key; api_key_env is the name",
+                "status": "todo",
+            },
         ],
     },
     {
@@ -165,9 +169,16 @@ def _hint_for(item_id: str, cfg: HelperConfig) -> str:
     hints = {
         "0.1": "Read using-zeus-client.md; stay single-agent until green.",
         "1.2": (
-            "If no Zeus URL is stored, the tool form asks for the public :8080 URL. "
-            "Credentials stay in ZEUS_USERNAME / ZEUS_PASSWORD or ZEUS_BEARER_TOKEN; "
-            "the form does not collect the password. Then validate_env."
+            "Set ZEUS_URL with set_prereq. The form does not collect a password or an "
+            "API key. LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY must be set in this "
+            "process. has_llm_key=true does not count. Then validate_env. Beer, travel, "
+            "and API turns keep 1.2 open until that variable is set."
+        ),
+        "3.2": (
+            "Copy .env.example to .env and set LLM_API_KEY there. Leave config.json "
+            "llm.api_key_env as that name. verify_local_setup checks presence only, "
+            "then marks 3.2 done. Do not paste the secret into api_key_env or into "
+            "a tool argument."
         ),
         "2.1": "curl $ZEUS_URL/healthz — not Hub :9091.",
         "4.1": "list_catalog_modes / fetch_chat_request from zeus_chat_request; then stamp on Zeus.",

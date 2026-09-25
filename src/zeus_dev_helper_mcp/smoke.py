@@ -301,11 +301,15 @@ def smoke_test_agent(
             "docs": _agent_docs(),
         }
 
-    if not cfg.has_llm_key and not any(
-        os.environ.get(k) for k in ("LLM_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY")
-    ):
+    from zeus_dev_helper_mcp.config import llm_key_in_process_env
+
+    if not llm_key_in_process_env():
         docker = _docker_guidance_for_agent(cfg)
-        next_action = "Set LLM_API_KEY (or provider key) for the agent smoke"
+        next_action = (
+            "Set LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY in this process "
+            "before smoke_test_agent. A stored has_llm_key flag is not the key. "
+            "In the app, put the secret in .env and leave llm.api_key_env as that name."
+        )
         out: dict[str, Any] = {
             "ok": False,
             "failure_class": "llm_key_missing",

@@ -153,7 +153,10 @@ INSTRUCTIONS = (
     "TravelPlan / demo_travel_sample is the agent-plane (LLM chat UI) example; "
     "demo_beer_sample is the beer-sample catalog UI. Its search follows travel: "
     "rt.agent.run_turn with chat_request omitted so catalog.load_for_turn merges "
-    "SCOPE BRIEF + MINI-SCHEMA. An LLM key is required. The BFF does not build a pipeline body — "
+    "SCOPE BRIEF + MINI-SCHEMA. An LLM key is required: set LLM_API_KEY in this process "
+    "and in the app .env. config.json llm.api_key_env stays the name LLM_API_KEY. "
+    "has_llm_key=true is not the key. verify_local_setup before Pour or smoke_test_agent. "
+    "The BFF does not build a pipeline body — "
     "https://docs.koten.ai/zeus-client/using-zeus-client. "
     "Bootstrap default is UI: use_sample clones public demo_travel_sample when missing "
     "and sets DEMO_TRAVEL_SAMPLE_DIR (optional project_name for the clone directory). "
@@ -581,13 +584,19 @@ def validate_env() -> dict[str, Any]:
                 "message": "Looks like Hub :9091 — app path must use public :8080.",
             }
         )
+    from zeus_dev_helper_mcp.llm_key import path_needs_llm_key
+
+    needs_llm_key = path_needs_llm_key(cfg)
     if not cfg.has_llm_key:
         issues.append(
             {
                 "field": "LLM_API_KEY",
-                "level": "warn",
+                "level": "error" if needs_llm_key else "warn",
                 "failure_class": "llm_key_missing",
-                "message": "No LLM key env detected — needed for smoke_test_agent.",
+                "message": (
+                    "No LLM key in this process. Set LLM_API_KEY, XAI_API_KEY, or "
+                    "OPENAI_API_KEY. A stored has_llm_key flag is not the key."
+                ),
             }
         )
     if not cfg.default_bucket or not cfg.default_scope:
@@ -617,6 +626,17 @@ def validate_env() -> dict[str, Any]:
         issues.append({"field": "zeus_chat_request", "level": "warn", "message": str(e)})
 
     ok = not any(i.get("level") == "error" for i in issues)
+    if not cfg.zeus_url:
+        next_action = "Set ZEUS_URL, then validate_env"
+    elif needs_llm_key and not cfg.has_llm_key:
+        next_action = (
+            "Set LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY in the environment "
+            "that runs Helper. set_prereq(has_llm_key=true) does not count. "
+            "In the app, put that variable in .env and leave config.json "
+            "llm.api_key_env as the name. Then validate_env."
+        )
+    else:
+        next_action = "Run readiness_check after ZEUS_URL is set"
     return {
         "ok": ok,
         "config": cfg.public_view(),
@@ -626,7 +646,7 @@ def validate_env() -> dict[str, Any]:
         "docs": (
             docs_url("zeus-client/config-reference.md")
         ),
-        "next_action": "Run readiness_check after ZEUS_URL is set",
+        "next_action": next_action,
     }
 
 
@@ -736,7 +756,9 @@ def _set_prereq_body(
         "effective_config": cfg.public_view(),
         "note": (
             "Secrets must remain in env vars — only presence flags are stored. "
-            "Persisted zeus_url/bucket/scope override MCP host ZEUS_* defaults."
+            "Persisted zeus_url/bucket/scope override MCP host ZEUS_* defaults. "
+            "has_llm_key records what the user said. The process environment must "
+            "contain LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY before a live turn."
         ),
         "next_action": "validate_env → readiness_check",
     }

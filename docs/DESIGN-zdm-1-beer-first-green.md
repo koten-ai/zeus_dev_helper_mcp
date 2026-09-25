@@ -14,7 +14,7 @@ Target: first paint via Helper coach tools in minutes, without grepping the Zeus
 ## Locked decisions
 
 1. **BFF search follows `demo_travel_sample`.** `use_sample(sample=beer)` writes a FastAPI BFF that calls `rt.agent.run_turn` and omits `chat_request`, so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. The raw question is the turn message. The BFF does not build a pipeline body and does not call `rt.data.verb`. `rt.data.verb("pipeline")` stays rejected (ErrorCode `060010`). Cards come from the turn's tool results. `client_floor` is `client-floor-6.1` on `kotenai-zeus-client>=2.4.0,<2.5`. An older pipeline BFF is rewritten on the next `use_sample(sample=beer)`. `plan_beer_query` stays for tests and diagnosis and is not inlined.
-2. **Catalog UI, LLM required for search.** Same-origin BFF + static page. Do not clone `demo_travel_sample`. If there is no LLM key, say one is required for this search. Do not switch the BFF to bare Direct verbs.
+2. **Catalog UI, LLM required for search.** Same-origin BFF + static page. Do not clone `demo_travel_sample`. The key is required even when the user said not to use an LLM. Checklist **1.2** stays open until the Helper process has `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` (`validate_env` errors; `has_llm_key=true` does not count). Checklist **3.2** stays open until `verify_local_setup` sees that variable set in the app `.env` and `config.json` `llm.api_key_env` is still the name. Do not paste the secret into `api_key_env`. Do not switch the BFF to bare Direct verbs.
 3. **Beer sample delivery (v1):** template written by `use_sample(sample=beer)` inside Helper (scaffold-style). Optional later: public `demo_beer_sample` clone (travel pattern).
 4. **Stacked branches** (one per ticket):
 
@@ -57,4 +57,4 @@ main
 
 ## Success bar
 
-Agent stays on Helper tools. Browser search sends the question through `run_turn` and shows beer cards from the turn. No Zeus repo grep, no travel clone. An LLM key is required. The BFF does not build a pipeline body.
+Agent stays on Helper tools. Browser search sends the question through `run_turn` and shows beer cards from the turn. No Zeus repo grep, no travel clone. An LLM key is in the Helper process and in the app `.env`, and `llm.api_key_env` is the variable name. The BFF does not build a pipeline body.

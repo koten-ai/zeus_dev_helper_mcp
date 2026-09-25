@@ -206,7 +206,9 @@ TOPICS: dict[str, dict[str, str]] = {
         "summary": (
             "TravelPlan (public demo_travel_sample) is the agent-plane / LLM UI example: "
             "Flask BFF, config.json, ZeusRuntime, rt.agent.run_turn, catalog bind. "
-            "use_sample(sample=travel) clones it when the user wants a chat UI and has an LLM key. "
+            "use_sample(sample=travel) clones it when the user wants a chat UI. "
+            "Checklist 1.2 needs LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY in this process. "
+            "has_llm_key=true does not count. "
             "Do not default it for beer-sample / website / no-LLM utterances."
         ),
         "doc": "zeus-client/using-zeus-client.md",
@@ -217,7 +219,9 @@ TOPICS: dict[str, dict[str, str]] = {
             "demo_beer_sample is the data-plane catalog UI for beer-sample: "
             "FastAPI same-origin BFF. Search follows travel — rt.agent.run_turn with "
             "chat_request omitted so catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA. "
-            "An LLM key is required. The BFF does not build a pipeline body. "
+            "An LLM key is required even when has_llm_key=false: process env for checklist 1.2, "
+            "app .env for checklist 3.2, and config.json llm.api_key_env left as that name. "
+            "The BFF does not build a pipeline body. "
             "use_sample(sample=beer) writes it. Do not clone demo_travel_sample for this bucket."
         ),
         "doc": "zeus-client/using-zeus-client.md",

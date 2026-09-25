@@ -125,7 +125,10 @@ _NEXT: dict[str, str] = {
     "auth_failed": "Fix credentials / principal; re-mint session",
     "hash_drift": "Resync stamped catalog; never hand-edit contract_hash",
     "network_timeout": "curl $ZEUS_URL/healthz; check TOOL_TIMEOUT / network",
-    "llm_key_missing": "Set LLM_API_KEY / provider api_key in client config",
+    "llm_key_missing": (
+        "Set LLM_API_KEY in the process environment or the app .env. "
+        "config.json llm.api_key_env must stay that variable name, not the secret"
+    ),
     "llm_rate_limit": "Backoff/retry; ErrorCode 050010 is rate/quota, not a missing key",
     "empty_tool_catalog": "rt.catalog.sync / load + stamp; check mode",
     "scope_not_enabled": "Enable scope in Hub or fix bucket/scope names",
