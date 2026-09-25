@@ -375,8 +375,12 @@ def test_written_main_uses_travel_search(tmp_path: Path) -> None:
     assert "markKind" in html
     assert "ABV" in html
     assert "URLSearchParams" in html
-    assert "What beers are made from fruits?" in html
-    assert "MINI-SCHEMA" in html
+    assert "What's on tap." in html
+    assert "Pour" in html
+    assert "Breweries" in html
+    assert "IPA, Portland, Duvel, chocolate stout" in html
+    assert (root / "static" / "hero.jpg").is_file()
+    assert "MINI-SCHEMA" in main
 
     assert "run_turn" in readme
     assert "mini-schema" in readme.lower()

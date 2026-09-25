@@ -471,11 +471,30 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _zeus_version(url: str) -> str:
+    '''Public Zeus /version. Empty when the endpoint does not answer.'''
+    if not url:
+        return ""
+    try:
+        import httpx
+
+        resp = httpx.get(url.rstrip("/") + "/version", timeout=2.0)
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("version") or "").strip()
+
+
 @app.get("/api/config")
 async def api_config() -> dict[str, Any]:
     cfg = _runtime().config
+    url = cfg.zeus.url or ""
     return {
-        "zeus_url": cfg.zeus.url,
+        "zeus_url": url,
+        "zeus_version": _zeus_version(url),
         "bucket": cfg.target.bucket,
         "scope": cfg.target.scope,
         "collection": cfg.target.collection,
@@ -580,157 +599,292 @@ _INDEX_HTML = """\
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>The Sample Tap — beer-sample Direct</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23e8a838'/%3E%3Cpath d='M9 6h3.2v9.2H9zM8 8.2h8.4v2.2H8zM13 16.2h8.2v7.2a4.1 4.1 0 0 1-8.2 0z' fill='%231a1208'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23e7c48a'/%3E%3Cpath d='M11 9h8v9.2a4 4 0 0 1-8 0V9z' fill='%23f7f1e6'/%3E%3Cpath d='M19 12.2h2.4a1.7 1.7 0 0 1 0 3.4H19' fill='none' stroke='%23f7f1e6' stroke-width='1.4'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #1a1410;
-      --panel: #2a2118;
-      --ink: #f5e6d3;
-      --muted: #b8a48c;
-      --accent: #e8a838;
-      --chip: #3d3024;
-      --chip-on: #c4782a;
-      --card: #32271d;
-      --ok: #7ec88a;
+      --bg: #14110e;
+      --ink: #f6f1ea;
+      --muted: #b7a898;
+      --gold: #e0a45a;
+      --cream: #f4efe6;
+      --card: #241c17;
+      --line: #3a3028;
     }
     * { box-sizing: border-box; }
     body {
-      margin: 0; font-family: "Segoe UI", system-ui, sans-serif;
-      background: radial-gradient(ellipse at top, #2c2118, var(--bg));
-      color: var(--ink); min-height: 100vh;
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Outfit, "Segoe UI", system-ui, sans-serif;
     }
-    header {
-      padding: 1.5rem 1.25rem 0.5rem; max-width: 960px; margin: 0 auto;
+    button, input { font-family: inherit; }
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.85rem 1.6rem;
+      background: #16130f;
+      border-bottom: 1px solid #2a231c;
     }
-    h1 { margin: 0 0 0.25rem; font-size: 1.75rem; letter-spacing: 0.02em; }
-    .brand { display: flex; align-items: center; gap: 0.85rem; }
-    .brand-copy { min-width: 0; }
+    .brand { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
     .logo {
-      width: 3rem; height: 3rem; flex: none; border-radius: 14px;
-      background: linear-gradient(160deg, var(--accent), var(--chip-on));
-      color: #1a1208; display: grid; place-items: center;
+      width: 2.5rem; height: 2.5rem; flex: none; border-radius: 999px;
+      display: grid; place-items: center;
     }
-    .logo svg { width: 1.75rem; height: 1.75rem; display: block; }
-    .sub { color: var(--muted); font-size: 0.95rem; margin: 0; }
-    main { max-width: 960px; margin: 0 auto; padding: 1rem 1.25rem 3rem; }
-    .search-row { display: flex; gap: 0.5rem; margin: 1rem 0 0.75rem; }
+    .logo svg { width: 2.5rem; height: 2.5rem; display: block; }
+    h1 {
+      margin: 0;
+      font-family: Fraunces, Georgia, "Times New Roman", serif;
+      font-size: 1.35rem;
+      font-weight: 560;
+      letter-spacing: -0.02em;
+    }
+    .brand-sub {
+      margin: 0.1rem 0 0;
+      color: #a89888;
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+    }
+    .modes {
+      display: flex;
+      gap: 0.15rem;
+      padding: 0.22rem;
+      background: #2a241e;
+      border-radius: 999px;
+    }
+    .mode {
+      border: none;
+      background: transparent;
+      color: #eadfd4;
+      border-radius: 999px;
+      padding: 0.42rem 0.95rem;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .mode.on { background: var(--cream); color: #1a140f; }
+    .endpoint { justify-self: end; text-align: right; line-height: 1.25; }
+    .endpoint .host { font-size: 0.82rem; color: #e6d9cc; }
+    .endpoint .scope { font-size: 0.72rem; color: #8f8174; }
+    .hero {
+      position: relative;
+      min-height: 440px;
+      display: flex;
+      align-items: center;
+      background:
+        linear-gradient(90deg, rgba(14,10,8,0.82) 0%, rgba(14,10,8,0.55) 34%, rgba(14,10,8,0.12) 58%, rgba(14,10,8,0.38) 100%),
+        url("/static/hero.jpg") center 42% / cover no-repeat,
+        #120e0b;
+    }
+    .hero-copy { position: relative; z-index: 1; width: min(40rem, 100%); padding: 2.6rem 1.8rem 2.2rem; }
+    .kicker {
+      margin: 0 0 0.45rem;
+      color: #d7b07a;
+      font-size: 0.72rem;
+      letter-spacing: 0.14em;
+    }
+    .display {
+      margin: 0;
+      font-family: Fraunces, Georgia, "Times New Roman", serif;
+      font-weight: 500;
+      font-size: clamp(3.1rem, 6vw, 5.1rem);
+      letter-spacing: -0.03em;
+      line-height: 0.95;
+      color: #f7f2ea;
+    }
+    .deck { margin: 0.9rem 0 0; max-width: 34rem; font-size: 1.05rem; line-height: 1.45; color: #f3eadf; }
+    .deck .em { color: var(--gold); }
+    .search-row { display: flex; align-items: center; gap: 0.7rem; margin-top: 1.35rem; max-width: 36rem; }
     input[type=search] {
-      flex: 1; padding: 0.75rem 1rem; border-radius: 999px; border: 1px solid #5a4634;
-      background: var(--panel); color: var(--ink); font-size: 1rem;
+      flex: 1;
+      min-width: 0;
+      padding: 0.85rem 1.15rem;
+      border-radius: 999px;
+      border: 1.5px solid #c9843a;
+      background: rgba(18, 12, 9, 0.45);
+      color: var(--ink);
+      font-size: 1rem;
     }
-    button {
-      padding: 0.75rem 1.1rem; border-radius: 999px; border: none;
-      background: var(--accent); color: #1a1208; font-weight: 600; cursor: pointer;
+    input[type=search]::placeholder { color: #cbbba8; }
+    input[type=search]:focus { outline: 2px solid rgba(224, 164, 90, 0.45); outline-offset: 2px; }
+    #go {
+      border: none;
+      background: var(--gold);
+      color: #2a1c10;
+      font-weight: 600;
+      border-radius: 999px;
+      padding: 0.85rem 1.3rem;
+      cursor: pointer;
     }
-    button:disabled { opacity: 0.5; cursor: wait; }
-    .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
+    #go:disabled { opacity: 0.55; cursor: wait; }
+    .ready { margin: 0.85rem 0 0; color: #cbbbaa; font-size: 0.85rem; }
+    .board { padding: 1.15rem 1.6rem 3rem; }
+    .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.45rem; margin: 0.2rem 0 1.35rem; }
+    .chips[hidden] { display: none; }
     .chip {
-      background: var(--chip); color: var(--ink); border: 1px solid #5a4634;
-      padding: 0.35rem 0.75rem; border-radius: 999px; cursor: pointer; font-size: 0.9rem;
+      background: transparent;
+      color: var(--cream);
+      border: 1px solid #4a3e36;
+      border-radius: 999px;
+      padding: 0.38rem 0.85rem;
+      cursor: pointer;
+      font-size: 0.92rem;
     }
-    .chip.on, .chip:hover { background: var(--chip-on); border-color: var(--accent); }
-    .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.75rem; min-height: 1.2em; }
-    .meta code { color: var(--ok); }
-    .cards {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.75rem;
+    .chip.on { background: var(--cream); color: #1a140f; border-color: var(--cream); }
+    .chip:hover { border-color: #c9843a; }
+    .section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.9rem; }
+    .section-head h2 {
+      margin: 0;
+      font-family: Fraunces, Georgia, serif;
+      font-weight: 500;
+      font-size: 2rem;
     }
+    .meta { color: var(--muted); font-size: 0.9rem; text-align: right; }
+    .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.85rem; }
     .card {
-      background: var(--card); border: 1px solid #4a3a2c; border-radius: 12px;
-      padding: 0.9rem 1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 1rem 1rem 0.95rem;
+      min-height: 124px;
     }
-    .card-top { display: flex; gap: 0.75rem; align-items: flex-start; }
-    .mark {
-      width: 2.5rem; height: 2.5rem; flex: none; margin-top: 0.1rem;
-      border-radius: 10px; background: #3d3024; color: var(--accent);
-      border: 1px solid #5a4634; display: grid; place-items: center;
+    .card-top { display: flex; gap: 0.8rem; align-items: flex-start; }
+    .mark { width: 2rem; flex: none; margin-top: 0.15rem; }
+    .mark svg { width: 1.7rem; height: 2.7rem; display: block; }
+    .card-copy { min-width: 0; }
+    .card h3 { margin: 0; font-size: 1.12rem; font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; }
+    .subline { margin: 0.22rem 0 0; color: var(--muted); font-size: 0.86rem; line-height: 1.35; }
+    .abv {
+      display: inline-block;
+      margin-top: 0.55rem;
+      padding: 0.12rem 0.55rem;
+      border-radius: 999px;
+      background: #1a140f;
+      border: 1px solid #3d332c;
+      color: var(--cream);
+      font-size: 0.75rem;
     }
-    .mark svg { width: 1.35rem; height: 1.35rem; display: block; }
-    .card-copy { min-width: 0; flex: 1; }
-    .card h3 { margin: 0 0 0.2rem; font-size: 1.05rem; }
-    .card .eyebrow {
-      color: var(--muted); font-size: 0.72rem; letter-spacing: 0.04em;
-      text-transform: uppercase; margin-bottom: 0.25rem;
-    }
-    .card .style { color: var(--accent); font-size: 0.85rem; margin: 0.15rem 0 0.35rem; }
-    .card p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
-    .lede { margin: 0 0 0.35rem; color: var(--ink); font-size: 1rem; }
     .empty { color: var(--muted); padding: 2rem 0; text-align: center; }
-    footer { max-width: 960px; margin: 0 auto; padding: 0 1.25rem 2rem; color: var(--muted); font-size: 0.8rem; }
+    @media (max-width: 1100px) {
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
     @media (max-width: 640px) {
-      header, main, footer { padding-left: 0.75rem; padding-right: 0.75rem; }
-      h1 { font-size: 1.45rem; }
-      .logo { width: 2.5rem; height: 2.5rem; border-radius: 12px; }
-      .logo svg { width: 1.45rem; height: 1.45rem; }
-      .search-row { flex-direction: column; }
+      .topbar { grid-template-columns: 1fr; padding: 0.85rem 0.9rem; }
+      .endpoint { justify-self: start; text-align: left; }
+      .hero { min-height: 520px; background-position: center; }
+      .hero-copy { padding: 1.6rem 0.9rem 1.4rem; }
+      .search-row { flex-direction: column; align-items: stretch; }
+      input[type=search], #go { width: 100%; }
+      .board { padding: 1rem 0.9rem 2.4rem; }
       .cards { grid-template-columns: 1fr; }
-      input[type=search], button { width: 100%; }
+      .section-head { flex-direction: column; align-items: flex-start; }
+      .meta { text-align: left; }
     }
   </style>
 </head>
 <body>
-  <header>
+  <header class="topbar">
     <div class="brand">
       <div class="logo" aria-hidden="true">
-        <svg viewBox="0 0 32 32" fill="none">
-          <path d="M9 5h3.2v9.2H9V5z" fill="currentColor"/>
-          <path d="M8.2 7.2h8.2v2.4H8.2V7.2z" fill="currentColor"/>
-          <path d="M12.4 14.4h8.6c.9 0 1.6.7 1.6 1.6v6.4c0 3.5-2.6 5.8-5.9 5.8s-5.9-2.3-5.9-5.8v-6.4c0-.9.7-1.6 1.6-1.6z" stroke="currentColor" stroke-width="1.8"/>
-          <path d="M22.6 17.2h3.1c.7 0 1.3.6 1.3 1.3v2.5c0 .7-.6 1.3-1.3 1.3h-3.1" stroke="currentColor" stroke-width="1.8"/>
+        <svg viewBox="0 0 32 32">
+          <circle cx="16" cy="16" r="16" fill="#e7c48a"/>
+          <path fill="#f7f1e6" d="M11 9.2h7.6v8.6a3.8 3.8 0 0 1-7.6 0V9.2z"/>
+          <path fill="none" stroke="#f7f1e6" stroke-width="1.5" d="M18.6 12.2h2.3a1.6 1.6 0 0 1 0 3.2h-2.3"/>
         </svg>
       </div>
       <div class="brand-copy">
         <h1>The Sample Tap</h1>
-        <p class="sub">Catalog UI on <strong>beer-sample</strong>. Search runs a Zeus Client turn so the request includes the scope MINI-SCHEMA.</p>
+        <p class="brand-sub">BEER-SAMPLE VIA ZEUS DIRECT</p>
       </div>
     </div>
-  </header>
-  <main>
-    <div class="search-row">
-      <input id="q" type="search" placeholder="What beers are made from fruits?" autocomplete="off" />
-      <button id="go" type="button">Search</button>
+    <nav class="modes" aria-label="Catalog">
+      <button type="button" class="mode on" id="mode-beers" data-mode="beers">Beers</button>
+      <button type="button" class="mode" id="mode-breweries" data-mode="breweries">Breweries</button>
+    </nav>
+    <div class="endpoint">
+      <div class="host" id="host"></div>
+      <div class="scope" id="scope"></div>
     </div>
+  </header>
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="kicker" id="kicker">COUCHBASE BEER-SAMPLE · ZEUS _DEFAULT · ANALYTICS</p>
+      <h2 class="display">What's on tap.</h2>
+      <p class="deck">Live beer-sample through Zeus Direct: one <span class="em">pipeline</span> per pour (<span class="em">find</span>, then <span class="em">get</span>).</p>
+      <form class="search-row" id="pour-form">
+        <input id="q" type="search" placeholder="IPA, Portland, Duvel, chocolate stout..." autocomplete="off" />
+        <button id="go" type="submit">Pour</button>
+      </form>
+      <p class="ready" id="ready">Zeus · ready</p>
+    </div>
+  </section>
+  <main class="board">
     <div class="chips" id="chips"></div>
-    <div class="meta" id="meta"></div>
+    <div class="section-head">
+      <h2 id="section-title">Beers</h2>
+      <div class="meta" id="meta"></div>
+    </div>
     <div class="cards" id="cards"></div>
   </main>
-  <footer>
-    Same-origin BFF proxies Zeus public API :8080. Semantic cache off. Contract hash never invented here.
-  </footer>
   <script>
-    const CHIPS = ["Fruit Beer", "Pumpkin Beer", "Belgian and French Ale", "ipa", "porter", "Duvel"];
+    const CHIPS = ["All", "IPA", "Porter", "Stout", "Pale Ale", "Lager", "Pilsner", "Wheat", "Belgian", "Amber", "Brown Ale", "Hefeweizen", "Barleywine"];
     const chipsEl = document.getElementById("chips");
     const cardsEl = document.getElementById("cards");
     const metaEl = document.getElementById("meta");
     const qEl = document.getElementById("q");
     const goEl = document.getElementById("go");
+    const titleEl = document.getElementById("section-title");
     const pageParams = new URLSearchParams(location.search);
+    let mode = "beers";
 
     CHIPS.forEach((label) => {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "chip";
+      b.className = "chip" + (label === "All" ? " on" : "");
       b.textContent = label;
       b.addEventListener("click", () => {
-        qEl.value = label;
-        [...chipsEl.children].forEach((c) => c.classList.toggle("on", c.textContent === label));
-        search(label);
+        setChip(label);
+        if (label === "All") {
+          qEl.value = "";
+          loadList();
+        } else {
+          qEl.value = label;
+          search(label);
+        }
       });
       chipsEl.appendChild(b);
     });
 
-    function abvText(value) {
-      if (value == null || value === "" || Number(value) === 0) return "ABV —";
-      return "ABV " + value;
+    function setChip(label) {
+      [...chipsEl.children].forEach((c) => c.classList.toggle("on", c.textContent === label));
     }
 
+    function setMode(next) {
+      mode = next === "breweries" ? "breweries" : "beers";
+      document.getElementById("mode-beers").classList.toggle("on", mode === "beers");
+      document.getElementById("mode-breweries").classList.toggle("on", mode === "breweries");
+      titleEl.textContent = mode === "breweries" ? "Breweries" : "Beers";
+      chipsEl.hidden = mode === "breweries";
+      qEl.value = "";
+      setChip(mode === "beers" ? "All" : "");
+      loadList();
+    }
+
+    document.getElementById("mode-beers").addEventListener("click", () => setMode("beers"));
+    document.getElementById("mode-breweries").addEventListener("click", () => setMode("breweries"));
+
     const MARKS = {
-      pint: '<path fill="currentColor" d="M7 3h8v10.2A4 4 0 0 1 7 13.2V3z"/><path fill="currentColor" d="M15 6.2h2.4a1.6 1.6 0 0 1 0 3.2H15z"/>',
-      hop: '<circle cx="12" cy="12" r="2.1" fill="currentColor"/><path fill="currentColor" d="M12 3.6c1.1 2.3.6 4.2-.2 5.2-.8-1-1.3-2.9-.2-5.2zM12 20.4c-1.1-2.3-.6-4.2.2-5.2.8 1 1.3 2.9.2 5.2zM3.6 12c2.3-1.1 4.2-.6 5.2.2-1 .8-2.9 1.3-5.2.2zM20.4 12c-2.3 1.1-4.2.6-5.2-.2 1-.8 2.9-1.3 5.2-.2zM6.2 6.2c2.2.8 3.2 2.4 3.4 3.6-1.6-.2-3.4-1.2-3.4-3.6zM17.8 17.8c-2.2-.8-3.2-2.4-3.4-3.6 1.6.2 3.4 1.2 3.4 3.6zM17.8 6.2c-.8 2.2-2.4 3.2-3.6 3.4.2-1.6 1.2-3.4 3.6-3.4zM6.2 17.8c.8-2.2 2.4-3.2 3.6-3.4-.2 1.6-1.2 3.4-3.6 3.4z"/>',
-      fruit: '<circle cx="12" cy="14" r="5" fill="currentColor"/><path fill="currentColor" d="M11.2 9.2c.6-2.6 2.6-4 4.6-4.2-.8 1.6-.4 3-1.2 4.2h-3.4z"/><path fill="currentColor" d="M13.6 6.2c1.6-.2 2.8.6 3.2 1.8-1.4.2-2.4-.2-3.2-1.8z"/>',
-      pumpkin: '<circle cx="8.4" cy="14.2" r="3.5" fill="currentColor"/><circle cx="15.6" cy="14.2" r="3.5" fill="currentColor"/><circle cx="12" cy="13.4" r="4.1" fill="currentColor"/><path fill="currentColor" d="M11.2 6.1h1.6c.2 1 .1 2.1-.3 2.8h-1c-.4-.7-.5-1.8-.3-2.8z"/>',
-      stout: '<path fill="currentColor" d="M6.6 3h8.2v10.6a4.1 4.1 0 0 1-8.2 0V3z"/><path fill="currentColor" d="M14.8 6.2h2.6a1.7 1.7 0 0 1 0 3.4h-2.6z"/>',
-      lager: '<path fill="currentColor" d="M8.2 2.8h7.6v14a3.8 3.8 0 0 1-7.6 0v-14z"/><path fill="#3d3024" d="M8.8 7.4h6.4v1.3H8.8z"/>',
-      goblet: '<path fill="currentColor" d="M6.6 3.4h10.8l-1.3 7.4a4.1 4.1 0 0 1-8.2 0L6.6 3.4z"/><path fill="currentColor" d="M11.1 15.2h1.8V19h2.6v1.6H8.5V19h2.6v-3.8z"/>'
+      pint: "pint",
+      hop: "hop",
+      fruit: "fruit",
+      pumpkin: "pumpkin",
+      stout: "stout",
+      lager: "lager",
+      goblet: "goblet"
     };
 
     function markKind(card) {
@@ -744,51 +898,92 @@ _INDEX_HTML = """\
       return "pint";
     }
 
-    function markSvg(card) {
+    function glassFill(card) {
+      const fills = {
+        stout: "#5a3018",
+        hop: "#e2b15a",
+        lager: "#d7a441",
+        fruit: "#c45c3e",
+        pumpkin: "#e08a32",
+        goblet: "#c9843c",
+        pint: "#c47a32"
+      };
       const kind = markKind(card);
-      return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">${MARKS[kind] || MARKS.pint}</svg>`;
+      return fills[MARKS[kind] ? kind : "pint"] || fills.pint;
     }
 
-    async function search(q) {
-      const query = (q ?? qEl.value ?? "").trim();
-      qEl.value = query;
+    function markSvg(card) {
+      const fill = glassFill(card);
+      return `<svg viewBox="0 0 28 46" aria-hidden="true"><path d="M6 2.5h16v27.5c0 5.2-3.6 9.2-8 9.2s-8-4-8-9.2V2.5z" fill="none" stroke="#efe6da" stroke-width="1.6"/><path d="M7.5 14h13V30.2c0 3.8-2.9 6.6-6.5 6.6s-6.5-2.8-6.5-6.6V14z" fill="${fill}"/><path d="M7.3 5.2h13.4v7.2H7.3z" fill="#f6f1e8"/></svg>`;
+    }
+
+    function abvBadge(value) {
+      if (value == null || value === "" || Number(value) === 0) return "";
+      const n = Number(value);
+      if (!Number.isFinite(n)) return "";
+      return `<span class="abv">${n.toFixed(1)}% ABV</span>`;
+    }
+
+    function subline(card) {
+      if (mode === "breweries") {
+        const place = [card.city, card.state, card.country].filter(Boolean).join(", ");
+        return place || card.category || card.style || "";
+      }
+      return [card.style, card.brewery].filter(Boolean).join(" · ");
+    }
+
+    function paint(data) {
+      const cards = data.items || data.cards || [];
+      const rawPath = data.path || [];
+      const hops = rawPath.filter((name) => name !== "run_turn" && name !== "catalog.load_for_turn");
+      const path = (hops.length ? hops : rawPath).join(" → ");
+      const lede = data.lede || "";
+      titleEl.title = lede;
+      metaEl.textContent = cards.length + " shown" + (path ? " · " + path : "");
+      if (!cards.length) {
+        cardsEl.innerHTML = '<div class="empty">No beers matched.</div>';
+        return;
+      }
+      cardsEl.innerHTML = cards.map((c) => {
+        const line = subline(c);
+        const badge = abvBadge(c.abv);
+        return `<article class="card"><div class="card-top"><div class="mark">${markSvg(c)}</div><div class="card-copy"><h3>${escapeHtml(String(c.name || c.id || "beer"))}</h3>${line ? `<p class="subline">${escapeHtml(String(line))}</p>` : ""}${badge}</div></div></article>`;
+      }).join("");
+    }
+
+    async function run(url) {
       goEl.disabled = true;
-      metaEl.textContent = "Searching…";
+      metaEl.textContent = "Pouring…";
       cardsEl.innerHTML = "";
       try {
-        const params = new URLSearchParams();
-        params.set("q", query);
-        if (pageParams.get("entity")) params.set("entity", pageParams.get("entity"));
-        if (pageParams.get("limit")) params.set("limit", pageParams.get("limit"));
-        const res = await fetch("/api/search?" + params.toString());
+        const res = await fetch(url);
         const data = await res.json();
         if (!res.ok) throw new Error((data && data.detail && JSON.stringify(data.detail)) || res.statusText);
-        const cards = data.items || data.cards || [];
-        const path = (data.path || []).join(" → ");
-        const reqs = (data.req_ids || []).filter(Boolean).join(", ");
-        const lede = data.lede || "";
-        const count = cards.length ? `<span>${cards.length} result(s)</span> · ` : "";
-        metaEl.innerHTML = (lede ? `<p class="lede">${escapeHtml(lede)}</p>` : "") +
-          count + `<code>${path || "—"}</code>` +
-          (reqs ? ` · req_id <code>${reqs}</code>` : "");
-        if (!cards.length) {
-          cardsEl.innerHTML = '<div class="empty">No beers matched.</div>';
-          return;
-        }
-        cardsEl.innerHTML = cards.map((c) => {
-          const eyebrow = c.category ? `<div class="eyebrow">${escapeHtml(String(c.category))}</div>` : "";
-          const style = c.style ? `<div class="style">${escapeHtml(String(c.style))}</div>` : "";
-          const bits = [abvText(c.abv)];
-          if (c.ibu != null && c.ibu !== "" && Number(c.ibu) !== 0) bits.push("IBU " + c.ibu);
-          if (c.brewery) bits.push(String(c.brewery));
-          const desc = c.description ? `<p>${escapeHtml(String(c.description).slice(0, 160))}</p>` : "";
-          return `<article class="card"><div class="card-top"><div class="mark">${markSvg(c)}</div><div class="card-copy">${eyebrow}<h3>${escapeHtml(String(c.name || c.id || "beer"))}</h3>${style}<p>${escapeHtml(bits.join(" · "))}</p>${desc}</div></div></article>`;
-        }).join("");
+        paint(data);
       } catch (err) {
         metaEl.textContent = "Error: " + (err && err.message ? err.message : err);
       } finally {
         goEl.disabled = false;
       }
+    }
+
+    function loadList() {
+      const path = mode === "breweries" ? "/api/breweries?limit=24" : "/api/beers?limit=24";
+      return run(path);
+    }
+
+    function search(q) {
+      const query = (q ?? qEl.value ?? "").trim();
+      qEl.value = query;
+      if (!query) return loadList();
+      const params = new URLSearchParams();
+      params.set("q", query);
+      params.set("limit", pageParams.get("limit") || "24");
+      if (mode === "breweries") params.set("entity", "Brewery");
+      else if (pageParams.get("entity")) params.set("entity", pageParams.get("entity"));
+      const match = CHIPS.find((label) => label.toLowerCase() === query.toLowerCase());
+      setChip(match || "");
+      return run("/api/search?" + params.toString());
     }
 
     function escapeHtml(s) {
@@ -797,17 +992,49 @@ _INDEX_HTML = """\
       })[ch]);
     }
 
-    goEl.addEventListener("click", () => search());
-    qEl.addEventListener("keydown", (e) => { if (e.key === "Enter") search(); });
+    async function loadConfig() {
+      try {
+        const res = await fetch("/api/config");
+        const cfg = await res.json();
+        const raw = String(cfg.zeus_url || "");
+        const scheme = "://";
+        const schemeAt = raw.indexOf(scheme);
+        const host = schemeAt >= 0 ? raw.slice(schemeAt + scheme.length) : raw;
+        document.getElementById("host").textContent = host;
+        document.getElementById("scope").textContent = [cfg.bucket, cfg.scope, cfg.collection].filter(Boolean).join("/");
+        const bucket = String(cfg.bucket || "beer-sample").toUpperCase();
+        const scope = String(cfg.scope || "_default").toUpperCase();
+        const tone = String(cfg.mode || "analytics").toUpperCase();
+        document.getElementById("kicker").textContent = "COUCHBASE " + bucket + " · ZEUS " + scope + " · " + tone;
+        document.getElementById("ready").textContent = cfg.zeus_version ? ("Zeus " + cfg.zeus_version + " · ready") : "Zeus · ready";
+      } catch (err) {
+        document.getElementById("ready").textContent = "Zeus · unreachable";
+      }
+    }
+
+    document.getElementById("pour-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      search();
+    });
+
+    loadConfig();
+    if ((pageParams.get("entity") || "").toLowerCase().startsWith("brew")) {
+      mode = "breweries";
+      document.getElementById("mode-beers").classList.remove("on");
+      document.getElementById("mode-breweries").classList.add("on");
+      titleEl.textContent = "Breweries";
+      chipsEl.hidden = true;
+    }
     if (pageParams.get("q")) {
       qEl.value = pageParams.get("q");
       search(pageParams.get("q"));
+    } else {
+      loadList();
     }
   </script>
 </body>
 </html>
 """
-
 _REQUIREMENTS = """\
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
@@ -1116,12 +1343,44 @@ def write_beer_config(cfg: HelperConfig, target_dir: str | Path) -> dict[str, An
     return {"ok": True, "path": str(path)}
 
 
+def _hero_asset() -> Path:
+    return Path(__file__).resolve().parent / "assets" / "beer-hero.jpg"
+
+
+def beer_page_is_current(root: Path) -> bool:
+    """True when the served page is the Sample Tap hero layout."""
+    html = root / "static" / "index.html"
+    hero = root / "static" / "hero.jpg"
+    if not html.is_file() or not hero.is_file():
+        return False
+    try:
+        text = html.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "What's on tap." in text and 'id="go"' in text and ">Pour<" in text
+
+
+def install_beer_page(root: Path) -> list[str]:
+    """Write the Sample Tap page and hero photo. Leaves the BFF alone."""
+    root = Path(root)
+    static = root / "static"
+    static.mkdir(parents=True, exist_ok=True)
+    html_path = static / "index.html"
+    html_path.write_text(_INDEX_HTML, encoding="utf-8")
+    written = [str(html_path)]
+    hero_src = _hero_asset()
+    if hero_src.is_file():
+        hero_path = static / "hero.jpg"
+        hero_path.write_bytes(hero_src.read_bytes())
+        written.append(str(hero_path))
+    return written
+
+
 def _write_generated_tree(cfg: HelperConfig, root: Path, name: str) -> list[str]:
     files: dict[str, str] = {
         "main.py": _MAIN_PY,
         "requirements.txt": _REQUIREMENTS,
         "README.md": _README.format(project_name=name),
-        "static/index.html": _INDEX_HTML,
     }
     written: list[str] = []
     for rel, body in files.items():
@@ -1129,6 +1388,7 @@ def _write_generated_tree(cfg: HelperConfig, root: Path, name: str) -> list[str]
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body, encoding="utf-8")
         written.append(str(path))
+    written.extend(install_beer_page(root))
     env_info = write_beer_env_example(cfg, root)
     written.append(str(env_info["path"]))
     catalog_info = install_beer_catalog(cfg, root)
@@ -1159,18 +1419,35 @@ def write_beer_sample(
                 env_path = set_demo_beer_sample_dir_env(root)
                 save_beer_sample_dir(cfg, root)
                 layout = validate_beer_layout(root)
+                if beer_page_is_current(root):
+                    return {
+                        "ok": True,
+                        "written": False,
+                        "local_dir": str(root),
+                        "project_name": root.name,
+                        "layout": layout,
+                        "env": {ENV_BEER_DIR: env_path},
+                        "next_action": (
+                            f"Existing beer catalog UI at {root}. "
+                            "Set ZEUS_URL and LLM_API_KEY in .env; "
+                            f"pip install -r requirements.txt; "
+                            f"uvicorn main:app --port ${{PORT:-8090}}"
+                        ),
+                    }
+                page_files = install_beer_page(root)
                 return {
                     "ok": True,
-                    "written": False,
+                    "written": True,
+                    "upgraded": True,
+                    "page_only": True,
                     "local_dir": str(root),
                     "project_name": root.name,
+                    "files": page_files,
                     "layout": layout,
                     "env": {ENV_BEER_DIR: env_path},
                     "next_action": (
-                        f"Existing beer catalog UI at {root}. "
-                        "Set ZEUS_URL and LLM_API_KEY in .env; "
-                        f"pip install -r requirements.txt; "
-                        f"uvicorn main:app --port ${{PORT:-8090}}"
+                        f"Updated the Sample Tap page at {root / 'static' / 'index.html'}. "
+                        "Restart uvicorn if it is already running."
                     ),
                 }
             upgrading = True
