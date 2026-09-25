@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from zeus_dev_helper_mcp.beer import ensure_beer_sample, looks_like_beer_sample, write_beer_sample
+from zeus_dev_helper_mcp.beer import (
+    _packaged_analytics_catalog,
+    analytics_catalog_source,
+    ensure_beer_sample,
+    looks_like_beer_sample,
+    write_beer_sample,
+)
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.scaffold import use_sample
 
@@ -32,6 +38,22 @@ def test_use_sample_beer_writes_tree(tmp_path: Path) -> None:
     assert (root / "requirements.txt").is_file()
     assert (root / ".env.example").is_file()
     assert (root / "README.md").is_file()
+
+
+def test_analytics_catalog_falls_back_to_packaged_template(tmp_path: Path, monkeypatch) -> None:
+    packaged = _packaged_analytics_catalog()
+    assert packaged.is_file()
+    text = packaged.read_text(encoding="utf-8")
+    assert "## MINI-SCHEMA" not in text
+    assert "## SCOPE BRIEF" not in text
+    monkeypatch.delenv("ZEUS_CHAT_REQUEST_DIR", raising=False)
+    monkeypatch.setattr(
+        "zeus_dev_helper_mcp.beer._sibling_chat_request_root",
+        lambda: tmp_path / "absent-zeus-chat-request",
+    )
+    cfg = HelperConfig(state_dir=tmp_path / "state")
+    cfg.chat_request_dir = None
+    assert analytics_catalog_source(cfg) == packaged.resolve()
 
 
 def test_beer_sources_use_direct_find_then_get(tmp_path: Path) -> None:

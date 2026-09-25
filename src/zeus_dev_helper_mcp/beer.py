@@ -1605,17 +1605,30 @@ def looks_like_beer_sample(root: Path) -> bool:
 _ANALYTICS_CATALOG_REL = Path("v2/base/base-6.1/min/chat_request_analytics_base-6.1.json")
 
 
+def _packaged_analytics_catalog() -> Path:
+    """Template shipped with the Helper. Used when no zeus_chat_request checkout is present."""
+    return Path(__file__).resolve().parent / "assets" / "chat_request_analytics_v2.json"
+
+
+def _sibling_chat_request_root() -> Path:
+    return Path(__file__).resolve().parents[3] / "zeus_chat_request"
+
+
 def analytics_catalog_source(cfg: HelperConfig | None = None) -> Path | None:
-    """base-6.1 analytics template. It has no SCOPE BRIEF, so load_for_turn can merge a live one."""
+    """base-6.1 analytics template. It has no SCOPE BRIEF, so load_for_turn can merge a live one.
+
+    A local zeus_chat_request checkout wins. The packaged copy is the fallback for
+    a PyPI install that has no sibling clone.
+    """
     roots: list[Path] = []
     if cfg is not None and cfg.chat_request_dir is not None:
         roots.append(Path(cfg.chat_request_dir))
     env = os.environ.get("ZEUS_CHAT_REQUEST_DIR", "").strip()
     if env:
         roots.append(Path(env).expanduser())
-    here = Path(__file__).resolve()
-    roots.append(here.parents[3] / "zeus_chat_request")
+    roots.append(_sibling_chat_request_root())
     seen: set[Path] = set()
+    candidates: list[Path] = []
     for root in roots:
         try:
             resolved = root.expanduser().resolve()
@@ -1624,7 +1637,9 @@ def analytics_catalog_source(cfg: HelperConfig | None = None) -> Path | None:
         if resolved in seen:
             continue
         seen.add(resolved)
-        path = resolved / _ANALYTICS_CATALOG_REL
+        candidates.append(resolved / _ANALYTICS_CATALOG_REL)
+    candidates.append(_packaged_analytics_catalog())
+    for path in candidates:
         if path.is_file():
             return path
     return None
