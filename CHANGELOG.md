@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `sample=demo_yelp` (aliases `yelp-demo`, `demo-yelp`, `yelp_demo`, `yelpdemo`) locates or shallow-clones https://github.com/koten-ai/demo_yelp and sets `DEMO_YELP_SAMPLE_DIR`. `set_prereq` bucket hint is `yelp-demo` / `_default`. Bare `sample=yelp` stays the multi-agent handoff.
+
 ## 0.7.5
 
 ### Added

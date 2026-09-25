@@ -67,9 +67,12 @@ def _checklist_sample(cfg: HelperConfig) -> str:
     if sample in ("ui", "demo_travel", "demo_travel_sample", "travel_sample"):
         return "travel"
     from zeus_dev_helper_mcp.beer import is_beer_sample
+    from zeus_dev_helper_mcp.yelp import is_yelp_demo_sample
 
     if is_beer_sample(sample):
         return "beer"
+    if is_yelp_demo_sample(sample):
+        return "demo_yelp"
     return sample
 
 
@@ -101,10 +104,23 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             "Beer catalog search is rt.agent.run_turn with chat_request omitted. "
             "An LLM key is required. Do not clone travel or switch the BFF to bare Direct verbs."
         )
+    elif sample == "demo_yelp" and item_id in ("0.2", "3.1"):
+        tools = ["use_sample"]
+        base["use_sample_args_hint"] = {
+            "sample": "demo_yelp",
+            "project_name": "demo_yelp",
+            "note": (
+                "Clone https://github.com/koten-ai/demo_yelp when missing. "
+                "Sets DEMO_YELP_SAMPLE_DIR. Do not clone demo_travel_sample. "
+                "Do not pass sample=yelp."
+            ),
+        }
     if sample == "api":
         base["app_track"] = "api"
     elif sample == "beer":
         base["app_track"] = "ui-direct"
+    elif sample == "demo_yelp":
+        base["app_track"] = "ui"
     else:
         base["app_track"] = "ui"
     # ZDM-2: no LLM → do not push travel agent smoke as primary

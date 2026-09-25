@@ -159,6 +159,10 @@ INSTRUCTIONS = (
     "and sets DEMO_TRAVEL_SAMPLE_DIR (optional project_name for the clone directory). "
     "Beer / website: start_project(sample=beer) → use_sample(sample=beer) writes "
     "demo_beer_sample (same run_turn search as travel; do not clone demo_travel_sample). "
+    "Yelp demo: utterances yelp-demo / demo_yelp use start_project(sample=demo_yelp) → "
+    "use_sample(sample=demo_yelp), which clones https://github.com/koten-ai/demo_yelp when "
+    "missing and sets DEMO_YELP_SAMPLE_DIR. set_prereq bucket yelp-demo scope _default. "
+    "Do not clone demo_travel_sample on that path. Bare sample=yelp stays the multi-agent handoff. "
     "API-only: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python) "
     "(FastAPI POST /turn). Other coding languages are not scaffolded yet. "
     "Never pass username/password/token into MCP tools — env + set_prereq presence flags only. "
@@ -341,8 +345,10 @@ def start_project(
     sample:
       - travel (default) — UI path via demo_travel_sample / use_sample
       - beer — beer-sample catalog UI; search is run_turn + MINI-SCHEMA (use_sample sample=beer)
+      - demo_yelp — yelp-demo UI; use_sample clones demo_yelp (aliases yelp-demo, demo-yelp)
       - api — API-only FastAPI scaffold (scaffold_app app_kind=api)
-      - yelp / multi — gated until single-agent smokes green unless force_multi
+      - yelp / multi — gated until single-agent smokes green unless force_multi.
+        Not the yelp demo. Utterances yelp-demo / demo_yelp use sample=demo_yelp.
 
     Multi-agent goals (goal=multi or sample=yelp) are gated until single-agent
     smokes are green, unless force_multi=true (ZDH-11).
@@ -372,10 +378,14 @@ def _start_project_body(
         sample = "travel"
     from zeus_dev_helper_mcp.beer import is_beer_sample, prereqs_prefer_beer_direct
     from zeus_dev_helper_mcp.prereqs import load_prereqs
+    from zeus_dev_helper_mcp.yelp import is_yelp_demo_sample
 
     if is_beer_sample(sample_l):
         sample_l = "beer"
         sample = "beer"
+    if is_yelp_demo_sample(sample_l):
+        sample_l = "demo_yelp"
+        sample = "demo_yelp"
     if sample_l in ("rest", "api_only", "api-only"):
         sample_l = "api"
         sample = "api"
@@ -479,6 +489,23 @@ def _start_project_body(
             "use_sample",
             "smoke_test_zeus",
             "recommend_surface",
+        ]
+    elif sample_l == "demo_yelp":
+        out["track"] = "ui"
+        out["app_kind"] = "ui"
+        out["note"] = (
+            "Yelp demo UI: after prereqs/readiness, use_sample(sample=demo_yelp) "
+            "locates or clones demo_yelp and sets DEMO_YELP_SAMPLE_DIR. "
+            "set_prereq bucket yelp-demo scope _default. "
+            "Do not clone demo_travel_sample. Do not pass sample=yelp "
+            "(that name is the multi-agent handoff)."
+        )
+        out["recommended_tools"] = [
+            "set_prereq",
+            "readiness_check",
+            "use_sample",
+            "smoke_test_zeus",
+            "smoke_test_agent",
         ]
     elif wants_multi:
         out["track"] = "multi-agent"
@@ -844,11 +871,12 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
 ) -> dict[str, Any]:
-    """UI sample: travel clone or beer Direct template.
+    """UI sample: travel clone, beer catalog, or yelp demo clone.
 
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     sample=beer — write demo_beer_sample catalog UI. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
-    project_name = directory name (defaults: demo_travel_sample / demo_beer_sample).
+    sample=demo_yelp — locate/clone demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. Bare sample=yelp stays the multi-agent handoff.
+    project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_yelp).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     When no Zeus URL is stored, the MCP call asks before writing or cloning.
     Do not pass a password.

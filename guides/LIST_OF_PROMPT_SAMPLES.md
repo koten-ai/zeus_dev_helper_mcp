@@ -238,6 +238,9 @@ Locate or clone public `demo_travel_sample` (UI default). Sets `DEMO_TRAVEL_SAMP
 2. Clone the travel sample as directory `my_first_zeus_ui` under my workspace (`project_name=my_first_zeus_ui`).
 3. I already have the sample at `/path/to/demo_travel_sample`. Run `use_sample` with that `sample_dir` (no re-clone).
 4. Can I switch the sample to Yelp/multi now? Use `use_sample` and show the single-agent gate if it blocks.
+5. Create a Zeus app using yelp-demo.
+
+**Expected tool sequence:** `set_prereq(bucket=yelp-demo, scope=_default)` → `start_project(sample=demo_yelp)` → `use_sample(sample=demo_yelp)`. Clones https://github.com/koten-ai/demo_yelp when the directory is missing and sets `DEMO_YELP_SAMPLE_DIR`. Do not pass `sample=yelp` (multi-agent gate) and do not clone `demo_travel_sample`.
 
 ### `travel_golden_path`
 

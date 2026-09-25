@@ -222,6 +222,18 @@ TOPICS: dict[str, dict[str, str]] = {
         ),
         "doc": "zeus-client/using-zeus-client.md",
     },
+    "demo_yelp": {
+        "summary": (
+            "demo_yelp is the yelp-demo UI template. use_sample(sample=demo_yelp) locates "
+            "or shallow-clones https://github.com/koten-ai/demo_yelp and sets "
+            "DEMO_YELP_SAMPLE_DIR. Zeus bucket is yelp-demo, scope _default. "
+            "UI quick start is cd frontend && npm install && npm run dev. "
+            "Do not pass sample=yelp — that name is the multi-agent handoff. "
+            "Do not clone demo_travel_sample on this path."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+        "external": "https://github.com/koten-ai/demo_yelp",
+    },
     "typeahead": {
         "summary": (
             "As-you-type suggest is rt.data.search with Trace-Class direct.interactive. "
@@ -307,6 +319,8 @@ def explain_topic(cfg: HelperConfig, topic: str) -> dict:
         "beer_direct": "demo_beer_sample",
         "demo_beer": "demo_beer_sample",
         "beer_sample_ui": "demo_beer_sample",
+        "yelp_demo": "demo_yelp",
+        "yelpdemo": "demo_yelp",
         "suggest": "typeahead",
         "autocomplete": "typeahead",
         "dag": "pipeline",

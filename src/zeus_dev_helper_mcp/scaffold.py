@@ -234,10 +234,12 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
 ) -> dict[str, Any]:
-    """UI sample path: travel clone or beer Direct template.
+    """UI sample path: travel clone, beer catalog, or yelp demo clone.
 
     travel: locate/clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     beer: write demo_beer_sample catalog UI (run_turn, chat_request omitted; LLM key required).
+    demo_yelp: locate/clone demo_yelp; set DEMO_YELP_SAMPLE_DIR. Aliases include yelp-demo.
+    Bare sample=yelp stays the multi-agent handoff.
     For API-only apps use scaffold_app(app_kind=api).
     """
     sample = (sample or "travel").lower().strip()
@@ -313,6 +315,57 @@ def use_sample(
             "checklist_hint": "Mark 3.1 done after the beer Direct UI is on disk",
             "docs": ensured.get("docs"),
         }
+    from zeus_dev_helper_mcp.yelp import (
+        YELP_REPO,
+        YELP_REPO_GIT,
+        ensure_yelp_sample,
+        is_yelp_demo_sample,
+    )
+
+    if is_yelp_demo_sample(sample):
+        ensured = ensure_yelp_sample(
+            cfg,
+            sample_dir=sample_dir,
+            project_name=project_name,
+            parent_dir=parent_dir,
+            clone_if_missing=clone_if_missing,
+        )
+        layout = ensured.get("layout") or {}
+        if ensured.get("ok") and layout.get("ok"):
+            from zeus_dev_helper_mcp.checklist import set_item_status
+
+            try:
+                root = ensured.get("local_dir")
+                set_item_status(cfg, "0.2", "done", evidence=f"yelp_layout={root}")
+                set_item_status(cfg, "3.1", "done", evidence=f"yelp_dir={root}")
+            except Exception:  # noqa: BLE001, S110
+                pass
+        info = {
+            "name": "demo_yelp",
+            "repo": YELP_REPO,
+            "sample": "demo_yelp",
+            "private": True,
+            "app_kind": "ui",
+            "note": (
+                "Yelp demo UI. use_sample clones demo_yelp when missing and sets "
+                "DEMO_YELP_SAMPLE_DIR. Do not pass sample=yelp (multi-agent handoff)."
+            ),
+            "clone": f"git clone --depth 1 {YELP_REPO_GIT}",
+        }
+        return {
+            "ok": bool(ensured.get("ok")),
+            "sample": info,
+            "app_kind": "ui",
+            "local_dir": ensured.get("local_dir"),
+            "cloned": ensured.get("cloned"),
+            "project_name": ensured.get("project_name"),
+            "layout": ensured.get("layout"),
+            "env": ensured.get("env"),
+            "error": (ensured.get("clone") or {}).get("error") if not ensured.get("ok") else None,
+            "next_action": ensured.get("next_action")
+            or "Clone demo_yelp and set DEMO_YELP_SAMPLE_DIR",
+            "checklist_hint": "Mark 3.1 done after the yelp demo clone or reuse",
+        }
     if sample in ("api", "rest", "api_only", "api-only"):
         return {
             "ok": False,
@@ -344,7 +397,7 @@ def use_sample(
         "sample": sample,
         "next_action": (
             "Use sample=travel (LLM UI), sample=beer (catalog UI, run_turn), "
-            "or scaffold_app for custom domain"
+            "sample=demo_yelp (yelp demo clone), or scaffold_app for custom domain"
         ),
     }
 
