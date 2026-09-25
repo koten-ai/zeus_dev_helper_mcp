@@ -6,7 +6,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from zeus_dev_helper_mcp.beer import collect_beer_cards, write_beer_sample
+from zeus_dev_helper_mcp.beer import _catalog_card, collect_beer_cards, write_beer_sample
 from zeus_dev_helper_mcp.beer_plan import (
     FUNCTION_WORDS,
     content_tokens,
@@ -366,6 +366,9 @@ def test_written_main_uses_travel_search(tmp_path: Path) -> None:
     assert "CELLAR_CACHE_TTL" in main
     assert "@app.get(\"/search\")" in main or '@app.get("/search")' in main
     assert "/api/beers" in main
+    assert "async def _run_list" in main
+    assert "def _hops_force_closed" in main
+    assert "offset: int = Query" in main
     assert "Omit chat_request" in main
 
     assert "lede" in html
@@ -377,14 +380,44 @@ def test_written_main_uses_travel_search(tmp_path: Path) -> None:
     assert "URLSearchParams" in html
     assert "What's on tap." in html
     assert "Pour" in html
+    assert 'id="pager"' in html
+    assert "goPage" in html
+    assert 'params.set("offset"' in html
     assert "Breweries" in html
     assert "IPA, Portland, Duvel, chocolate stout" in html
     assert (root / "static" / "hero.jpg").is_file()
     assert "MINI-SCHEMA" in main
 
     assert "run_turn" in readme
+    assert "offset" in readme
     assert "mini-schema" in readme.lower()
     assert "fruits" in readme.lower()
+
+
+def test_catalog_card_reads_get_metadata() -> None:
+    card = _catalog_card(
+        {
+            "id": "n_1",
+            "name": "Satin Solstice Imperial Stout",
+            "type": "Beer",
+            "metadata": {
+                "style": "American-Style Imperial Stout",
+                "abv": 0,
+                "brewery_id": "central_waters_brewing_company",
+                "category": "North American Ale",
+                "city": "Amherst",
+            },
+            "snippet": '{"description":"A creamy stout."}',
+        }
+    )
+    assert card is not None
+    assert card["id"] == "n_1"
+    assert card["style"] == "American-Style Imperial Stout"
+    assert card["abv"] == 0
+    assert card["brewery"] == "central waters brewing company"
+    assert card["description"] == "A creamy stout."
+    assert card["city"] == "Amherst"
+    assert _catalog_card({"where": {"style": "IPA"}, "entity_type": "Beer"}) is None
 
 
 def test_collect_beer_cards_from_turn_hops() -> None:

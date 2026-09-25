@@ -185,6 +185,54 @@ def collect_beer_cards(blobs: list[Any], *, limit: int = 50) -> list[dict[str, A
     return found[: max(0, limit)]
 
 
+def _pretty_label(value: Any) -> str:
+    """Turn a doc-key token (``central_waters_brewing_company``) into words."""
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if text and " " not in text and "_" in text:
+        return text.replace("_", " ")
+    return text
+
+
+def _catalog_card(item: dict[str, Any]) -> dict[str, Any] | None:
+    """Card from one Direct get/find item. Metadata and snippet fill the fields."""
+    if not isinstance(item, dict):
+        return None
+    meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+    snippet = _parse_blob(item.get("snippet"))
+    extra = snippet if isinstance(snippet, dict) else {}
+
+    def pick(*keys: str) -> Any:
+        for source in (item, meta, extra):
+            for key in keys:
+                val = source.get(key)
+                if val not in (None, ""):
+                    return val
+        return None
+
+    name = pick("name", "title")
+    if not isinstance(name, str) or not name.strip():
+        return None
+    description = pick("description") or ""
+    if not isinstance(description, str):
+        description = ""
+    brewery = pick("brewery") or _pretty_label(str(pick("brewery_id") or ""))
+    return {
+        "id": str(pick("id", "node_id") or ""),
+        "name": name.strip(),
+        "style": pick("style") or "",
+        "category": pick("category") or "",
+        "abv": pick("abv"),
+        "ibu": pick("ibu"),
+        "brewery": brewery or "",
+        "description": description,
+        "city": pick("city") or "",
+        "state": pick("state") or "",
+        "country": pick("country") or "",
+    }
+
+
 def is_beer_sample(name: str) -> bool:
     return (name or "").lower().strip() in BEER_ALIASES
 
@@ -384,6 +432,170 @@ def _hop_path(result: Any) -> list[str]:
     return path
 
 
+def _verb_result(result: Any) -> dict[str, Any]:
+    body = result.body if isinstance(getattr(result, "body", None), dict) else {}
+    inner = body.get("result") if isinstance(body.get("result"), dict) else {}
+    return inner
+
+
+def _verb_req_ids(result: Any) -> list[str]:
+    found: list[str] = []
+    for item in getattr(result, "req_ids", ()) or ():
+        text = str(item or "").strip()
+        if text and text not in found:
+            found.append(text)
+    one = str(getattr(result, "req_id", "") or "").strip()
+    if one and one not in found:
+        found.append(one)
+    return found
+
+
+def _exact_total(result: dict[str, Any]) -> int | None:
+    '''Live count only. An approximate entity total is not a page count.'''
+    if result.get("approximate") is True:
+        return None
+    raw = result.get("total_count")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    return max(0, int(raw))
+
+
+async def _run_list(entity: str, *, limit: int, offset: int) -> dict[str, Any]:
+    '''One catalog page via Direct find, then get.
+
+    find is ordered by id and honors offset, so page 2 is the next rows
+    rather than another model sample of the same list.
+    '''
+    cap = max(1, min(int(limit or 24), PAGE_CAP))
+    skip = max(0, int(offset or 0))
+    ttl = _cache_ttl()
+    key = json.dumps({"list": entity, "limit": cap, "offset": skip}, sort_keys=True)
+    now = time.time()
+    if ttl > 0:
+        hit = _cache.get(key)
+        if hit is not None and now - hit[0] <= ttl:
+            return hit[1]
+        if hit is not None:
+            _cache.pop(key, None)
+
+    rt = _runtime()
+    try:
+        counted = await rt.data.find({
+            "entity_type": entity,
+            "return": "count",
+            "exact": True,
+        })
+        found = await rt.data.find({
+            "entity_type": entity,
+            "return": "rows",
+            "limit": cap,
+            "offset": skip,
+            "order_by": "id",
+            "asc": True,
+        })
+    except ZeusClientError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"error": exc.public_message or str(exc)},
+        ) from exc
+    if not getattr(found, "ok", False):
+        raise HTTPException(
+            status_code=502,
+            detail={"error": getattr(found, "error", None) or "find failed", "req_ids": _verb_req_ids(found)},
+        )
+
+    found_body = _verb_result(found)
+    total = _exact_total(_verb_result(counted)) if getattr(counted, "ok", False) else None
+    raw_items = found_body.get("items") if isinstance(found_body.get("items"), list) else []
+    ids: list[str] = []
+    thin: list[dict[str, Any]] = []
+    for row in raw_items:
+        if not isinstance(row, dict):
+            continue
+        ident = str(row.get("id") or "")
+        if ident.startswith("n_") and ident not in ids:
+            ids.append(ident)
+        card = _catalog_card(row)
+        if card is not None:
+            thin.append(card)
+
+    items: list[dict[str, Any]] = []
+    got_ok = False
+    if ids:
+        try:
+            got = await rt.data.get({"ids": ids[:PAGE_CAP], "include": ["body"]})
+        except ZeusClientError:
+            got = None
+        if got is not None and getattr(got, "ok", False):
+            got_ok = True
+            by_id = {
+                str(row.get("id")): row
+                for row in (_verb_result(got).get("items") or [])
+                if isinstance(row, dict) and row.get("id")
+            }
+            for ident in ids:
+                row = by_id.get(ident)
+                card = _catalog_card(row) if isinstance(row, dict) else None
+                if card is not None:
+                    items.append(card)
+    if not items:
+        items = thin
+
+    returned = len(items)
+    if total is None:
+        truncated = bool(found_body.get("truncated")) or returned >= cap
+    else:
+        truncated = skip + returned < total
+    if returned == 0:
+        truncated = False
+    pages = (max(1, (total + cap - 1) // cap) if total else (1 if returned == 0 else None))
+    start = skip + 1 if returned else 0
+    end = skip + returned
+    noun = "breweries" if entity == "Brewery" else "beers"
+    if returned:
+        lede = "Showing " + noun + " " + str(start) + "–" + str(end)
+        if total is not None:
+            lede += " of " + str(total)
+        lede += "."
+    else:
+        lede = "No " + noun + " on this page."
+    req_ids = _verb_req_ids(found)
+    if got_ok:
+        req_ids.extend(item for item in _verb_req_ids(got) if item not in req_ids)
+    payload = {
+        "ok": True,
+        "paged": True,
+        "items": items,
+        "cards": items,
+        "limit": cap,
+        "offset": skip,
+        "total": total,
+        "pages": pages,
+        "truncated": truncated,
+        "entity": entity,
+        "lede": lede,
+        "answer": lede,
+        "path": ["find", "get"] if got_ok else ["find"],
+        "req_ids": req_ids,
+    }
+    if ttl > 0:
+        _cache[key] = (now, payload)
+    return payload
+
+
+def _hops_force_closed(result: Any) -> bool:
+    '''True when a hop was refused for the shared session round cap.'''
+    debug = getattr(result, "debug", None)
+    for hop in getattr(debug, "hops", None) or ():
+        if not isinstance(hop, dict):
+            continue
+        if _force_closed(str(hop.get("error") or "")):
+            return True
+        if _force_closed(str(hop.get("result_json") or "")):
+            return True
+    return False
+
+
 async def _run_search(query: str, *, limit: int) -> dict[str, Any]:
     '''One catalog search via rt.agent.run_turn.
 
@@ -436,11 +648,6 @@ async def _run_search(query: str, *, limit: int) -> dict[str, Any]:
     answer = user_facing_answer(result.answer or "")
     err = result.error
     err_text = (getattr(err, "message", None) or "") if err is not None else ""
-    if _force_closed(answer) or _force_closed(err_text):
-        raise HTTPException(
-            status_code=503,
-            detail={"error": "session_force_closed", "req_ids": _req_ids(result)},
-        )
     if result.status == TurnStatus.ERROR:
         raise HTTPException(
             status_code=502,
@@ -451,6 +658,13 @@ async def _run_search(query: str, *, limit: int) -> dict[str, Any]:
         )
 
     items = collect_beer_cards(_turn_blobs(result), limit=cap)
+    if not items and (
+        _force_closed(answer) or _force_closed(err_text) or _hops_force_closed(result)
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "session_force_closed", "req_ids": _req_ids(result)},
+        )
     payload = {
         "ok": True,
         "items": items,
@@ -527,13 +741,19 @@ async def api_search(
 
 
 @app.get("/api/beers")
-async def api_beers(limit: int = Query(PAGE_CAP, ge=1, le=PAGE_CAP)) -> dict[str, Any]:
-    return await _run_search("List beers", limit=limit)
+async def api_beers(
+    limit: int = Query(24, ge=1, le=PAGE_CAP),
+    offset: int = Query(0, ge=0, le=100000),
+) -> dict[str, Any]:
+    return await _run_list("Beer", limit=limit, offset=offset)
 
 
 @app.get("/api/breweries")
-async def api_breweries(limit: int = Query(PAGE_CAP, ge=1, le=PAGE_CAP)) -> dict[str, Any]:
-    return await _run_search("List breweries", limit=limit)
+async def api_breweries(
+    limit: int = Query(24, ge=1, le=PAGE_CAP),
+    offset: int = Query(0, ge=0, le=100000),
+) -> dict[str, Any]:
+    return await _run_list("Brewery", limit=limit, offset=offset)
 
 
 @app.get("/api/beer/{item_id}")
@@ -585,7 +805,15 @@ def _embedded_card_source() -> str:
         f"_CARD_LIST_KEYS = {_CARD_LIST_KEYS!r}",
         f"_CARD_FILTER_KEYS = frozenset({set(_CARD_FILTER_KEYS)!r})",
     ]
-    for fn in (_parse_blob, _card_from_row, _card_score, _matching_card_index, collect_beer_cards):
+    for fn in (
+        _parse_blob,
+        _card_from_row,
+        _card_score,
+        _matching_card_index,
+        collect_beer_cards,
+        _pretty_label,
+        _catalog_card,
+    ):
         chunks.append(textwrap.dedent(inspect.getsource(fn)).rstrip())
     return "\n\n".join(chunks) + "\n"
 
@@ -769,6 +997,29 @@ _INDEX_HTML = """\
       font-size: 0.75rem;
     }
     .empty { color: var(--muted); padding: 2rem 0; text-align: center; }
+    .pager {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 1.35rem;
+    }
+    .pager[hidden] { display: none; }
+    .pager button, .pager .gap {
+      border: 1px solid #4a3e36;
+      background: transparent;
+      color: var(--cream);
+      border-radius: 999px;
+      min-width: 2.4rem;
+      padding: 0.42rem 0.8rem;
+      font-size: 0.92rem;
+    }
+    .pager button { cursor: pointer; font-family: inherit; }
+    .pager button.on { background: var(--cream); color: #1a140f; border-color: var(--cream); }
+    .pager button:disabled { opacity: 0.38; cursor: default; }
+    .pager button:not(:disabled):hover { border-color: #c9843a; }
+    .pager .gap { border: none; color: var(--muted); min-width: 0; padding: 0 0.15rem; }
     @media (max-width: 1100px) {
       .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
@@ -829,6 +1080,7 @@ _INDEX_HTML = """\
       <div class="meta" id="meta"></div>
     </div>
     <div class="cards" id="cards"></div>
+    <nav class="pager" id="pager" hidden aria-label="Pages"></nav>
   </main>
   <script>
     const CHIPS = ["All", "IPA", "Porter", "Stout", "Pale Ale", "Lager", "Pilsner", "Wheat", "Belgian", "Amber", "Brown Ale", "Hefeweizen", "Barleywine"];
@@ -839,7 +1091,10 @@ _INDEX_HTML = """\
     const goEl = document.getElementById("go");
     const titleEl = document.getElementById("section-title");
     const pageParams = new URLSearchParams(location.search);
+    const PAGE_SIZE = 24;
     let mode = "beers";
+    let pageIndex = 1;
+    let requestToken = 0;
 
     CHIPS.forEach((label) => {
       const b = document.createElement("button");
@@ -850,6 +1105,8 @@ _INDEX_HTML = """\
         setChip(label);
         if (label === "All") {
           qEl.value = "";
+          pageIndex = 1;
+          rememberPage();
           loadList();
         } else {
           qEl.value = label;
@@ -870,6 +1127,8 @@ _INDEX_HTML = """\
       titleEl.textContent = mode === "breweries" ? "Breweries" : "Beers";
       chipsEl.hidden = mode === "breweries";
       qEl.value = "";
+      pageIndex = 1;
+      rememberPage();
       setChip(mode === "beers" ? "All" : "");
       loadList();
     }
@@ -932,16 +1191,96 @@ _INDEX_HTML = """\
       return [card.style, card.brewery].filter(Boolean).join(" · ");
     }
 
+    function rangeLabel(data, count) {
+      if (data && data.paged) {
+        const offset = Number(data.offset) || 0;
+        if (!count) return "0 shown";
+        const start = offset + 1;
+        const end = offset + count;
+        const total = Number(data.total);
+        if (Number.isFinite(total) && total >= 0) {
+          return start.toLocaleString() + "–" + end.toLocaleString() + " of " + total.toLocaleString();
+        }
+        return start.toLocaleString() + "–" + end.toLocaleString() + " shown";
+      }
+      return count + " shown";
+    }
+
+    function pageWindow(current, pages) {
+      if (pages <= 7) {
+        const all = [];
+        for (let n = 1; n <= pages; n += 1) all.push(n);
+        return all;
+      }
+      const items = [1];
+      const start = Math.max(2, current - 1);
+      const end = Math.min(pages - 1, current + 1);
+      if (start > 2) items.push("…");
+      for (let n = start; n <= end; n += 1) items.push(n);
+      if (end < pages - 1) items.push("…");
+      items.push(pages);
+      return items;
+    }
+
+    function renderPager(data) {
+      const pager = document.getElementById("pager");
+      const cards = (data && (data.items || data.cards)) || [];
+      if (!data || !data.paged) {
+        pager.hidden = true;
+        pager.innerHTML = "";
+        return;
+      }
+      const limit = Number(data.limit) || PAGE_SIZE;
+      const offset = Number(data.offset) || 0;
+      const total = Number(data.total);
+      const hasTotal = Number.isFinite(total) && total >= 0;
+      const pages = hasTotal ? Math.max(1, Math.ceil(total / limit)) : 0;
+      const current = Math.floor(offset / limit) + 1;
+      const hasPrev = offset > 0;
+      const hasNext = data.truncated === true || (hasTotal && offset + cards.length < total);
+      if (!hasPrev && !hasNext) {
+        pager.hidden = true;
+        pager.innerHTML = "";
+        return;
+      }
+      pager.hidden = false;
+      const parts = [];
+      parts.push('<button type="button" data-page="' + (current - 1) + '"' + (hasPrev ? "" : " disabled") + ">Previous</button>");
+      if (pages > 1) {
+        pageWindow(current, pages).forEach((item) => {
+          if (item === "…") {
+            parts.push('<span class="gap" aria-hidden="true">…</span>');
+            return;
+          }
+          const on = item === current ? " on" : "";
+          const currentAttr = item === current ? ' aria-current="page"' : "";
+          parts.push('<button type="button" class="page' + on + '" data-page="' + item + '"' + currentAttr + ">" + item + "</button>");
+        });
+      } else {
+        parts.push('<span class="gap">Page ' + current + "</span>");
+      }
+      parts.push('<button type="button" data-page="' + (current + 1) + '"' + (hasNext ? "" : " disabled") + ">Next</button>");
+      pager.innerHTML = parts.join("");
+    }
+
     function paint(data) {
+      if (data && data.paged && Number(data.pages) >= 1 && pageIndex > Number(data.pages)) {
+        pageIndex = Number(data.pages);
+        rememberPage();
+        loadList(true);
+        return;
+      }
       const cards = data.items || data.cards || [];
       const rawPath = data.path || [];
       const hops = rawPath.filter((name) => name !== "run_turn" && name !== "catalog.load_for_turn");
       const path = (hops.length ? hops : rawPath).join(" → ");
       const lede = data.lede || "";
       titleEl.title = lede;
-      metaEl.textContent = cards.length + " shown" + (path ? " · " + path : "");
+      metaEl.textContent = rangeLabel(data, cards.length) + (path ? " · " + path : "");
+      renderPager(data);
       if (!cards.length) {
-        cardsEl.innerHTML = '<div class="empty">No beers matched.</div>';
+        const noun = mode === "breweries" ? "breweries" : "beers";
+        cardsEl.innerHTML = '<div class="empty">No ' + noun + " matched.</div>";
         return;
       }
       cardsEl.innerHTML = cards.map((c) => {
@@ -951,30 +1290,57 @@ _INDEX_HTML = """\
       }).join("");
     }
 
-    async function run(url) {
+    async function run(url, scroll) {
+      const token = ++requestToken;
       goEl.disabled = true;
+      document.querySelectorAll("#pager button").forEach((button) => { button.disabled = true; });
       metaEl.textContent = "Pouring…";
       cardsEl.innerHTML = "";
       try {
         const res = await fetch(url);
         const data = await res.json();
+        if (token !== requestToken) return;
         if (!res.ok) throw new Error((data && data.detail && JSON.stringify(data.detail)) || res.statusText);
         paint(data);
+        if (scroll) document.getElementById("section-title").scrollIntoView({ block: "start" });
       } catch (err) {
+        if (token !== requestToken) return;
         metaEl.textContent = "Error: " + (err && err.message ? err.message : err);
+        renderPager(null);
       } finally {
-        goEl.disabled = false;
+        if (token === requestToken) goEl.disabled = false;
       }
     }
 
-    function loadList() {
-      const path = mode === "breweries" ? "/api/breweries?limit=24" : "/api/beers?limit=24";
-      return run(path);
+    function rememberPage() {
+      const url = new URL(location.href);
+      const querying = (qEl.value || "").trim();
+      if (!querying && pageIndex > 1) url.searchParams.set("page", String(pageIndex));
+      else url.searchParams.delete("page");
+      history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+
+    function loadList(scroll) {
+      const params = new URLSearchParams();
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String((pageIndex - 1) * PAGE_SIZE));
+      const path = mode === "breweries" ? "/api/breweries" : "/api/beers";
+      return run(path + "?" + params.toString(), scroll);
+    }
+
+    function goPage(page) {
+      const next = Math.max(1, Math.floor(Number(page)));
+      if (!Number.isFinite(next) || next === pageIndex) return;
+      pageIndex = next;
+      rememberPage();
+      return loadList(true);
     }
 
     function search(q) {
       const query = (q ?? qEl.value ?? "").trim();
       qEl.value = query;
+      pageIndex = 1;
+      rememberPage();
       if (!query) return loadList();
       const params = new URLSearchParams();
       params.set("q", query);
@@ -1016,6 +1382,13 @@ _INDEX_HTML = """\
       e.preventDefault();
       search();
     });
+    document.getElementById("pager").addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button || button.disabled) return;
+      const page = Number(button.dataset.page);
+      if (!Number.isFinite(page) || page < 1) return;
+      goPage(page);
+    });
 
     loadConfig();
     if ((pageParams.get("entity") || "").toLowerCase().startsWith("brew")) {
@@ -1029,6 +1402,8 @@ _INDEX_HTML = """\
       qEl.value = pageParams.get("q");
       search(pageParams.get("q"));
     } else {
+      const initialPage = Number(pageParams.get("page") || "1");
+      if (Number.isFinite(initialPage) && initialPage >= 1) pageIndex = Math.floor(initialPage);
       loadList();
     }
   </script>
@@ -1102,7 +1477,7 @@ baked scope brief) and fetches the live brief for this bucket/scope so
 `## MINI-SCHEMA` is part of the model request. Cards on the page are beer
 rows taken from the turn's tool results.
 
-`GET /api/beers`, `GET /api/breweries`, and the id routes use the same turn.
+`GET /api/beers` and `GET /api/breweries` page the catalog. `limit` defaults to 24 and `offset` selects the page (`/api/beers?limit=24&offset=24` is page 2). Each page is a Direct `find` ordered by id, then `get` for the card fields. The page shows Previous, page numbers, and Next. Pour search stays on `run_turn`. The id routes use that same turn.
 
 ## Docs
 
