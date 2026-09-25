@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.5
 
 ### Added
 - **[ZDM-11](https://kotenai.atlassian.net/browse/ZDM-11)** Helper MCP tool failures write one stderr line, `zeus_dev_helper.tool.failed`, in the Zeus Client family text shape. `source.file` is package-relative (`zeus_dev_helper_mcp/<module>.py`) and the line omits `error.code`. stdout stays the MCP JSON-RPC stream. Domain `ok: false` results (lint, diagnose, blocked handoff) are not logged as errors.
@@ -8,6 +8,8 @@
 
 ### Changed
 - Beer catalog search follows `demo_travel_sample`: `use_sample(sample=beer)` writes a BFF that calls `rt.agent.run_turn` and omits `chat_request`, so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA into the model request. An LLM key is required. The BFF does not build a pipeline body. Cards are taken from the turn's tool results. `client_floor` is `client-floor-6.1`. An older pipeline BFF is rewritten on the next `use_sample(sample=beer)`. `plan_beer_query` stays for tests and diagnosis and is not inlined.
+- `GET /api/beers` and `GET /api/breweries` page the catalog. `limit` defaults to 24 and `offset` selects the page. Each page is a Direct `find` ordered by id, then `get` for the card fields. Pour search stays on `run_turn`. A force-closed session is an error only when that turn returns no cards. The page shows Previous, page numbers, and Next.
+- `use_sample(sample=beer)` writes the Sample Tap page (tap-room header, hero, style chips, and glass cards) and refreshes that page when an existing catalog BFF is already current.
 - Standalone `demo_travel_sample` Docker pins `kotenai-zeus-client>=2.4.0,<2.5` so pipeline envelope recovery is in the SDK. The travel BFF keeps `rt.agent.run_turn` and does not `POST /pipeline`. A previous `>=2.3.0` pin is upgraded in place.
 
 ## 0.7.4

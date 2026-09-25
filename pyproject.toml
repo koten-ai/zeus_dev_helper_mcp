@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "zeus-dev-helper-mcp"
-version = "0.7.4"
+version = "0.7.5"
 description = "Developer Helper MCP — first Zeus-powered app onboarding coach (ZDH)"
 readme = "README.md"
 requires-python = ">=3.11"
