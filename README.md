@@ -150,10 +150,11 @@ doctor → (if user named URL/sample) set_prereq → start_project → next_step
 
 Prefer `next_step` over dumping the full checklist. Two first-green paths (TravelPlan is **not** the only path):
 
-- **Travel + LLM (UI default):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`. Needs an LLM key for `smoke_test_agent`. Standalone clones pin `kotenai-zeus-client>=2.4.0,<2.5` so `run_turn` can recover a fenced pipeline inside the SDK.
-- **Beer catalog UI:** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF + static page). Search matches travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. An LLM key is required. The BFF does not build a pipeline body. Do not clone `demo_travel_sample`.
+- **Travel + LLM (UI default):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`. Checklist **1.2** stays open until this process has `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY`. `smoke_test_agent` reads that variable. Standalone clones pin `kotenai-zeus-client>=2.4.0,<2.5` so `run_turn` can recover a fenced pipeline inside the SDK.
+- **Beer catalog UI:** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF + static page). Search matches travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. The key is required even when `has_llm_key=false`. Put it in the app `.env`. Leave `config.json` `llm.api_key_env` as that variable name. `verify_local_setup` keeps checklist **3.2** open until that file check passes. The BFF does not build a pipeline body. Do not clone `demo_travel_sample`.
+- **Yelp demo UI:** `start_project(sample=demo_yelp)` → `use_sample(sample=demo_yelp)` **clones** [`demo_yelp`](https://github.com/koten-ai/demo_yelp) when missing (utterances `yelp-demo` / `demo_yelp`) and sets `DEMO_YELP_SAMPLE_DIR`. `set_prereq` bucket is `yelp-demo`, scope `_default`. Do not clone `demo_travel_sample`. Bare `sample=yelp` stays the multi-agent handoff.
 - **API-only:** user asks for an API/REST app → `start_project(sample=api)` → `scaffold_app(app_kind=api, coding_language=python)` (FastAPI `POST /turn` on `kotenai-zeus-client`). Other languages not scaffolded yet.
-- Credentials from chat → process env / gitignored `.env`; `set_prereq` presence flags only. Pass the user’s Zeus URL into `set_prereq(zeus_url=…)`.
+- Credentials from chat → process env / gitignored `.env`; `set_prereq` presence flags only. `has_llm_key=true` does not count as the key. Pass the user’s Zeus URL into `set_prereq(zeus_url=…)`. Do not paste the secret into `llm.api_key_env`.
 - Integrating into an arbitrary existing repo is **out of scope**.
 
 Read `zeus-helper://` resources for glossary, verbs, policies, and catalog modes. Hosts can pick prompts `first_green`, `smoke_question`, and `support_pack`.
@@ -165,16 +166,16 @@ Live `tools/list` is the call contract. Default surface is **12 tools** (`ZEUS_D
 | Tool | Job |
 | --- | --- |
 | `doctor` | Health. `detail=health\|env\|compat\|cache\|all` (env/compat/cache fold lint-toolset checks) |
-| `start_project` | Init checklist; `sample=travel` (UI default), `sample=beer` (catalog UI, `run_turn`), or `sample=api` |
+| `start_project` | Init checklist; `sample=travel` (UI default), `sample=beer` (catalog UI, `run_turn`), `sample=demo_yelp` (clone `demo_yelp`), or `sample=api` |
 | `next_step` | Current item plus recommended tools and resource links |
-| `set_prereq` | Store non-secret prereqs (presence flags only for secrets) |
-| `readiness_check` | Live gates: healthz / readyz / version, auth, bootstrap |
+| `set_prereq` | Store non-secret prereqs (presence flags only; `has_llm_key` is not the key) |
+| `readiness_check` | Live gates: healthz / readyz / version, auth, bootstrap. Marks **1.2** done only when the URL is set and, on a `run_turn` path, the process has an LLM key |
 | `scaffold_app` | CLI or FastAPI (`app_kind=cli\|api`) ZeusRuntime app; python only |
-| `use_sample` | Travel UI clone, or beer catalog UI (`run_turn`, `chat_request` omitted) |
+| `use_sample` | Travel UI clone, beer catalog UI (`run_turn`, `chat_request` omitted), or yelp demo clone (`sample=demo_yelp`, sets `DEMO_YELP_SAMPLE_DIR`) |
 | `bind_contract` | Copy a stamped `contract.hash` only; refuses empty / local compute |
 | `recommend_surface` | Intent → Client surface + do-not list |
 | `smoke_test_zeus` | No LLM: readiness plus a read-only describe |
-| `smoke_test_agent` | One Client `run_turn` (needs `[agent]` extra and an LLM key) |
+| `smoke_test_agent` | One Client `run_turn`. Needs `[agent]` extra and `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` in this process |
 | `diagnose_error` | Map HTTP / body / error codes to a failure class |
 
 Opt-in toolsets (static, comma-separated): `catalog`, `lint`, `travel`, `support`, `handoff`. `all` enables every set. Full when/args/side-effects map: [`docs/TOOLS.md`](docs/TOOLS.md).
@@ -193,9 +194,10 @@ Secrets stay in the process environment. `set_prereq` stores presence flags only
 | `ZEUS_AUTH_MODE` | Auth mode (`none`, basic, bearer) |
 | `ZEUS_USERNAME` / `ZEUS_PASSWORD` | Basic auth (never logged) |
 | `ZEUS_BEARER_TOKEN` | Bearer auth (never logged) |
-| `LLM_API_KEY` / `OPENAI_API_KEY` | Presence checked by `validate_env`; required for `smoke_test_agent` |
+| `LLM_API_KEY` / `XAI_API_KEY` / `OPENAI_API_KEY` | Process key for checklist **1.2**, `validate_env`, and `smoke_test_agent`. The app `.env` needs the same name for Pour / `uvicorn`. `config.json` `llm.api_key_env` stays the name. A stored `has_llm_key` flag does not count |
 | `ZEUS_CHAT_REQUEST_DIR` | Local directory of min catalog templates; auto-set when `list_catalog_modes` / `fetch_chat_request` locate or clone public `zeus_chat_request` |
 | `DEMO_TRAVEL_SAMPLE_DIR` | Local sample directory for `use_sample` / `travel_golden_path` |
+| `DEMO_YELP_SAMPLE_DIR` | Local `demo_yelp` directory for `use_sample(sample=demo_yelp)` |
 | `ZEUS_DEV_HELPER_STATE_DIR` | Checklist, prereqs, and local metrics (default `~/.config/zeus_dev_helper`) |
 | `ZEUS_DEV_HELPER_TOOLSETS` | Static toolsets: `core` (default), plus `catalog,lint,travel,support,handoff` or `all` |
 

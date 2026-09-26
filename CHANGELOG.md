@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Checklist 1.2 stays open until `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is set in the Helper process. A stored `has_llm_key=true` flag does not count, and `readiness_check` no longer marks 1.2 done from `ZEUS_URL` alone when the path calls `run_turn`. Beer search still requires the key when `has_llm_key=false`.
+- Checklist 3.2 stays open until the app `.env` has that variable and `config.json` `llm.api_key_env` is the variable name. `verify_local_setup` checks presence only and does not echo the secret. `lint_runtime_config` reports a secret pasted into `api_key_env` as `llm_key_missing`.
+
+### Added
+- `sample=demo_yelp` (aliases `yelp-demo`, `demo-yelp`, `yelp_demo`, `yelpdemo`) locates or shallow-clones https://github.com/koten-ai/demo_yelp and sets `DEMO_YELP_SAMPLE_DIR`. `set_prereq` bucket hint is `yelp-demo` / `_default`. Bare `sample=yelp` stays the multi-agent handoff.
+
 ## 0.7.5
 
 ### Added

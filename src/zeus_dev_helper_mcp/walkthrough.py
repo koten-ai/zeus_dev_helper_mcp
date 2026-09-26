@@ -18,7 +18,7 @@ TOOL_HINTS: dict[str, list[str]] = {
     "2.2": ["readiness_check", "set_prereq"],
     "2.3": ["bootstrap_scope", "readiness_check"],
     "3.1": ["scaffold_app", "use_sample", "travel_golden_path"],
-    "3.2": ["write_env", "scaffold_app"],
+    "3.2": ["write_env", "verify_local_setup", "lint_runtime_config"],
     "4.1": ["fetch_chat_request", "list_catalog_modes", "bootstrap_scope"],
     "4.2": ["bind_contract", "catalog_diff", "explain_hash_boundary"],
     "5.1": ["smoke_test_zeus", "describe_scope"],
@@ -67,9 +67,12 @@ def _checklist_sample(cfg: HelperConfig) -> str:
     if sample in ("ui", "demo_travel", "demo_travel_sample", "travel_sample"):
         return "travel"
     from zeus_dev_helper_mcp.beer import is_beer_sample
+    from zeus_dev_helper_mcp.yelp import is_yelp_demo_sample
 
     if is_beer_sample(sample):
         return "beer"
+    if is_yelp_demo_sample(sample):
+        return "demo_yelp"
     return sample
 
 
@@ -101,10 +104,23 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             "Beer catalog search is rt.agent.run_turn with chat_request omitted. "
             "An LLM key is required. Do not clone travel or switch the BFF to bare Direct verbs."
         )
+    elif sample == "demo_yelp" and item_id in ("0.2", "3.1"):
+        tools = ["use_sample"]
+        base["use_sample_args_hint"] = {
+            "sample": "demo_yelp",
+            "project_name": "demo_yelp",
+            "note": (
+                "Clone https://github.com/koten-ai/demo_yelp when missing. "
+                "Sets DEMO_YELP_SAMPLE_DIR. Do not clone demo_travel_sample. "
+                "Do not pass sample=yelp."
+            ),
+        }
     if sample == "api":
         base["app_track"] = "api"
     elif sample == "beer":
         base["app_track"] = "ui-direct"
+    elif sample == "demo_yelp":
+        base["app_track"] = "ui"
     else:
         base["app_track"] = "ui"
     # ZDM-2: no LLM → do not push travel agent smoke as primary
@@ -135,6 +151,26 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
                     "has_llm_key=false: smoke_test_agent is not required; "
                     "prefer recommend_surface(needs_llm=false) / Direct path."
                 )
+    if item_id == "1.2":
+        from zeus_dev_helper_mcp.config import llm_key_in_process_env
+        from zeus_dev_helper_mcp.llm_key import path_needs_llm_key
+
+        if path_needs_llm_key(cfg) and not llm_key_in_process_env():
+            extra = (
+                "1.2 stays open until LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY "
+                "is set in this process. set_prereq(has_llm_key=true) does not count. "
+                "Put the secret in the environment or the app .env, never in "
+                "config.json api_key_env and never in a tool argument. Then validate_env."
+            )
+            prior = (base.get("note") or "").strip()
+            base["note"] = f"{prior} {extra}".strip()
+    elif item_id == "3.2":
+        base["note"] = (
+            "Copy .env.example to .env and set LLM_API_KEY there. "
+            "config.json llm.api_key_env stays the name LLM_API_KEY. "
+            "verify_local_setup checks presence only and then marks 3.2 done. "
+            "Do not run the app or smoke_test_agent before that."
+        )
     base["recommended_tools"] = tools
     uris = ["zeus-helper://checklist", *RESOURCE_HINTS.get(item_id or "", [])]
     seen: set[str] = set()

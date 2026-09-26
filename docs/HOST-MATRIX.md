@@ -19,14 +19,14 @@ Local only: tool **ids** in `helper_metrics` / `metrics.jsonl`. No prompts, bodi
 | Outcome | Working Direct catalog UI hand-rolled (~22 min to first paint); Helper coach path mostly skipped |
 | Helper tools used | `doctor` once (`detail=health`); **not** `start_project`, `set_prereq`, `next_step`, `recommend_surface`, `use_sample`, `smoke_test_zeus`, `diagnose_error` |
 | Miss (pre-ZDM-6) | Agent grepped Zeus docs/API and curled verbs; travel default would have been wrong (other bucket); beer catalog UI now lands via `use_sample(sample=beer)` |
-| Current writer | Search is `rt.agent.run_turn` with `chat_request` omitted (SCOPE BRIEF + MINI-SCHEMA). An LLM key is required. The BFF does not build a pipeline body |
+| Current writer | Search is `rt.agent.run_turn` with `chat_request` omitted (SCOPE BRIEF + MINI-SCHEMA). An LLM key is required in the Helper process and in the app `.env`. `llm.api_key_env` stays the variable name. The BFF does not build a pipeline body |
 | Epic | [ZDM-1](https://kotenai.atlassian.net/browse/ZDM-1) · prompts [ZDM-5](https://kotenai.atlassian.net/browse/ZDM-5) · design [`DESIGN-zdm-1-beer-first-green.md`](DESIGN-zdm-1-beer-first-green.md) |
 
 **Re-measure after** coach + `use_sample(sample=beer)` land (ZDM-3 / ZDM-6 / ZDM-2). Record time-to-green here when the utterance first-greens on the Helper path.
 
 ### Coach compliance (Grok / Claude)
 
-After `doctor`, if the user named a URL or sample: **`set_prereq` with the user’s URL/bucket/scope → `start_project` → `next_step`**. Do not skip to grepping Zeus docs/API or curling verbs by hand until `readiness_check` / `smoke_test_zeus` (or `next_step`) say so. Call `recommend_surface` before Travel LLM vs beer catalog UI vs FastAPI. Beer search is `rt.agent.run_turn`; if `has_llm_key=false`, say an LLM key is required rather than cloning travel or switching that BFF to bare Direct verbs.
+After `doctor`, if the user named a URL or sample: **`set_prereq` with the user’s URL/bucket/scope → `start_project` → `next_step`**. Do not skip to grepping Zeus docs/API or curling verbs by hand until `readiness_check` / `smoke_test_zeus` (or `next_step`) say so. Call `recommend_surface` before Travel LLM vs beer catalog UI vs FastAPI. Beer search is `rt.agent.run_turn`. If `has_llm_key=false`, say an LLM key is required rather than cloning travel or switching that BFF to bare Direct verbs. Checklist **1.2** stays open until this process has `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY`. A stored `has_llm_key=true` does not count. After `use_sample` or `scaffold_app`, checklist **3.2** stays open until `verify_local_setup` sees that name set in the app `.env` and `config.json` `llm.api_key_env` is still that name.
 
 ## Current demo (Grok, 2026-09-15)
 
@@ -69,7 +69,7 @@ These are why “Helper says 2.2” is not the demo’s real next step. Family w
 | --- | --- |
 | `next_step` stuck on **2.2** after readiness **pass** (`auth_mode=none` skip ≠ pass) | Ignore 2.2; continue bind / smoke |
 | Scaffold `kotenai-zeus-client>=2.3.0` — **PyPI 404** (earlier same day) | **Resolved:** PyPI now has **2.4.1** only. Demo pin is `kotenai-zeus-client==2.4.1`. Sibling `file:../../zeus_client_python` removed. |
-| `llm.api_key_env` held a secret value | Set to `LLM_API_KEY` |
+| `llm.api_key_env` held a secret value | Set to `LLM_API_KEY`. Helper now rejects that field when it is not an env-var name (`lint_runtime_config` / `verify_local_setup`, `llm_key_missing`) and keeps checklist **3.2** open until `.env` has the named variable |
 | Live catalog `_lineage.base_id=base-6.1` vs default `client-floor-5` | Set `client_floor=client-floor-6.1` or load fails closed and `main.py` continues with **no tools** |
 | Default smoke question → hops=0 | Second turn: data question (Paris hotels) for hops≥1 |
 | Checklist 4.1 / 4.2 / 5.2 still `todo` after disk+`main.py` green | Helper does not mark those when the agent binds/runs outside `smoke_test_agent` |

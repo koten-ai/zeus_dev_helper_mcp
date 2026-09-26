@@ -110,6 +110,19 @@ def lint_runtime_config(cfg: HelperConfig, *, path: str) -> dict[str, Any]:
         if isinstance(obj, dict):
             for k, v in obj.items():
                 loc = f"{prefix}.{k}" if prefix else k
+                if str(k) == "api_key_env":
+                    name = v.strip() if isinstance(v, str) else ""
+                    if not _ENV_NAME.match(name):
+                        issues.append(
+                            _issue(
+                                loc,
+                                "error",
+                                "api_key_env must be an environment variable name such as "
+                                "LLM_API_KEY, not the secret",
+                                "llm_key_missing",
+                            )
+                        )
+                    continue
                 if _SECRET_KEY.search(str(k)) and _looks_secret_value(v):
                     issues.append(
                         _issue(

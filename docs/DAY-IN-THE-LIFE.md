@@ -20,7 +20,8 @@ MCP is wired in the host (`grok mcp add`, Claude config, etc.) with:
 - `ZEUS_BUCKET` / `ZEUS_SCOPE` (e.g. `travel-sample` / `inventory`)
 - Auth in env only (`ZEUS_USERNAME` / `ZEUS_PASSWORD` or bearer) — Helper never stores secret values
 - `ZEUS_CHAT_REQUEST_DIR` (or `GITHUB_TOKEN`) so catalog templates resolve
-- Optional: `DEMO_TRAVEL_SAMPLE_DIR`, LLM key for agent smoke, `ZEUS_DEV_HELPER_TOOLSETS` (default `core`)
+- `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` in this process when the path calls `run_turn` (travel, beer, API, yelp demo). A stored `has_llm_key` flag is not the key
+- Optional: `DEMO_TRAVEL_SAMPLE_DIR`, `ZEUS_DEV_HELPER_TOOLSETS` (default `core`)
 
 State lives locally: `~/.config/zeus_dev_helper/checklist.json` (override: `ZEUS_DEV_HELPER_STATE_DIR`). The day is a walk down that checklist, one blocker at a time.
 
@@ -40,7 +41,7 @@ This is the day the product is designed for. Typical talk with the agent:
 | “Start the project” | `start_project` | Checklist reset: `single-agent:travel` |
 | “What’s the one next step?” | `next_step` | Current blocker + 1–3 recommended tools |
 
-They record non-secret prereqs (`set_prereq`), then `validate_env` (presence only). Then a live `readiness_check`: healthz / readyz / version, auth, bootstrap, chat_request. If something is red, they get a `failure_class` (`wrong_port_hub_vs_public`, `auth_failed`, `scope_not_enabled`, …) and a next action — not a stack dump.
+They record non-secret prereqs (`set_prereq`), then `validate_env` (presence only). On a `run_turn` path a missing process key is an error (`llm_key_missing`), including beer when `has_llm_key=false`. `set_prereq(has_llm_key=true)` does not clear it. Then a live `readiness_check`: healthz / readyz / version, auth, bootstrap, chat_request. That check marks checklist **1.2** done only when `ZEUS_URL` is set and, for those paths, the process key is present. A non-beer Direct opt-out can close 1.2 from the URL alone. If something is red, they get a `failure_class` (`wrong_port_hub_vs_public`, `auth_failed`, `scope_not_enabled`, `llm_key_missing`, …) and a next action — not a stack dump.
 
 If they do not know a term: `explain("contract_hash")`, `explain("zeus_runtime")`. Glossary + docs link, not a guess.
 
@@ -51,7 +52,7 @@ Two paths:
 - **Sample:** `use_sample` / `travel_golden_path` if `demo_travel_sample` is cloned
 - **From scratch:** `scaffold_app` → `write_env` → `verify_local_setup`
 
-They still copy real secrets into `.env` themselves. Helper only writes `.env.example`.
+They still copy real secrets into `.env` themselves. Helper only writes `.env.example`, with `LLM_API_KEY=` empty, and writes `config.json` `llm.api_key_env` as the name `LLM_API_KEY`. Checklist **3.2** stays open until `verify_local_setup` on that directory sees a non-empty value for the named variable. The check reports presence only. A secret pasted into `api_key_env` fails as `llm_key_missing`. Do not start uvicorn or Pour before that.
 
 ### Afternoon: bind without inventing a hash
 
@@ -79,7 +80,7 @@ Meanwhile they pick a **surface**, not “just call the LLM”:
 
 1. `smoke_test_zeus` — no LLM; describe on `:8080` → checklist **5.1**
 2. `suggest_demo_prompts` — advice-shaped questions, not SQL
-3. `smoke_test_agent` — one `rt.agent.run_turn` → `session_id` / `req_id`, Zeus tools used → **5.2**
+3. `smoke_test_agent` — one `rt.agent.run_turn` → `session_id` / `req_id`, Zeus tools used → **5.2**. When the client package imports, this refuses with `llm_key_missing` unless the process has `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY`.
 
 If it blows up: paste status / body / `ErrorCode` into `diagnose_error`. They get a class, a docs anchor, and Detective **URL templates** (`/hub/debug/req/<id>`) — Helper does not scrape Hub.
 
@@ -105,7 +106,7 @@ Then `recommend_surface` so they do not put typeahead on the agent path or pipel
 
 **Write code, let Helper lint before they hit Zeus**
 
-- `lint_runtime_config` on `config.json` — Hub port, secret literals (redacted in output), cheap path, cache left off
+- `lint_runtime_config` on `config.json` — Hub port, secret literals (redacted in output), `llm.api_key_env` as a variable name (`llm_key_missing` if it holds the secret), cheap path, cache left off
 - `lint_app_code` on `main.py` / Dockerfile — `:9091`, hash literals, stale V1 `run_agent` as the default
 - `lint_verb_args` on a would-be `find` body — equality-only `where`, MINI-SCHEMA keys, no FTS ids on `get`
 - `suggest_hooks` — tenant pin, deny pipeline on Direct, `output_schema` allowlist. Snippets, **not executed**

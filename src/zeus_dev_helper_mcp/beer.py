@@ -1430,7 +1430,9 @@ loads the analytics catalog and merges the live **SCOPE BRIEF** and
 **MINI-SCHEMA** into the system message on the model request. The BFF does
 not build a pipeline body; tool calls stay inside the client turn.
 
-An **LLM key is required** for search. `client_floor` is `client-floor-6.1`.
+An **LLM key is required** for search. Put it in `.env` as `LLM_API_KEY`.
+`config.json` `llm.api_key_env` stays the name `LLM_API_KEY`. Do not paste
+the secret into that field. `client_floor` is `client-floor-6.1`.
 The semantic cache stays off.
 
 ## Setup
@@ -1462,7 +1464,7 @@ Open `http://127.0.0.1:8090/`. Try **Fruit Beer**, **ipa**, **Duvel**, or
 | `ZEUS_COLLECTION` | `_default` | |
 | `PORT` | `8090` | BFF listen port |
 | `CELLAR_CACHE_TTL` | `600` | Seconds to cache a successful turn |
-| `LLM_API_KEY` | — | Required. OpenAI-compatible key for the turn |
+| `LLM_API_KEY` | — | Required. The secret lives here. `config.json` `llm.api_key_env` names this variable |
 | `LLM_BASE_URL` | `https://api.x.ai/v1` | |
 | `LLM_MODEL` | `grok-4-1-fast-non-reasoning` | |
 | `ZEUS_USERNAME` / `ZEUS_PASSWORD` | — | Optional basic auth |
@@ -1657,6 +1659,19 @@ def install_beer_catalog(cfg: HelperConfig, root: Path) -> dict[str, Any]:
     return {"ok": True, "copied": True, "path": str(dest), "source": str(src)}
 
 
+def _attach_llm_key(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """Add a presence-only key report. Never include the secret."""
+    from zeus_dev_helper_mcp.llm_key import inspect_app_llm_key
+
+    report = inspect_app_llm_key(root)
+    payload["llm_key"] = report
+    if report.get("applies") and not report.get("ok") and report.get("message"):
+        rest = str(payload.get("next_action") or "").strip()
+        message = str(report["message"])
+        payload["next_action"] = f"{message} {rest}".strip() if rest else message
+    return payload
+
+
 def write_beer_env_example(cfg: HelperConfig, target_dir: str | Path) -> dict[str, Any]:
     root = Path(target_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -1810,36 +1825,46 @@ def write_beer_sample(
                 save_beer_sample_dir(cfg, root)
                 layout = validate_beer_layout(root)
                 if beer_page_is_current(root):
-                    return {
+                    return _attach_llm_key(
+                        root,
+                        {
+                            "ok": True,
+                            "written": False,
+                            "local_dir": str(root),
+                            "project_name": root.name,
+                            "layout": layout,
+                            "env": {ENV_BEER_DIR: env_path},
+                            "next_action": (
+                                f"Existing beer catalog UI at {root}. "
+                                "Set ZEUS_URL and LLM_API_KEY in .env. "
+                                "Leave config.json llm.api_key_env as LLM_API_KEY. "
+                                "Run verify_local_setup before uvicorn. "
+                                "pip install -r requirements.txt; "
+                                f"uvicorn main:app --port ${{PORT:-8090}}"
+                            ),
+                        },
+                    )
+                page_files = install_beer_page(root)
+                return _attach_llm_key(
+                    root,
+                    {
                         "ok": True,
-                        "written": False,
+                        "written": True,
+                        "upgraded": True,
+                        "page_only": True,
                         "local_dir": str(root),
                         "project_name": root.name,
+                        "files": page_files,
                         "layout": layout,
                         "env": {ENV_BEER_DIR: env_path},
                         "next_action": (
-                            f"Existing beer catalog UI at {root}. "
-                            "Set ZEUS_URL and LLM_API_KEY in .env; "
-                            f"pip install -r requirements.txt; "
-                            f"uvicorn main:app --port ${{PORT:-8090}}"
+                            f"Updated the Sample Tap page at {root / 'static' / 'index.html'}. "
+                            "Leave config.json llm.api_key_env as LLM_API_KEY. "
+                            "Run verify_local_setup before uvicorn. "
+                            "Restart uvicorn if it is already running."
                         ),
-                    }
-                page_files = install_beer_page(root)
-                return {
-                    "ok": True,
-                    "written": True,
-                    "upgraded": True,
-                    "page_only": True,
-                    "local_dir": str(root),
-                    "project_name": root.name,
-                    "files": page_files,
-                    "layout": layout,
-                    "env": {ENV_BEER_DIR: env_path},
-                    "next_action": (
-                        f"Updated the Sample Tap page at {root / 'static' / 'index.html'}. "
-                        "Restart uvicorn if it is already running."
-                    ),
-                }
+                    },
+                )
             upgrading = True
         else:
             return {
@@ -1880,17 +1905,15 @@ def write_beer_sample(
     try:
         set_item_status(cfg, "0.2", "done", evidence=f"beer_layout={root}")
         set_item_status(cfg, "3.1", "done", evidence=f"beer_dir={root}")
-        set_item_status(cfg, "3.2", "done", evidence=str(root / ".env.example"))
     except Exception:  # noqa: BLE001, S110
         pass
 
     port = 8090
     run_cmd = (
         f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && "
-        "pip install -r requirements.txt && cp .env.example .env && "
-        f"uvicorn main:app --host 127.0.0.1 --port {port}"
+        "pip install -r requirements.txt && cp -n .env.example .env"
     )
-    return {
+    result = {
         "ok": True,
         "written": True,
         "upgraded": upgrading,
@@ -1905,6 +1928,8 @@ def write_beer_sample(
         "llm_required": True,
         "next_action": (
             "Put ZEUS_URL and LLM_API_KEY in .env. "
+            "Leave config.json llm.api_key_env as LLM_API_KEY. "
+            "Run verify_local_setup before uvicorn. "
             "Search calls rt.agent.run_turn and omits chat_request so the client "
             "merges SCOPE BRIEF + MINI-SCHEMA. "
             f"Install deps and run uvicorn on PORT={port}."
@@ -1914,6 +1939,7 @@ def write_beer_sample(
             "design": "docs/DESIGN-zdm-1-beer-first-green.md",
         },
     }
+    return _attach_llm_key(root, result)
 
 
 def ensure_beer_sample(

@@ -234,10 +234,12 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
 ) -> dict[str, Any]:
-    """UI sample path: travel clone or beer Direct template.
+    """UI sample path: travel clone, beer catalog, or yelp demo clone.
 
     travel: locate/clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     beer: write demo_beer_sample catalog UI (run_turn, chat_request omitted; LLM key required).
+    demo_yelp: locate/clone demo_yelp; set DEMO_YELP_SAMPLE_DIR. Aliases include yelp-demo.
+    Bare sample=yelp stays the multi-agent handoff.
     For API-only apps use scaffold_app(app_kind=api).
     """
     sample = (sample or "travel").lower().strip()
@@ -295,6 +297,7 @@ def use_sample(
             "app_kind": "ui",
             "track": "ui-direct",
             "llm_required": bool(ensured.get("llm_required", True)),
+            "llm_key": ensured.get("llm_key"),
             "local_dir": ensured.get("local_dir") or ensured.get("target_dir"),
             "written": ensured.get("written"),
             "project_name": ensured.get("project_name"),
@@ -306,12 +309,64 @@ def use_sample(
             "error": ensured.get("error"),
             "next_action": ensured.get("next_action")
             or (
-                "Set ZEUS_URL and LLM_API_KEY in .env, run uvicorn. "
-                "Search is rt.agent.run_turn with chat_request omitted. "
-                "smoke_test_agent is not required on this Direct track."
+                "Set ZEUS_URL and LLM_API_KEY in .env. "
+                "Leave config.json llm.api_key_env as LLM_API_KEY. "
+                "Run verify_local_setup before uvicorn. "
+                "Search is rt.agent.run_turn with chat_request omitted."
             ),
             "checklist_hint": "Mark 3.1 done after the beer Direct UI is on disk",
             "docs": ensured.get("docs"),
+        }
+    from zeus_dev_helper_mcp.yelp import (
+        YELP_REPO,
+        YELP_REPO_GIT,
+        ensure_yelp_sample,
+        is_yelp_demo_sample,
+    )
+
+    if is_yelp_demo_sample(sample):
+        ensured = ensure_yelp_sample(
+            cfg,
+            sample_dir=sample_dir,
+            project_name=project_name,
+            parent_dir=parent_dir,
+            clone_if_missing=clone_if_missing,
+        )
+        layout = ensured.get("layout") or {}
+        if ensured.get("ok") and layout.get("ok"):
+            from zeus_dev_helper_mcp.checklist import set_item_status
+
+            try:
+                root = ensured.get("local_dir")
+                set_item_status(cfg, "0.2", "done", evidence=f"yelp_layout={root}")
+                set_item_status(cfg, "3.1", "done", evidence=f"yelp_dir={root}")
+            except Exception:  # noqa: BLE001, S110
+                pass
+        info = {
+            "name": "demo_yelp",
+            "repo": YELP_REPO,
+            "sample": "demo_yelp",
+            "private": True,
+            "app_kind": "ui",
+            "note": (
+                "Yelp demo UI. use_sample clones demo_yelp when missing and sets "
+                "DEMO_YELP_SAMPLE_DIR. Do not pass sample=yelp (multi-agent handoff)."
+            ),
+            "clone": f"git clone --depth 1 {YELP_REPO_GIT}",
+        }
+        return {
+            "ok": bool(ensured.get("ok")),
+            "sample": info,
+            "app_kind": "ui",
+            "local_dir": ensured.get("local_dir"),
+            "cloned": ensured.get("cloned"),
+            "project_name": ensured.get("project_name"),
+            "layout": ensured.get("layout"),
+            "env": ensured.get("env"),
+            "error": (ensured.get("clone") or {}).get("error") if not ensured.get("ok") else None,
+            "next_action": ensured.get("next_action")
+            or "Clone demo_yelp and set DEMO_YELP_SAMPLE_DIR",
+            "checklist_hint": "Mark 3.1 done after the yelp demo clone or reuse",
         }
     if sample in ("api", "rest", "api_only", "api-only"):
         return {
@@ -344,7 +399,7 @@ def use_sample(
         "sample": sample,
         "next_action": (
             "Use sample=travel (LLM UI), sample=beer (catalog UI, run_turn), "
-            "or scaffold_app for custom domain"
+            "sample=demo_yelp (yelp demo clone), or scaffold_app for custom domain"
         ),
     }
 
@@ -528,6 +583,7 @@ pip install -r requirements.txt
 cp .env.example .env   # ZEUS_URL, ZEUS_USERNAME/ZEUS_PASSWORD or bearer, LLM_API_KEY
 ```
 
+`config.json` `llm.api_key_env` stays the name `LLM_API_KEY`. Do not paste the secret there.
 Never invent `contract.hash`. Public API is `:8080`, not Hub `:9091`.
 Secrets stay in `.env` — never commit them.
 
@@ -577,13 +633,12 @@ dependencies = [
 """
         run_cmd = (
             f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && "
-            "pip install -r requirements.txt && cp .env.example .env && "
-            "uvicorn main:app --host 127.0.0.1 --port 8000"
+            "pip install -r requirements.txt && cp -n .env.example .env"
         )
         next_action = (
-            "Put ZEUS_URL / credentials / LLM_API_KEY in .env (never in MCP tool args), "
-            "install deps, run uvicorn; then Helper smoke_test_zeus / smoke_test_agent "
-            "or curl POST /turn"
+            "Put ZEUS_URL / credentials / LLM_API_KEY in .env (never in MCP tool args). "
+            "Leave config.json llm.api_key_env as LLM_API_KEY. "
+            "Run verify_local_setup before uvicorn or smoke_test_agent."
         )
         project_name = default_name
     else:
@@ -605,6 +660,7 @@ pip install -r requirements.txt
 cp .env.example .env   # fill LLM_API_KEY and Zeus auth if needed
 ```
 
+`config.json` `llm.api_key_env` stays the name `LLM_API_KEY`. Do not paste the secret there.
 Edit `config.json` target (bucket / scope / collection) if Helper prereqs were empty.
 Never invent `contract.hash`. Public API is `:8080`, not Hub `:9091`.
 
@@ -635,11 +691,11 @@ dependencies = [
 """
         run_cmd = (
             f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && "
-            "pip install -r requirements.txt && cp .env.example .env && python main.py"
+            "pip install -r requirements.txt && cp -n .env.example .env"
         )
         next_action = (
-            "Fill .env secrets, install deps, run main.py "
-            "(ZeusRuntime + run_turn); then smoke_test_agent via Helper or locally"
+            "Put LLM_API_KEY in .env. Leave config.json llm.api_key_env as that name. "
+            "Run verify_local_setup before main.py or smoke_test_agent."
         )
 
     files["config.json"] = json.dumps(runtime_cfg, indent=2) + "\n"
@@ -671,9 +727,14 @@ dependencies = [
 
     try:
         set_item_status(cfg, "3.1", "done", evidence=f"scaffold={kind}:{root}")
-        set_item_status(cfg, "3.2", "done", evidence=str(env_info.get("path")))
     except Exception:  # noqa: BLE001, S110
         pass
+
+    from zeus_dev_helper_mcp.llm_key import inspect_app_llm_key
+
+    llm_key = inspect_app_llm_key(root)
+    if llm_key.get("applies") and not llm_key.get("ok") and llm_key.get("message"):
+        next_action = f"{llm_key['message']} {next_action}"
 
     return {
         "ok": True,
@@ -683,6 +744,7 @@ dependencies = [
         "client_package": "kotenai-zeus-client",
         "written": written,
         "env_example": env_info,
+        "llm_key": llm_key,
         "secrets_note": (
             "Put username/password/token/LLM keys in .env or the process environment. "
             "Never pass secret values into MCP tools — set_prereq uses presence flags only."
@@ -721,14 +783,49 @@ def verify_local_setup(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
             {
                 "name": "file:.env",
                 "ok": env_path.is_file(),
-                "note": "optional until you copy from .env.example",
+                "note": "Copy from .env.example and set LLM_API_KEY before a live turn",
             }
         )
+        from zeus_dev_helper_mcp.llm_key import inspect_app_llm_key
+
+        llm_report = inspect_app_llm_key(root)
+        if llm_report.get("applies"):
+            checks.append(
+                {
+                    "name": "llm_api_key",
+                    "ok": bool(llm_report.get("ok")),
+                    "note": llm_report.get("message") or "",
+                    "api_key_env": llm_report.get("api_key_env"),
+                }
+            )
+            try:
+                if llm_report.get("ok"):
+                    set_item_status(
+                        cfg,
+                        "3.2",
+                        "done",
+                        evidence=str(llm_report.get("evidence") or "llm key present in .env"),
+                    )
+                else:
+                    set_item_status(
+                        cfg,
+                        "3.2",
+                        "blocked",
+                        evidence="LLM key missing in .env or api_key_env is not a variable name",
+                    )
+            except Exception:  # noqa: BLE001, S110
+                pass
 
     ok = all(c.get("ok") for c in checks if c["name"] == "import_zeus_client")
+    if any(c.get("name") == "llm_api_key" and not c.get("ok") for c in checks):
+        ok = False
+    next_action = "Install missing deps or scaffold_app if files missing"
+    llm_fail = next((c for c in checks if c.get("name") == "llm_api_key" and not c.get("ok")), None)
+    if llm_fail:
+        next_action = str(llm_fail.get("note") or next_action)
     return {
         "ok": ok,
         "checks": checks,
         "config": cfg.public_view(),
-        "next_action": "Install missing deps or scaffold_app if files missing",
+        "next_action": next_action,
     }

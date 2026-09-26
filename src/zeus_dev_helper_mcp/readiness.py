@@ -569,9 +569,10 @@ def _finish(
                 set_item_status(cfg, "2.3", "done", evidence=bs.get("detail", "bootstrap ok"))
             elif bs and bs["status"] == "fail":
                 set_item_status(cfg, "2.3", "blocked", evidence=bs.get("detail", "bootstrap fail"))
-            # 1.2 prereqs if URL set
-            if cfg.zeus_url:
-                set_item_status(cfg, "1.2", "done", evidence="ZEUS_URL set")
+            # 1.2: URL plus a real process LLM key when this path calls the model.
+            from zeus_dev_helper_mcp.llm_key import sync_checklist_llm_prereq
+
+            sync_checklist_llm_prereq(cfg)
         except Exception:  # noqa: BLE001 — checklist optional
             pass
 

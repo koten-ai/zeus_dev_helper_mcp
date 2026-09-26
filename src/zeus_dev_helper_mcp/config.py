@@ -12,6 +12,7 @@ DEFAULT_CHAT_REQUEST_REPO = "koten-ai/zeus_chat_request"
 DEFAULT_CHAT_REQUEST_BRANCH = "main"
 DEFAULT_KOTEN_DOCS_REPO = "koten-ai/koten_docs"
 DEFAULT_DOCS_BASE_URL = "https://docs.koten.ai"
+LLM_KEY_ENV_NAMES = ("LLM_API_KEY", "XAI_API_KEY", "OPENAI_API_KEY")
 
 
 @dataclass
@@ -62,6 +63,15 @@ class HelperConfig:
             "docs_base_url": self.docs_base_url,
             "state_dir": str(self.state_dir),
         }
+
+
+def llm_key_in_process_env() -> bool:
+    """True when this process has a non-empty provider key.
+
+    A stored ``has_llm_key`` flag does not count. The secret stays in the
+    environment (or the app ``.env``); ``config.json`` only names the variable.
+    """
+    return any((os.environ.get(name) or "").strip() for name in LLM_KEY_ENV_NAMES)
 
 
 def _state_dir() -> Path:
@@ -121,11 +131,9 @@ def load_config() -> HelperConfig:
     has_bearer = bool(os.environ.get("ZEUS_BEARER_TOKEN") or os.environ.get("ZEUS_TOKEN")) or bool(
         pr.get("has_bearer")
     )
-    has_llm = bool(
-        os.environ.get("LLM_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-        or os.environ.get("XAI_API_KEY")
-    ) or bool(pr.get("has_llm_key"))
+    # Routing still reads the stored has_llm_key flag. Presence for a live
+    # turn is the process environment only.
+    has_llm = llm_key_in_process_env()
 
     return HelperConfig(
         zeus_url=zeus_url,

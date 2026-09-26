@@ -81,16 +81,16 @@ Persisted under `~/.config/zeus_dev_helper/checklist.json` (override: `ZEUS_DEV_
 | `mark_done` / `mark_blocked` | item_id, evidence/reason | updated checklist | writes checklist |
 | `set_prereq` | url, bucket, scope, … flags | stored prereqs | writes prereqs.json (no secret values) |
 | `validate_env` | — | issues[] | none |
-| `readiness_check` | update_checklist | gates[] + failure_class | may update checklist 2.x |
+| `readiness_check` | update_checklist | gates[] + failure_class | may update checklist 2.x and 1.2 (1.2 needs the process LLM key on `run_turn` paths) |
 | `bootstrap_scope` | bucket, scope, mode, detail | bootstrap summary | may update checklist |
 | `list_catalog_modes` | — | modes from zeus_chat_request | none / network |
 | `fetch_chat_request` | mode, detail | template + **TEMPLATE ONLY** warning | none / network |
 | `scaffold_app` | target_dir, project_name, force | files written | filesystem write |
 | `use_sample` | sample | clone URL / layout check | may update checklist |
 | `write_env` | target_dir | .env.example | filesystem write |
-| `verify_local_setup` | target_dir | checks[] | none |
+| `verify_local_setup` | target_dir | checks[] | may update checklist 3.2 when the app `.env` key check applies |
 | `smoke_test_zeus` | update_checklist | describe + req_id | may update 5.1 |
-| `smoke_test_agent` | question | answer preview, session_id, tool_calls | may update 5.2; needs LLM |
+| `smoke_test_agent` | question | answer preview, session_id, tool_calls | may update 5.2; needs the process LLM key (`llm_key_missing` if absent) |
 | `diagnose_error` | status, body, message, … | failure_class + docs anchor | none |
 | `explain` | topic | glossary short answer + docs link | none |
 | `suggest_demo_prompts` | — | prompt list | none |
@@ -107,7 +107,7 @@ Persisted under `~/.config/zeus_dev_helper/checklist.json` (override: `ZEUS_DEV_
 | `ZEUS_URL` | Public API (`:8080`) |
 | `ZEUS_BUCKET` / `ZEUS_SCOPE` / `ZEUS_COLLECTION` | Scope binding |
 | `ZEUS_USERNAME` / `ZEUS_PASSWORD` / `ZEUS_BEARER_TOKEN` | Secrets — env only |
-| `LLM_*` / `OPENAI_API_KEY` | Agent smoke |
+| `LLM_API_KEY` / `XAI_API_KEY` / `OPENAI_API_KEY` | Process key for checklist 1.2 and `smoke_test_agent`. App `.env` holds the same name. `llm.api_key_env` stays the name. Stored `has_llm_key` does not count |
 | `ZEUS_CHAT_REQUEST_DIR` / `GITHUB_TOKEN` | Catalog templates |
 | `KOTEN_DOCS_BASE_URL` | default `https://docs.koten.ai` |
 | `ZEUS_DEV_HELPER_STATE_DIR` | checklist + prereqs |
