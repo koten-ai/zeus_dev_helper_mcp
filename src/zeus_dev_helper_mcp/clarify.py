@@ -258,7 +258,11 @@ def probe_auth_required(url: str, bucket: str, scope: str) -> str:
 
 
 def probe_target(sample: str) -> tuple[str, str] | None:
-    """Bucket/scope to probe. Beer with nothing stored uses beer-sample/_default."""
+    """Bucket/scope to probe.
+
+    Beer with nothing stored uses beer-sample/_default.
+    The yelp demo with nothing stored uses yelp-demo/_default.
+    """
     from zeus_dev_helper_mcp.config import reload_config
     from zeus_dev_helper_mcp.prereqs import load_prereqs
 
@@ -269,6 +273,10 @@ def probe_target(sample: str) -> tuple[str, str] | None:
         return bucket, scope or "_default"
     if is_beer_sample(sample):
         return "beer-sample", "_default"
+    from zeus_dev_helper_mcp.yelp import is_yelp_demo_sample
+
+    if is_yelp_demo_sample(sample):
+        return "yelp-demo", "_default"
     return None
 
 

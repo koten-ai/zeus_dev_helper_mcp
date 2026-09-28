@@ -37,7 +37,7 @@ def path_needs_llm_key(cfg: HelperConfig) -> bool:
         return True
     if sample == "travel" and prefs.get("has_llm_key") is False:
         return False
-    if sample in {"travel", "api"}:
+    if sample in {"travel", "api", "demo_yelp"}:
         return True
     return prefs.get("has_llm_key") is not False
 

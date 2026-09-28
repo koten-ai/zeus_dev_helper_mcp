@@ -57,7 +57,10 @@ def handoff_to_multi(cfg: HelperConfig, *, force: bool = False) -> dict[str, Any
         "samples": {
             "yelp": {
                 "status": "planned_or_private",
-                "note": "Yelp multi-agent demo when published; do not invent clone URLs.",
+                "note": (
+                    "Multi-agent graduation only. The yelp UI template is "
+                    "use_sample(sample=demo_yelp), which clones demo_yelp. This handoff does not clone."
+                ),
             },
             "zja": {
                 "repo": "https://github.com/koten-ai/Zeus_Job_Agents",

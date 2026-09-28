@@ -20,7 +20,7 @@ MCP is wired in the host (`grok mcp add`, Claude config, etc.) with:
 - `ZEUS_BUCKET` / `ZEUS_SCOPE` (e.g. `travel-sample` / `inventory`)
 - Auth in env only (`ZEUS_USERNAME` / `ZEUS_PASSWORD` or bearer) — Helper never stores secret values
 - `ZEUS_CHAT_REQUEST_DIR` (or `GITHUB_TOKEN`) so catalog templates resolve
-- `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` in this process when the path calls `run_turn` (travel, beer, API). A stored `has_llm_key` flag is not the key
+- `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` in this process when the path calls `run_turn` (travel, beer, API, yelp demo). A stored `has_llm_key` flag is not the key
 - Optional: `DEMO_TRAVEL_SAMPLE_DIR`, `ZEUS_DEV_HELPER_TOOLSETS` (default `core`)
 
 State lives locally: `~/.config/zeus_dev_helper/checklist.json` (override: `ZEUS_DEV_HELPER_STATE_DIR`). The day is a walk down that checklist, one blocker at a time.

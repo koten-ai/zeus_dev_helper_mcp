@@ -131,7 +131,7 @@ Store non-secret prereqs for readiness. Does not store password or token values.
 
 ### `validate_env`
 
-Validate Helper env + stored prereqs shape (presence only — no secret values). A missing `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is an error (`llm_key_missing`) when the path calls `run_turn` (travel, beer, API). Beer still errors when `has_llm_key=false`. A stored `has_llm_key=true` does not count. A non-beer Direct opt-out warns instead of failing.
+Validate Helper env + stored prereqs shape (presence only — no secret values). A missing `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is an error (`llm_key_missing`) when the path calls `run_turn` (travel, beer, API, yelp demo). Beer still errors when `has_llm_key=false`. A stored `has_llm_key=true` does not count. A non-beer Direct opt-out warns instead of failing.
 
 1. Validate my Helper environment. Flag Hub `:9091`, missing `ZEUS_URL`, missing LLM key, and catalog template problems.
 2. Is env ready for `readiness_check`? Check presence of Zeus URL, bucket/scope, the process LLM key, and catalog templates without printing secrets.
@@ -240,6 +240,9 @@ Locate or clone public `demo_travel_sample` (UI default). Sets `DEMO_TRAVEL_SAMP
 2. Clone the travel sample as directory `my_first_zeus_ui` under my workspace (`project_name=my_first_zeus_ui`).
 3. I already have the sample at `/path/to/demo_travel_sample`. Run `use_sample` with that `sample_dir` (no re-clone).
 4. Can I switch the sample to Yelp/multi now? Use `use_sample` and show the single-agent gate if it blocks.
+5. Create a Zeus app using yelp-demo.
+
+**Expected tool sequence:** `set_prereq(bucket=yelp-demo, scope=_default)` → `start_project(sample=demo_yelp)` → `use_sample(sample=demo_yelp)`. Clones https://github.com/koten-ai/demo_yelp when the directory is missing and sets `DEMO_YELP_SAMPLE_DIR`. Do not pass `sample=yelp` (multi-agent gate) and do not clone `demo_travel_sample`.
 
 ### `travel_golden_path`
 
