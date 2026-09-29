@@ -101,6 +101,21 @@ def _checklist_sample(cfg: HelperConfig) -> str:
     return sample
 
 
+# Live V2 shapes the generated catalog page follows (ZDM-17).
+RESULT_SHAPES: dict[str, str] = {
+    "contract": "live V2",
+    "find": (
+        "find forwards limit and order_by. offset is not forwarded. "
+        "Hide Next unless a probe shows page 2 ids differ from page 1."
+    ),
+    "total": "total_count may be null. The label is 1–N shown.",
+    "search": (
+        "search items are {node: {doc_key}, score} and node_ids may be empty. "
+        "A doc_key-only hit is an empty state. A hop name is not a card title."
+    ),
+}
+
+
 def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
     base = base_next_step(cfg)
     item = base.get("item") or {}
@@ -255,6 +270,7 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
                 if t not in base["recommended_tools"]:
                     base["recommended_tools"].append(t)
             base["recommended_tools"] = _keep_enabled(list(base["recommended_tools"]))
+    base["result_shapes"] = dict(RESULT_SHAPES)
     return base
 
 
