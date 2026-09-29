@@ -107,6 +107,8 @@ def test_destructive_and_open_world_hints() -> None:
     assert by_name["recommend_surface"]["readOnlyHint"] is True
     assert by_name["readiness_check"]["openWorldHint"] is True
     assert by_name["smoke_test_zeus"]["openWorldHint"] is True
+    assert by_name["explain_scope"]["readOnlyHint"] is True
+    assert by_name["explain_scope"]["openWorldHint"] is True
     assert by_name["doctor"]["openWorldHint"] is False
 
 

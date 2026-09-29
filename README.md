@@ -160,7 +160,7 @@ Read `zeus-helper://` resources for glossary, verbs, policies, and catalog modes
 
 ## Default tools (`core`)
 
-Live `tools/list` is the call contract. Default surface is **12 tools** (`ZEUS_DEV_HELPER_TOOLSETS=core`).
+Live `tools/list` is the call contract. Default surface is **13 tools** (`ZEUS_DEV_HELPER_TOOLSETS=core`).
 
 | Tool | Job |
 | --- | --- |
@@ -169,8 +169,9 @@ Live `tools/list` is the call contract. Default surface is **12 tools** (`ZEUS_D
 | `next_step` | Current item plus recommended tools and resource links |
 | `set_prereq` | Store non-secret prereqs (presence flags only; `has_llm_key` is not the key) |
 | `readiness_check` | Live gates: healthz / readyz / version, auth, bootstrap. Marks **1.2** done only when the URL is set and, on a `run_turn` path, the process has an LLM key |
+| `explain_scope` | Live public `:8080` `chat_request.json` summary: entity types, display fields, text-search fields, FK fields, and list/detail/search verbs. A failed stamp leaves entity types empty. `fetch_chat_request` stays template only |
 | `scaffold_app` | CLI or FastAPI (`app_kind=cli\|api`) ZeusRuntime app; python only |
-| `use_sample` | Travel UI clone, or beer catalog UI (`run_turn`, `chat_request` omitted) |
+| `use_sample` | Travel UI clone, beer catalog UI (`run_turn`, `chat_request` omitted), or `sample=catalog` from `explain_scope` |
 | `bind_contract` | Copy a stamped `contract.hash` only; refuses empty / local compute |
 | `recommend_surface` | Intent → Client surface + do-not list |
 | `smoke_test_zeus` | No LLM: readiness plus a read-only describe |

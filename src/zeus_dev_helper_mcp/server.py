@@ -811,6 +811,19 @@ def fetch_chat_request(mode: str = "analytics", detail: str = "summary") -> dict
         }
 
 
+def explain_scope() -> dict[str, Any]:
+    """Summarize the live chat_request stamp on public :8080.
+
+    Entity types, display fields, text-search fields, foreign-key fields,
+    and the verb for list (find), detail (get), and search. No prompt text,
+    document bodies, or secrets. fetch_chat_request stays template only.
+    A failed stamp sets failure_class and does not invent entity types.
+    """
+    from zeus_dev_helper_mcp.explain_scope import explain_scope as explain_scope_impl
+
+    return explain_scope_impl(_cfg())
+
+
 def explain(topic: str) -> dict[str, Any]:
     """Explain a Zeus/Client concept (glossary) with docs deep-link."""
     return explain_topic(_cfg(), topic)
@@ -885,11 +898,12 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
 ) -> dict[str, Any]:
-    """UI sample: travel clone or beer Direct template.
+    """UI sample: travel clone, beer catalog UI, or a page from the live stamp.
 
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     sample=beer — write demo_beer_sample catalog UI. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
-    project_name = directory name (defaults: demo_travel_sample / demo_beer_sample).
+    sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
+    project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     When no Zeus URL is stored, the MCP call asks before writing or cloning.
     Do not pass a password.
