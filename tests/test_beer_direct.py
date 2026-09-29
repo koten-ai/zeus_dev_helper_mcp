@@ -148,9 +148,29 @@ def test_beer_nonempty_unrelated_dir_errors(tmp_path: Path) -> None:
     (junk / "notes.txt").write_text("not a beer sample\n", encoding="utf-8")
     out = ensure_beer_sample(cfg, sample_dir=str(junk), project_name="other")
     assert out["ok"] is False
+    assert out.get("failure_class") == "foreign_sample_dir"
     assert "not empty" in (out.get("error") or "").lower() or "does not look" in (
         out.get("error") or ""
     ).lower()
+    assert not (junk / "main.py").exists()
+
+
+def test_foreign_default_beer_dir_writes_sibling(tmp_path: Path) -> None:
+    cfg = HelperConfig(state_dir=tmp_path / "state")
+    foreign = tmp_path / "demo_beer_sample"
+    foreign.mkdir()
+    (foreign / "app.py").write_text("flask\n", encoding="utf-8")
+    blocked = tmp_path / "demo_beer_sample-2"
+    blocked.mkdir()
+    (blocked / "legacy.txt").write_text("also foreign\n", encoding="utf-8")
+    out = ensure_beer_sample(cfg, parent_dir=str(tmp_path))
+    assert out["ok"] is True
+    assert out.get("relocated_from") == str(foreign.resolve())
+    written = Path(out["local_dir"])
+    assert written.name == "demo_beer_sample-3"
+    assert (written / "main.py").is_file()
+    assert (foreign / "app.py").read_text(encoding="utf-8") == "flask\n"
+    assert not (foreign / "main.py").exists()
 
 
 def test_start_project_reroutes_travel_when_beer_no_llm(tmp_path: Path, monkeypatch) -> None:

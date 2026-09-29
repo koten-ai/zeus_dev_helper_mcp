@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- **[ZDM-12](https://kotenai.atlassian.net/browse/ZDM-12)** When the default `demo_beer_sample` directory exists and is not the generated catalog UI, `use_sample(sample=beer)` writes the next empty sibling (`demo_beer_sample-2`, then `-3`) and leaves the foreign tree alone. An explicit foreign `sample_dir` still fails with `failure_class=foreign_sample_dir`.
 - **[ZDM-15](https://kotenai.atlassian.net/browse/ZDM-15)** `start_project(sample=beer|travel|api)` marks checklist 0.1 done. `next_step` recommends only tools in the enabled toolset, so core does not offer `explain` or `recommend_motion`. With no stored Zeus URL the next tool is `set_prereq`; otherwise `readiness_check`, then `use_sample` or `scaffold_app`. `recommend_surface` for a website is one plan: without an LLM key, list and detail are Direct find + get and Pour is omitted; with a key, list is Direct and Pour is `run_turn` with `chat_request` omitted.
 - Checklist 1.2 stays open until `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is set in the Helper process. A stored `has_llm_key=true` flag does not count, and `readiness_check` no longer marks 1.2 done from `ZEUS_URL` alone when the path calls `run_turn`. Beer search still requires the key when `has_llm_key=false`.
 - Checklist 3.2 stays open until the app `.env` has that variable and `config.json` `llm.api_key_env` is the variable name. `verify_local_setup` checks presence only and does not echo the secret. `lint_runtime_config` reports a secret pasted into `api_key_env` as `llm_key_missing`.
