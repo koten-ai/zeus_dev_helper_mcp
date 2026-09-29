@@ -407,7 +407,7 @@ def runtime_config_dict(cfg: HelperConfig) -> dict[str, Any]:
             "max_rounds": 8,
             "force_trace": False,
             "mode": cfg.default_mode or "analytics",
-            "durable_sessions": True,
+            "durable_sessions": False,
         },
         "session": {"semantic_cache": {"enabled": False}},
         "chat_requests_dir": str(cfg.chat_request_dir) if cfg.chat_request_dir else None,
@@ -554,6 +554,11 @@ cp .env.example .env   # ZEUS_URL, ZEUS_USERNAME/ZEUS_PASSWORD or bearer, LLM_AP
 Never invent `contract.hash`. Public API is `:8080`, not Hub `:9091`.
 Secrets stay in `.env` — never commit them.
 
+`config.json` `settings.durable_sessions` is false. Session trace calls
+`post_trace`, and an omitted turn target authenticates `DataTarget`
+(`bucket` `yelp-data`). Leave the flag false until the installed client
+passes this app's target into `post_trace`.
+
 ## Run
 
 ```bash
@@ -630,6 +635,11 @@ cp .env.example .env   # fill LLM_API_KEY and Zeus auth if needed
 `config.json` `llm.api_key_env` stays the name `LLM_API_KEY`. Do not paste the secret there.
 Edit `config.json` target (bucket / scope / collection) if Helper prereqs were empty.
 Never invent `contract.hash`. Public API is `:8080`, not Hub `:9091`.
+
+`config.json` `settings.durable_sessions` is false. Session trace calls
+`post_trace`, and an omitted turn target authenticates `DataTarget`
+(`bucket` `yelp-data`). Leave the flag false until the installed client
+passes this app's target into `post_trace`.
 
 ## Run
 

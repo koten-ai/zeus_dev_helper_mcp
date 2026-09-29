@@ -85,7 +85,9 @@ def test_beer_sources_use_direct_find_then_get(tmp_path: Path) -> None:
     assert "kotenai-zeus-client>=2.4.0,<2.5" in reqs
     cfg_text = (root / "config.json").read_text(encoding="utf-8")
     assert "client-floor-6.1" in cfg_text
-    assert "durable_sessions" in cfg_text
+    assert '"durable_sessions": false' in cfg_text
+    assert "yelp-data" in readme
+    assert "post_trace" in readme
     assert "chat_requests_dir" in cfg_text
     assert "LLM_API_KEY" in cfg_text
     catalog = root / "data" / "chat_requests" / "chat_request_analytics_v2.json"
