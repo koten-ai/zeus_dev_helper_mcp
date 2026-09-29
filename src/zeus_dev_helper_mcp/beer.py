@@ -596,6 +596,20 @@ def _hops_force_closed(result: Any) -> bool:
     return False
 
 
+def _pour_enabled() -> bool:
+    '''True when this app process has an LLM key after load_dotenv.'''
+    for name in ("LLM_API_KEY", "XAI_API_KEY", "OPENAI_API_KEY"):
+        if (os.environ.get(name) or "").strip():
+            return True
+    return False
+
+
+def _pour_reason() -> str:
+    if _pour_enabled():
+        return ""
+    return "Pour is off until LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY is set in .env."
+
+
 async def _run_search(query: str, *, limit: int) -> dict[str, Any]:
     '''One catalog search via rt.agent.run_turn.
 
@@ -603,6 +617,18 @@ async def _run_search(query: str, *, limit: int) -> dict[str, Any]:
     catalog.load_for_turn, which loads the analytics catalog and merges the
     live SCOPE BRIEF + MINI-SCHEMA into the system message sent to the model.
     '''
+    if not _pour_enabled():
+        reason = _pour_reason()
+        return {
+            "ok": False,
+            "items": [],
+            "cards": [],
+            "pour_enabled": False,
+            "lede": reason,
+            "answer": reason,
+            "path": [],
+            "req_ids": [],
+        }
     message = (query or "").strip()
     if not message:
         return {
@@ -714,6 +740,8 @@ async def api_config() -> dict[str, Any]:
         "collection": cfg.target.collection,
         "mode": cfg.settings.mode,
         "llm_required": True,
+        "pour_enabled": _pour_enabled(),
+        "pour_reason": _pour_reason(),
         "page_cap": PAGE_CAP,
         "chips": [
             "Fruit Beer",
@@ -1068,7 +1096,7 @@ _INDEX_HTML = """\
       <p class="deck">Live beer-sample through Zeus Direct: one <span class="em">pipeline</span> per pour (<span class="em">find</span>, then <span class="em">get</span>).</p>
       <form class="search-row" id="pour-form">
         <input id="q" type="search" placeholder="IPA, Portland, Duvel, chocolate stout..." autocomplete="off" />
-        <button id="go" type="submit">Pour</button>
+        <button id="go" type="submit" disabled>Pour</button>
       </form>
       <p class="ready" id="ready">Zeus · ready</p>
     </div>
@@ -1095,6 +1123,8 @@ _INDEX_HTML = """\
     let mode = "beers";
     let pageIndex = 1;
     let requestToken = 0;
+    let pourEnabled = false;
+    let pourReason = "Pour is off until an LLM key is in .env.";
 
     CHIPS.forEach((label) => {
       const b = document.createElement("button");
@@ -1308,7 +1338,7 @@ _INDEX_HTML = """\
         metaEl.textContent = "Error: " + (err && err.message ? err.message : err);
         renderPager(null);
       } finally {
-        if (token === requestToken) goEl.disabled = false;
+        if (token === requestToken) goEl.disabled = !pourEnabled;
       }
     }
 
@@ -1337,6 +1367,10 @@ _INDEX_HTML = """\
     }
 
     function search(q) {
+      if (!pourEnabled) {
+        metaEl.textContent = pourReason || "Pour is off until an LLM key is in .env.";
+        return;
+      }
       const query = (q ?? qEl.value ?? "").trim();
       qEl.value = query;
       pageIndex = 1;
@@ -1373,6 +1407,13 @@ _INDEX_HTML = """\
         const tone = String(cfg.mode || "analytics").toUpperCase();
         document.getElementById("kicker").textContent = "COUCHBASE " + bucket + " · ZEUS " + scope + " · " + tone;
         document.getElementById("ready").textContent = cfg.zeus_version ? ("Zeus " + cfg.zeus_version + " · ready") : "Zeus · ready";
+        pourEnabled = cfg.pour_enabled === true;
+        pourReason = String(cfg.pour_reason || "");
+        goEl.disabled = !pourEnabled;
+        qEl.disabled = !pourEnabled;
+        if (!pourEnabled) {
+          document.getElementById("ready").textContent = pourReason || "Pour is off until an LLM key is in .env.";
+        }
       } catch (err) {
         document.getElementById("ready").textContent = "Zeus · unreachable";
       }
@@ -1390,22 +1431,25 @@ _INDEX_HTML = """\
       goPage(page);
     });
 
-    loadConfig();
-    if ((pageParams.get("entity") || "").toLowerCase().startsWith("brew")) {
-      mode = "breweries";
-      document.getElementById("mode-beers").classList.remove("on");
-      document.getElementById("mode-breweries").classList.add("on");
-      titleEl.textContent = "Breweries";
-      chipsEl.hidden = true;
+    async function start() {
+      await loadConfig();
+      if ((pageParams.get("entity") || "").toLowerCase().startsWith("brew")) {
+        mode = "breweries";
+        document.getElementById("mode-beers").classList.remove("on");
+        document.getElementById("mode-breweries").classList.add("on");
+        titleEl.textContent = "Breweries";
+        chipsEl.hidden = true;
+      }
+      if (pageParams.get("q")) {
+        qEl.value = pageParams.get("q");
+        search(pageParams.get("q"));
+      } else {
+        const initialPage = Number(pageParams.get("page") || "1");
+        if (Number.isFinite(initialPage) && initialPage >= 1) pageIndex = Math.floor(initialPage);
+        loadList();
+      }
     }
-    if (pageParams.get("q")) {
-      qEl.value = pageParams.get("q");
-      search(pageParams.get("q"));
-    } else {
-      const initialPage = Number(pageParams.get("page") || "1");
-      if (Number.isFinite(initialPage) && initialPage >= 1) pageIndex = Math.floor(initialPage);
-      loadList();
-    }
+    start();
   </script>
 </body>
 </html>
@@ -1559,6 +1603,7 @@ def beer_bff_is_current(text: str) -> bool:
         and "HttpxCatalogRemote" in text
         and "OpenAICompatibleLlmClient" in text
         and "FsCatalogStore" in text
+        and "pour_enabled" in text
         and "chat_request=" not in text
         and "pipeline_body" not in text
         and 'fetch("pipeline"' not in text
@@ -1803,6 +1848,14 @@ def _write_generated_tree(cfg: HelperConfig, root: Path, name: str) -> list[str]
     return written
 
 
+def _finish_beer_result(cfg: HelperConfig, root: Path, result: dict[str, Any]) -> dict[str, Any]:
+    """Attach env, key presence, and Pour state. Secret values stay out of the result."""
+    from zeus_dev_helper_mcp.app_env import annotate_app_env, annotate_pour
+
+    result = annotate_app_env(cfg, root, result)
+    return annotate_pour(_attach_llm_key(root, result), catalog_ui=True)
+
+
 def write_beer_sample(
     cfg: HelperConfig,
     target_dir: str | Path,
@@ -1811,6 +1864,12 @@ def write_beer_sample(
     force: bool = False,
 ) -> dict[str, Any]:
     """Write the beer catalog UI. Search uses rt.agent.run_turn like travel."""
+    from zeus_dev_helper_mcp.app_env import basic_login_blocked
+
+    blocked = basic_login_blocked(cfg)
+    if blocked is not None:
+        blocked["local_dir"] = str(Path(target_dir).expanduser().resolve())
+        return blocked
     root = Path(target_dir).expanduser().resolve()
     name = sanitize_beer_dir_name(project_name) if project_name else root.name
     if name == DEFAULT_BEER_DIR_NAME and project_name:
@@ -1825,7 +1884,8 @@ def write_beer_sample(
                 save_beer_sample_dir(cfg, root)
                 layout = validate_beer_layout(root)
                 if beer_page_is_current(root):
-                    return _attach_llm_key(
+                    return _finish_beer_result(
+                        cfg,
                         root,
                         {
                             "ok": True,
@@ -1845,7 +1905,8 @@ def write_beer_sample(
                         },
                     )
                 page_files = install_beer_page(root)
-                return _attach_llm_key(
+                return _finish_beer_result(
+                    cfg,
                     root,
                     {
                         "ok": True,
@@ -1940,7 +2001,7 @@ def write_beer_sample(
             "design": "docs/DESIGN-zdm-1-beer-first-green.md",
         },
     }
-    return _attach_llm_key(root, result)
+    return _finish_beer_result(cfg, root, result)
 
 
 def _nonempty(path: Path) -> bool:

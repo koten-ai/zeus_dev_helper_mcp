@@ -49,6 +49,216 @@ def _basic_auth(cfg: HelperConfig) -> tuple[str, str] | None:
     return None
 
 
+def mint_scope_session(
+    cfg: HelperConfig,
+    client: httpx.Client | None = None,
+) -> dict[str, Any]:
+    """POST /v1/{bucket}/{scope}/auth/session on the set_prereq bucket.
+
+    This mint is the login. A describe HTTP 200 is not a login.
+    The return value carries status, has_session_id, bucket, and scope.
+    It never includes the session id, the password, or an API key.
+    ``website_green`` calls this same helper.
+    """
+    bucket = (cfg.default_bucket or "").strip()
+    scope = (cfg.default_scope or "").strip()
+    base = _base_url(cfg.zeus_url)
+    public: dict[str, Any] = {
+        "ok": False,
+        "bucket": bucket or None,
+        "scope": scope or None,
+        "has_session_id": False,
+        "login_probe": "POST /v1/{bucket}/{scope}/auth/session",
+        "stopped": False,
+    }
+    basic = _basic_auth(cfg)
+    if basic is None:
+        public["failure_class"] = "login_not_in_process"
+        public["stopped"] = True
+        public["detail"] = (
+            "auth_mode=basic and ZEUS_USERNAME or ZEUS_PASSWORD is empty in this process"
+        )
+        public["next_action"] = (
+            "Set ZEUS_USERNAME and ZEUS_PASSWORD in this process. "
+            "A stored has_password flag is not a password. "
+            "A describe 200 is not a login."
+        )
+        return public
+    if not base or not bucket or not scope:
+        public["failure_class"] = "login_not_in_process"
+        public["stopped"] = True
+        public["detail"] = "basic auth needs ZEUS_URL, bucket, and scope before the session mint"
+        public["next_action"] = (
+            "Call set_prereq with zeus_url, bucket, and scope. "
+            "Keep the password in the process environment. "
+            "A describe 200 is not a login."
+        )
+        return public
+
+    path = f"/v1/{bucket}/{scope}/auth/session"
+    public["login_probe"] = f"POST {path}"
+    owns_client = client is None
+    if client is None:
+        client = httpx.Client(
+            timeout=httpx.Timeout(5.0, connect=3.0),
+            headers=_auth_headers(cfg),
+            follow_redirects=True,
+        )
+    try:
+        response = client.post(
+            urljoin(base + "/", path.lstrip("/")),
+            auth=basic,
+            headers=_auth_headers(cfg),
+        )
+        status = response.status_code
+        has_sid = False
+        if status in (200, 201):
+            body: Any = {}
+            try:
+                body = response.json()
+            except Exception:  # noqa: BLE001
+                body = {}
+            if isinstance(body, dict):
+                has_sid = bool(body.get("session_id") or body.get("id"))
+        public["status"] = status
+        public["has_session_id"] = has_sid
+        public["detail"] = f"POST {path} → HTTP {status}"
+        if status in (200, 201):
+            public["ok"] = True
+        elif status == 401:
+            public["failure_class"] = "auth_failed"
+            public["stopped"] = True
+            public["next_action"] = (
+                "Fix username/password or scope_credentials for this bucket/scope. "
+                "A describe 200 is not a login."
+            )
+        else:
+            public["next_action"] = (
+                "Inspect Zeus auth docs; credentials may still work for other paths. "
+                "A describe 200 is not a login."
+            )
+        return public
+    except httpx.RequestError as exc:
+        public["failure_class"] = "network_timeout"
+        public["detail"] = str(exc)
+        public["next_action"] = "Check network / ZEUS_URL reachability"
+        return public
+    finally:
+        if owns_client:
+            client.close()
+
+
+def _gate_from_mint(minted: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    failure = minted.get("failure_class")
+    if minted.get("ok"):
+        status: GateStatus = (
+            "pass" if minted.get("has_session_id") or minted.get("status") == 200 else "unknown"
+        )
+    elif failure:
+        status = "fail"
+    else:
+        status = "unknown"
+    evidence = {
+        "status": minted.get("status"),
+        "has_session_id": bool(minted.get("has_session_id")),
+        "bucket": minted.get("bucket"),
+        "scope": minted.get("scope"),
+    }
+    evidence = {key: value for key, value in evidence.items() if value is not None}
+    gate = _gate(
+        "auth",
+        "Auth principal (basic session mint)",
+        status,
+        failure_class=failure if isinstance(failure, str) else None,
+        detail=str(minted.get("detail") or ""),
+        next_action=str(minted.get("next_action") or ""),
+        evidence=evidence,
+    )
+    stopped = bool(minted.get("stopped")) and failure in {"auth_failed", "login_not_in_process"}
+    return gate, stopped
+
+
+def _auth_probe(
+    cfg: HelperConfig,
+    client: httpx.Client,
+    headers: dict[str, str],
+    basic: tuple[str, str] | None,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Login probe. HTTP 401 on the session mint stops later Zeus probes."""
+    mode = (cfg.zeus_auth_mode or "none").strip().lower()
+    if mode in ("none", "") and not basic and not headers.get("Authorization"):
+        return (
+            [
+                _gate(
+                    "auth",
+                    "Auth principal",
+                    "skip",
+                    detail="auth_mode=none and no credentials in env",
+                    next_action=(
+                        "If Zeus requires auth, set ZEUS_USERNAME/PASSWORD or ZEUS_BEARER_TOKEN"
+                    ),
+                )
+            ],
+            False,
+        )
+    if mode == "basic" or (basic and cfg.default_bucket and cfg.default_scope):
+        gate, stopped = _gate_from_mint(mint_scope_session(cfg, client))
+        return [gate], stopped
+    if headers.get("Authorization"):
+        try:
+            response = _get(client, _base_url(cfg.zeus_url), "/readyz")
+            if response.status_code == 401:
+                return (
+                    [
+                        _gate(
+                            "auth",
+                            "Auth principal (bearer)",
+                            "fail",
+                            failure_class="auth_failed",
+                            detail="readyz returned 401 with bearer token",
+                            next_action="Refresh ZEUS_BEARER_TOKEN / principal",
+                        )
+                    ],
+                    True,
+                )
+            return (
+                [
+                    _gate(
+                        "auth",
+                        "Auth principal (bearer)",
+                        "pass" if response.status_code < 500 else "unknown",
+                        detail=f"readyz with bearer → HTTP {response.status_code}",
+                    )
+                ],
+                False,
+            )
+        except httpx.RequestError as exc:
+            return (
+                [
+                    _gate(
+                        "auth",
+                        "Auth principal",
+                        "fail",
+                        failure_class="network_timeout",
+                        detail=str(exc),
+                    )
+                ],
+                False,
+            )
+    return (
+        [
+            _gate(
+                "auth",
+                "Auth principal",
+                "skip",
+                detail="No bucket/scope for basic mint and no bearer token",
+                next_action="Set ZEUS_BUCKET + ZEUS_SCOPE for basic auth probe, or ZEUS_BEARER_TOKEN",
+            )
+        ],
+        False,
+    )
+
+
 def _gate(
     gate_id: str,
     title: str,
@@ -168,121 +378,33 @@ def run_readiness_check(
         # Gate 4: version
         gates.append(_probe_json(client, base, "version", "GET /version", "/version"))
 
-        # Gate 5: auth (optional)
-        if cfg.zeus_auth_mode in ("none", "") and not basic and not headers.get("Authorization"):
-            gates.append(
-                _gate(
-                    "auth",
-                    "Auth principal",
-                    "skip",
-                    detail="auth_mode=none and no credentials in env",
-                    next_action="If Zeus requires auth, set ZEUS_USERNAME/PASSWORD or ZEUS_BEARER_TOKEN",
-                )
-            )
-        elif cfg.default_bucket and cfg.default_scope and basic:
-            # basic login is per-scope on many deploys
-            path = f"/v1/{cfg.default_bucket}/{cfg.default_scope}/auth/session"
-            try:
-                r = client.post(
-                    urljoin(base + "/", path.lstrip("/")),
-                    auth=basic,
-                    headers=headers,
-                )
-                if r.status_code in (200, 201):
-                    body = {}
-                    try:
-                        body = r.json()
-                    except Exception:  # noqa: BLE001
-                        pass
-                    has_sid = bool(body.get("session_id") or body.get("id"))
-                    gates.append(
-                        _gate(
-                            "auth",
-                            "Auth principal (basic session mint)",
-                            "pass" if has_sid or r.status_code == 200 else "unknown",
-                            detail=f"POST {path} → HTTP {r.status_code}",
-                            evidence={"status": r.status_code, "has_session_id": has_sid},
-                        )
-                    )
-                elif r.status_code == 401:
-                    gates.append(
-                        _gate(
-                            "auth",
-                            "Auth principal (basic session mint)",
-                            "fail",
-                            failure_class="auth_failed",
-                            detail=f"POST {path} → 401",
-                            next_action="Fix username/password or scope_credentials for this bucket/scope",
-                        )
-                    )
-                else:
-                    gates.append(
-                        _gate(
-                            "auth",
-                            "Auth principal (basic session mint)",
-                            "unknown",
-                            detail=f"POST {path} → HTTP {r.status_code}",
-                            next_action="Inspect Zeus auth docs; credentials may still work for other paths",
-                        )
-                    )
-            except httpx.RequestError as e:
-                gates.append(
-                    _gate(
-                        "auth",
-                        "Auth principal",
-                        "fail",
-                        failure_class="network_timeout",
-                        detail=str(e),
-                        next_action="Check network / ZEUS_URL reachability",
-                    )
-                )
-        elif headers.get("Authorization"):
-            # bearer: try a light authenticated path
-            try:
-                r = _get(client, base, "/readyz")
-                if r.status_code == 401:
-                    gates.append(
-                        _gate(
-                            "auth",
-                            "Auth principal (bearer)",
-                            "fail",
-                            failure_class="auth_failed",
-                            detail="readyz returned 401 with bearer token",
-                            next_action="Refresh ZEUS_BEARER_TOKEN / principal",
-                        )
-                    )
-                else:
-                    gates.append(
-                        _gate(
-                            "auth",
-                            "Auth principal (bearer)",
-                            "pass" if r.status_code < 500 else "unknown",
-                            detail=f"readyz with bearer → HTTP {r.status_code}",
-                        )
-                    )
-            except httpx.RequestError as e:
-                gates.append(
-                    _gate(
-                        "auth",
-                        "Auth principal",
-                        "fail",
-                        failure_class="network_timeout",
-                        detail=str(e),
-                    )
-                )
-        else:
-            gates.append(
-                _gate(
-                    "auth",
-                    "Auth principal",
-                    "skip",
-                    detail="No bucket/scope for basic mint and no bearer token",
-                    next_action="Set ZEUS_BUCKET + ZEUS_SCOPE for basic auth probe, or ZEUS_BEARER_TOKEN",
-                )
-            )
+        # Gate 5: login is the scope session mint. A describe 200 is not a login.
+        auth_gates, auth_stopped = _auth_probe(cfg, client, headers, basic)
+        gates.extend(auth_gates)
 
-        # Gate 6: bootstrap / chat_request (if scope known)
-        if probe_bootstrap and cfg.default_bucket and cfg.default_scope:
+        # Gate 6: bootstrap / chat_request (if scope known). 401 stops this path.
+        if auth_stopped:
+            gates.append(
+                _gate(
+                    "bootstrap_scope",
+                    "Bootstrap / scope binding",
+                    "skip",
+                    detail="Skipped after the session login failed. A describe 200 is not a login.",
+                    next_action=(
+                        "Fix ZEUS_USERNAME and ZEUS_PASSWORD for this bucket and scope, "
+                        "then run readiness_check again."
+                    ),
+                )
+            )
+            gates.append(
+                _gate(
+                    "live_chat_request",
+                    "Live chat_request",
+                    "skip",
+                    detail="Skipped after the session login failed. A describe 200 is not a login.",
+                )
+            )
+        elif probe_bootstrap and cfg.default_bucket and cfg.default_scope:
             b, s = cfg.default_bucket, cfg.default_scope
             path = f"/v1/ai/bootstrap/scope/{b}/{s}"
             try:
