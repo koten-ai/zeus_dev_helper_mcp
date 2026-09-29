@@ -177,7 +177,7 @@ Live `tools/list` is the call contract. Default surface is **14 tools** (`ZEUS_D
 | `smoke_test_zeus` | No LLM: readiness plus a read-only describe |
 | `website_green` | Install, start, and check the catalog page (named list card, page ids, search when Pour is on). A title-cased `doc_key` is not a search card. A describe 200 is not this check |
 | `smoke_test_agent` | One Client `run_turn`. Needs `[agent]` extra and `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` in this process |
-| `diagnose_error` | Map HTTP / body / error codes to a failure class |
+| `diagnose_error` | Map a symptom, hop name, and result keys to a failure class and one generated-file change |
 
 Opt-in toolsets (static, comma-separated): `catalog`, `lint`, `travel`, `support`, `handoff`. `all` enables every set. Full when/args/side-effects map: [`docs/TOOLS.md`](docs/TOOLS.md).
 
