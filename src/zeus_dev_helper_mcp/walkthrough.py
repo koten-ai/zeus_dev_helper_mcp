@@ -58,6 +58,34 @@ def _smokes_green(cfg: HelperConfig) -> bool:
     return flags["5.1"] and flags["5.2"]
 
 
+def _enabled_tool_names() -> set[str]:
+    from zeus_dev_helper_mcp.toolsets import enabled_tools
+
+    return {meta.name for meta in enabled_tools()}
+
+
+def _keep_enabled(tools: list[str]) -> list[str]:
+    """Drop tools the host did not load. Core does not include explain."""
+    allowed = _enabled_tool_names()
+    kept: list[str] = []
+    seen: set[str] = set()
+    for name in tools:
+        if name in allowed and name not in seen:
+            kept.append(name)
+            seen.add(name)
+    return kept
+
+
+def _stored_zeus_url(cfg: HelperConfig) -> str:
+    try:
+        from zeus_dev_helper_mcp.prereqs import load_prereqs
+
+        prefs = load_prereqs(cfg)
+    except Exception:  # noqa: BLE001
+        prefs = {}
+    return str((prefs or {}).get("zeus_url") or "").strip()
+
+
 def _checklist_sample(cfg: HelperConfig) -> str:
     data = load_checklist(cfg)
     meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
@@ -120,6 +148,7 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             from zeus_dev_helper_mcp.beer import prereqs_prefer_beer_direct
 
             if prereqs_prefer_beer_direct(prefs):
+                sample = "beer"
                 tools = ["use_sample", "recommend_surface", "smoke_test_zeus"]
                 base["use_sample_args_hint"] = {
                     "sample": "beer",
@@ -155,6 +184,37 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             "verify_local_setup checks presence only and then marks 3.2 done. "
             "Do not run the app or smoke_test_agent before that."
         )
+    # ZDM-15: after the app is chosen, one next action. Host ZEUS_URL does not count.
+    if item_id == "0.2" and sample in ("beer", "travel", "api"):
+        if not _stored_zeus_url(cfg):
+            tools = ["set_prereq"]
+            base["note"] = (
+                "Zeus URL is not stored. set_prereq with the public :8080 URL "
+                "the user named. Do not copy the host ZEUS_URL."
+            )
+        elif sample == "api":
+            tools = ["readiness_check", "scaffold_app"]
+            base["note"] = (
+                "URL is stored. readiness_check, then "
+                "scaffold_app(app_kind=api, coding_language=python)."
+            )
+        else:
+            tools = ["readiness_check", "use_sample"]
+            base["use_sample_args_hint"] = {
+                "sample": sample,
+                "note": (
+                    "readiness_check first. Then use_sample for this sample. "
+                    "Beer search is run_turn with chat_request omitted and needs an LLM key. "
+                    "Do not clone travel on the beer path."
+                    if sample == "beer"
+                    else "readiness_check first, then use_sample."
+                ),
+            }
+            base["note"] = (
+                "URL is stored. readiness_check, then use_sample. "
+                "List and detail are Direct find + get."
+            )
+    tools = _keep_enabled(tools)
     base["recommended_tools"] = tools
     uris = ["zeus-helper://checklist", *RESOURCE_HINTS.get(item_id or "", [])]
     seen: set[str] = set()
@@ -194,6 +254,7 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             for t in ("recommend_data_plane_mcp", "handoff_to_multi"):
                 if t not in base["recommended_tools"]:
                     base["recommended_tools"].append(t)
+            base["recommended_tools"] = _keep_enabled(list(base["recommended_tools"]))
     return base
 
 
@@ -216,7 +277,9 @@ def build_gap_report(cfg: HelperConfig) -> dict[str, Any]:
                         "item_id": item.get("id"),
                         "title": item.get("title"),
                         "status": st,
-                        "recommended_tools": TOOL_HINTS.get(item.get("id") or "", []),
+                        "recommended_tools": _keep_enabled(
+                            list(TOOL_HINTS.get(item.get("id") or "", []))
+                        ),
                         "evidence": item.get("evidence"),
                     }
                 )

@@ -416,6 +416,11 @@ def _start_project_body(
     from zeus_dev_helper_mcp.checklist import save_checklist
 
     save_checklist(cfg, data)
+    if sample_l in ("beer", "travel", "api"):
+        try:
+            set_item_status(cfg, "0.1", "done", evidence=f"sample={sample}")
+        except Exception:  # noqa: BLE001, S110
+            pass
     try:
         record_metric(cfg, "start_project")
     except Exception:  # noqa: BLE001, S110
@@ -452,14 +457,7 @@ def _start_project_body(
             "API-only track: after prereqs/readiness, scaffold_app(app_kind=api, "
             "coding_language=python). Default UI track is sample=travel / use_sample."
         )
-        out["recommended_tools"] = [
-            "set_prereq",
-            "readiness_check",
-            "scaffold_app",
-            "bind_contract",
-            "smoke_test_zeus",
-            "smoke_test_agent",
-        ]
+        out["recommended_tools"] = list(nxt.get("recommended_tools") or [])
     elif sample_l == "beer":
         out["track"] = "ui-direct"
         out["app_kind"] = "ui"
@@ -476,13 +474,7 @@ def _start_project_body(
                 + out["note"]
             )
             out["rerouted_from"] = "travel"
-        out["recommended_tools"] = [
-            "set_prereq",
-            "readiness_check",
-            "use_sample",
-            "smoke_test_zeus",
-            "recommend_surface",
-        ]
+        out["recommended_tools"] = list(nxt.get("recommended_tools") or [])
     elif wants_multi:
         out["track"] = "multi-agent"
         out["handoff_to_multi"] = handoff_to_multi_impl(cfg, force=True)
@@ -501,6 +493,7 @@ def _start_project_body(
                 "use start_project(sample=beer) / use_sample(sample=beer)."
             )
             out["llm_required"] = False
+        out["recommended_tools"] = list(nxt.get("recommended_tools") or [])
     return out
 
 
