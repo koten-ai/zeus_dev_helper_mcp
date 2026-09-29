@@ -1,7 +1,9 @@
-"""Install, start, and check a catalog website (ZDM-20).
+"""Install, start, and check a catalog website (ZDM-20, ZDM-21).
 
 ``smoke_test_zeus`` stays the health / ready / version / describe probe.
 This tool checks the running page. A describe HTTP 200 is not a pass.
+A search card whose name is only a title-cased ``doc_key`` or ``src_keys``
+entry is ``fts_doc_key_only``.
 """
 
 from __future__ import annotations
@@ -86,18 +88,84 @@ def start_app(root: Path, port: int) -> dict[str, Any]:
     return {"ok": True, "started": True, "pid": proc.pid}
 
 
-def card_display_name(card: dict[str, Any]) -> str:
-    """Non-empty display name on a list or search card."""
-    sources: list[dict[str, Any]] = [card]
+def _folded_title(value: str) -> str:
+    """Compare key ``cains-ipa`` with a title-cased card ``Cains IPA``."""
+    chars = [" " if ch in "-_:" else ch for ch in value.strip()]
+    return " ".join("".join(chars).split()).casefold()
+
+
+def _add_keys(raw: Any, found: list[str]) -> None:
+    if isinstance(raw, str) and raw.strip():
+        found.append(raw.strip())
+        return
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, str) and item.strip():
+                found.append(item.strip())
+
+
+def _collect_keys(value: Any, found: list[str]) -> None:
+    if isinstance(value, dict):
+        _add_keys(value.get("doc_key"), found)
+        _add_keys(value.get("src_keys"), found)
+        node = value.get("node")
+        if isinstance(node, dict):
+            _collect_keys(node, found)
+        meta = value.get("metadata")
+        if isinstance(meta, dict):
+            _collect_keys(meta, found)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _collect_keys(item, found)
+
+
+def _is_key_title(name: str, keys: list[str]) -> bool:
+    folded = _folded_title(name)
+    if not folded:
+        return False
+    return any(_folded_title(key) == folded for key in keys)
+
+
+def _document_field_name(card: dict[str, Any]) -> str:
+    """``name`` or ``metadata.name`` from a find or get row. ``title`` does not count."""
+    value = card.get("name")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    meta = card.get("metadata")
+    if isinstance(meta, dict):
+        nested = meta.get("name")
+        if isinstance(nested, str) and nested.strip():
+            return nested.strip()
+    return ""
+
+
+def _sources(card: dict[str, Any]) -> list[dict[str, Any]]:
+    sources = [card]
     meta = card.get("metadata")
     if isinstance(meta, dict):
         sources.append(meta)
-    for source in sources:
+    return sources
+
+
+def card_display_name(card: dict[str, Any]) -> str:
+    """Non-empty display name. A title-cased ``doc_key`` or ``src_keys`` entry is not a name."""
+    found = ""
+    for source in _sources(card):
         for key in ("name", "title"):
             value = source.get(key)
             if isinstance(value, str) and value.strip():
-                return value.strip()
-    return ""
+                found = value.strip()
+                break
+        if found:
+            break
+    if not found:
+        return ""
+    keys: list[str] = []
+    _collect_keys(card, keys)
+    if keys and _is_key_title(found, keys):
+        return ""
+    return found
 
 
 def _named_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -303,28 +371,54 @@ def _matches_scope(entity: str, types: list[str]) -> bool:
     return wanted in known
 
 
-def _search_check(
-    base: str,
-    *,
-    pour: bool,
-    ids: list[str],
-) -> dict[str, Any]:
-    if not pour:
-        return {
-            "search_skipped": True,
-            "search_card_count": 0,
-            "search_class": None,
-            "failure_class": None,
-            "pour_enabled": False,
-        }
-    _code, body, header = _get_json(f"{base}/api/search?q=porter&limit={_PAGE}")
-    _remember(ids, header, body)
-    named = _named_cards(body)
+def _search_rows(body: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = body.get("cards")
+    if not isinstance(raw, list):
+        raw = body.get("items")
+    if not isinstance(raw, list):
+        return []
+    return [row for row in raw if isinstance(row, dict)]
+
+
+def _row_is_key_title(row: dict[str, Any], keys: list[str]) -> bool:
+    for source in _sources(row):
+        for field in ("name", "title"):
+            value = source.get(field)
+            if isinstance(value, str) and value.strip() and _is_key_title(value, keys):
+                return True
+    return False
+
+
+def _search_outcome(body: dict[str, Any]) -> dict[str, Any]:
+    """Passing search names come from ``name`` or ``metadata.name``, not a key title."""
+    keys: list[str] = []
+    for field in ("items", "cards", "gets", "get"):
+        _collect_keys(body.get(field), keys)
+    real = 0
+    titled = False
+    for row in _search_rows(body):
+        doc_name = _document_field_name(row)
+        if doc_name and not _is_key_title(doc_name, keys):
+            real += 1
+            continue
+        if _row_is_key_title(row, keys):
+            titled = True
     empty = str(body.get("empty_state") or "").strip()
-    if named:
+    key_hit_without_name = real == 0 and (
+        empty == "fts_doc_key_only" or (bool(keys) and not empty)
+    )
+    if titled or key_hit_without_name:
         return {
             "search_skipped": False,
-            "search_card_count": len(named),
+            "search_card_count": 0,
+            "search_class": None,
+            "failure_class": "fts_doc_key_only",
+            "pour_enabled": True,
+        }
+    if real:
+        return {
+            "search_skipped": False,
+            "search_card_count": real,
             "search_class": None,
             "failure_class": None,
             "pour_enabled": True,
@@ -344,6 +438,25 @@ def _search_check(
         "failure_class": "search_empty",
         "pour_enabled": True,
     }
+
+
+def _search_check(
+    base: str,
+    *,
+    pour: bool,
+    ids: list[str],
+) -> dict[str, Any]:
+    if not pour:
+        return {
+            "search_skipped": True,
+            "search_card_count": 0,
+            "search_class": None,
+            "failure_class": None,
+            "pour_enabled": False,
+        }
+    _code, body, header = _get_json(f"{base}/api/search?q=porter&limit={_PAGE}")
+    _remember(ids, header, body)
+    return _search_outcome(body)
 
 
 def website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any]:
@@ -494,18 +607,27 @@ def website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any]:
 
     searched = _search_check(base, pour=pour, ids=ids)
     if searched.get("failure_class"):
+        failure = str(searched["failure_class"])
+        if failure == "fts_doc_key_only":
+            action = (
+                "Search returned a doc_key or src_keys hit with no document name. "
+                "A passing card needs name or metadata.name on a find or get row. "
+                "Do not turn that key into a card title."
+            )
+        else:
+            action = (
+                "Search returned no named card and no empty-result class. "
+                "Do not call smoke_test_agent."
+            )
         return _result(
-            failure_class=searched["failure_class"],
+            failure_class=failure,
             url=base,
             list_count=len(named),
             search_card_count=0,
             req_ids=ids,
             pour_enabled=bool(searched.get("pour_enabled")),
             search_skipped=False,
-            next_action=(
-                "Search returned no named card and no empty-result class. "
-                "Do not call smoke_test_agent."
-            ),
+            next_action=action,
         )
     skipped = bool(searched.get("search_skipped"))
     if skipped:

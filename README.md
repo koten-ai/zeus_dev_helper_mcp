@@ -175,7 +175,7 @@ Live `tools/list` is the call contract. Default surface is **14 tools** (`ZEUS_D
 | `bind_contract` | Copy a stamped `contract.hash` only; refuses empty / local compute |
 | `recommend_surface` | Intent → Client surface + do-not list |
 | `smoke_test_zeus` | No LLM: readiness plus a read-only describe |
-| `website_green` | Install, start, and check the catalog page (named list card, page ids, search when Pour is on). A describe 200 is not this check |
+| `website_green` | Install, start, and check the catalog page (named list card, page ids, search when Pour is on). A title-cased `doc_key` is not a search card. A describe 200 is not this check |
 | `smoke_test_agent` | One Client `run_turn`. Needs `[agent]` extra and `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` in this process |
 | `diagnose_error` | Map HTTP / body / error codes to a failure class |
 
