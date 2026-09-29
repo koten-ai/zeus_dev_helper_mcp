@@ -289,6 +289,24 @@ def _doctor_health() -> dict[str, Any]:
     }
 
 
+def _note_missing_sample_dir(payload: dict[str, Any]) -> dict[str, Any]:
+    from zeus_dev_helper_mcp.beer import missing_recorded_beer_dir
+
+    missing = missing_recorded_beer_dir(_cfg())
+    if missing is None:
+        return payload
+    out = dict(payload)
+    out["ok"] = False
+    out["failure_class"] = "sample_dir_missing"
+    out["sample_dir"] = missing
+    out["recommended_tools"] = ["use_sample"]
+    out["next_action"] = (
+        f"Recorded beer sample directory is missing: {missing}. "
+        "use_sample(sample=beer) writes the catalog UI."
+    )
+    return out
+
+
 def doctor(detail: str = "health") -> dict[str, Any]:
     """Health / doctor. detail: health | env | compat | cache | all.
 
@@ -310,31 +328,33 @@ def doctor(detail: str = "health") -> dict[str, Any]:
     health = _doctor_health()
     if key == "health":
         health["detail"] = "health"
-        return health
+        return _note_missing_sample_dir(health)
     if key == "env":
         out = validate_env()
         out["detail"] = "env"
-        return out
+        return _note_missing_sample_dir(out)
     if key == "compat":
         out = compat_check()
         out["detail"] = "compat"
-        return out
+        return _note_missing_sample_dir(out)
     if key == "cache":
         out = semantic_cache_status()
         out["detail"] = "cache"
-        return out
+        return _note_missing_sample_dir(out)
     env = validate_env()
     compat = compat_check()
     cache = semantic_cache_status()
-    return {
-        "ok": bool(health.get("ok")) and bool(env.get("ok")),
-        "detail": "all",
-        "health": health,
-        "env": env,
-        "compat": compat,
-        "cache": cache,
-        "next_action": env.get("next_action") or "next_step",
-    }
+    return _note_missing_sample_dir(
+        {
+            "ok": bool(health.get("ok")) and bool(env.get("ok")),
+            "detail": "all",
+            "health": health,
+            "env": env,
+            "compat": compat,
+            "cache": cache,
+            "next_action": env.get("next_action") or "next_step",
+        }
+    )
 
 
 def start_project(
