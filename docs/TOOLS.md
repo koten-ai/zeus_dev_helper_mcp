@@ -185,6 +185,7 @@ Verbs Helper can explain (not call): `explain`, `return`, `describe`, `analyze`,
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
 | `smoke_test_zeus` | No LLM: readiness + `POST /v2/{bucket}/{scope}/describe` | `update_checklist=true` | `live GET` + `live POST`, optional `state` | Checklist **5.1**. Returns `req_id` and `authenticated_bucket`. A describe URL on another bucket fails with `auth_default_bucket` and is not sent. Then `smoke_test_agent`. |
+| `website_green` | Install dependencies, start the app, poll `GET /healthz`, then check the catalog list and, when Pour is on, one search. Separate from `smoke_test_zeus`. | optional `target_dir` | `disk` (pip), process start, `live GET` of the app and the stamp | After `use_sample` or `scaffold_app` on a website. Basic auth calls the scope session mint first. The list needs a named card for an entity from the live scope. `of 0` or page 2 ids that repeat page 1 fails. Without an LLM key, Pour stays off and this tool does not call `smoke_test_agent`. A describe 200 is not a pass. Result: app URL, list count, search card count, `req_id`s. No secrets. On the beer website, `next_step` recommends this tool after the sample is written. |
 | `smoke_test_agent` | One Client `rt.agent.run_turn` | `question` (advice-shaped), `update_checklist=true` | `LLM` + Zeus HTTP, `state` (`last_smoke_agent.json` ids/hops only) | Checklist **5.2**. Needs `[agent]` extra (`kotenai-zeus-client>=2.3.0`). When that package imports, a missing `LLM_API_KEY` / `XAI_API_KEY` / `OPENAI_API_KEY` in this process returns `llm_key_missing`. A stored `has_llm_key` flag does not count. Returns `TurnResult` (`session_id` / `req_id`). If the client package is missing **and** `demo_travel_sample` documents Docker install (`DEMO_TRAVEL_SAMPLE_DIR` / persisted path), returns guide-only `install_path=docker` (`docker compose up --build`) instead of only pip; otherwise `install_path=pip`. |
 | `suggest_demo_prompts` | Advice-shaped starter questions | — | none | Before 5.2. Prefer NL over raw SQL. |
 | `describe_scope` | Live MINI-SCHEMA: entity types + field names | `bucket`, `scope` (else env) | `live POST` | Schema for lint / UI. **No document samples.** Cap applied. |
@@ -259,8 +260,8 @@ What `next_step` / `gap_report` recommend (`walkthrough.TOOL_HINTS`):
 | 3.2 | App `.env` has the LLM key; `api_key_env` is the name | `write_env`, `verify_local_setup`, `lint_runtime_config` |
 | 4.1 | Fetch or sync chat_request | `fetch_chat_request`, `list_catalog_modes`, `bootstrap_scope` |
 | 4.2 | Pin `scope_contracts` after stamp | `bind_contract`, `catalog_diff`, `explain_hash_boundary` |
-| 5.1 | `smoke_test_zeus` | `smoke_test_zeus`, `describe_scope` |
-| 5.2 | `smoke_test_agent` | `smoke_test_agent`, `suggest_demo_prompts` |
+| 5.1 | `smoke_test_zeus` | Website (beer): `website_green`. Other tracks: `smoke_test_zeus`, `describe_scope` |
+| 5.2 | `smoke_test_agent` | Website (beer): `website_green`. Other tracks: `smoke_test_agent`, `suggest_demo_prompts` |
 | 6.1 | Multi-turn and/or hooks | `suggest_hooks`, `explain`, `suggest_demo_prompts` |
 | 7.1 | No anti-patterns; secrets out | `diagnose_error`, `suggest_hooks`, `support_pack_from_turn`, `detective_links`, `gap_report` |
 

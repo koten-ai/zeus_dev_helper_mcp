@@ -42,6 +42,7 @@ _ROWS: tuple[tuple[str, str, bool, bool, bool, bool], ...] = (
     ("write_env", SUPPORT, False, False, True, False),
     ("verify_local_setup", SUPPORT, True, False, True, False),
     ("smoke_test_zeus", CORE, False, False, False, True),
+    ("website_green", CORE, False, False, False, True),
     ("smoke_test_agent", CORE, False, False, False, True),
     ("diagnose_error", CORE, True, False, True, False),
     ("recommend_surface", CORE, True, False, True, False),
