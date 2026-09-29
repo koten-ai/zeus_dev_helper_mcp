@@ -247,7 +247,7 @@ What `next_step` / `gap_report` recommend (`walkthrough.TOOL_HINTS`):
 
 | Item | Title | Tools |
 | --- | --- | --- |
-| 0.1 | Choose single-agent first app | `start_project`, `explain`, `recommend_motion` |
+| 0.1 | Choose single-agent first app | `start_project`. After it, `set_prereq` when no URL is stored, otherwise `readiness_check` then `use_sample` or `scaffold_app`. `explain` and `recommend_motion` only when the catalog toolset is enabled. |
 | 0.2 | Pick sample or custom domain | `use_sample`, `travel_golden_path`, `scaffold_app` |
 | 1.1 | Python 3.11+ / pip | `doctor`, `verify_local_setup` |
 | 1.2 | `ZEUS_URL` and LLM key in this process | `set_prereq`, `doctor`, `validate_env` |

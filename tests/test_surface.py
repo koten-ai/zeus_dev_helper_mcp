@@ -28,17 +28,25 @@ def test_nl_question_run_turn() -> None:
     assert out["trace_class"] == "agent"
 
 
-def test_nl_question_no_llm_is_direct_not_travel() -> None:
+def test_nl_question_no_llm_is_one_direct_plan() -> None:
     out = recommend_surface(HelperConfig(), intent="nl_question", needs_llm=False)
     assert out["ok"] is True
     assert out["surface"] == "rt.data.verb"
     assert out["trace_class"] == "direct.read"
-    blob = " ".join(out.get("notes") or []).lower()
-    assert "beer" in blob or "direct" in blob
-    assert "travel" in blob
-    assert "run_turn" in blob and "mini-schema" in blob
-    assert "use_sample" in (out.get("next_action") or "")
+    assert out["notes"] == [
+        "List and detail are Direct find + get. Pour is omitted until an LLM key exists."
+    ]
+    assert "run_turn" not in (out.get("next_action") or "")
     assert "smoke_test_agent" not in (out.get("recommended_tools") or [])
+
+
+def test_nl_question_with_llm_is_one_plan() -> None:
+    out = recommend_surface(HelperConfig(), intent="nl_question", needs_llm=True)
+    assert out["surface"] == "rt.agent.run_turn"
+    assert out["notes"] == [
+        "List is Direct find + get. Pour is rt.agent.run_turn with chat_request omitted."
+    ]
+    assert "run_turn" in (out.get("next_action") or "")
 
 
 def test_single_verb_direct_read() -> None:

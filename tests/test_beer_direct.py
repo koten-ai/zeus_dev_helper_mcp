@@ -193,17 +193,64 @@ def test_start_project_beer_sets_track(tmp_path: Path, monkeypatch) -> None:
     assert out["track"] == "ui-direct"
     assert out.get("llm_required") is False
     tools = out.get("recommended_tools") or []
-    assert "use_sample" in tools
+    assert tools == ["set_prereq"]
+    assert "explain" not in tools
+    assert "recommend_motion" not in tools
     assert "smoke_test_agent" not in tools
 
     cfg = reload_config()
-    # Force checklist item 0.2 open by reading next_step after marking 0.1 done
-    from zeus_dev_helper_mcp.checklist import set_item_status
+    from zeus_dev_helper_mcp.checklist import load_checklist
+    from zeus_dev_helper_mcp.prereqs import save_prereqs
 
-    set_item_status(cfg, "0.1", "done", evidence="test")
+    checklist = load_checklist(cfg)
+    item_01 = next(
+        item
+        for phase in checklist["phases"]
+        for item in phase["items"]
+        if item["id"] == "0.1"
+    )
+    assert item_01["status"] == "done"
+    save_prereqs(
+        cfg,
+        {"zeus_url": "http://192.168.0.219:8080", "bucket": "beer-sample", "scope": "_default"},
+    )
     nxt = enriched_next_step(cfg)
     assert nxt.get("app_track") == "ui-direct"
-    assert "use_sample" in (nxt.get("recommended_tools") or [])
+    assert nxt["item"]["id"] == "0.2"
+    assert nxt.get("recommended_tools") == ["readiness_check", "use_sample"]
+    assert "explain" not in (nxt.get("recommended_tools") or [])
+
+
+def test_beer_sequence_next_step_is_not_explain(tmp_path: Path, monkeypatch) -> None:
+    """2026-09-28 sequence: doctor is out of band; set_prereq, start_project, next_step."""
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.delenv("ZEUS_DEV_HELPER_TOOLSETS", raising=False)
+    from zeus_dev_helper_mcp.config import reload_config
+    from zeus_dev_helper_mcp.prereqs import save_prereqs
+    from zeus_dev_helper_mcp.server import start_project
+    from zeus_dev_helper_mcp.walkthrough import enriched_next_step
+
+    cfg = reload_config()
+    save_prereqs(
+        cfg,
+        {
+            "zeus_url": "http://192.168.0.219:8080",
+            "bucket": "beer-sample",
+            "scope": "_default",
+            "auth_mode": "basic",
+            "has_username": True,
+            "has_password": True,
+        },
+    )
+    started = start_project(sample="beer")
+    assert started["sample"] == "beer"
+    nxt = enriched_next_step(reload_config())
+    tools = nxt.get("recommended_tools") or []
+    assert tools
+    assert tools[0] != "explain"
+    assert "explain" not in tools
+    assert "recommend_motion" not in tools
+    assert tools == ["readiness_check", "use_sample"]
 
 
 def test_walkthrough_beer_skips_agent_smoke_primary(tmp_path: Path, monkeypatch) -> None:

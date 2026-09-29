@@ -227,6 +227,7 @@ def test_next_step_32_asks_for_verify_before_smoke(
 ) -> None:
     _clear_llm(monkeypatch)
     monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("ZEUS_DEV_HELPER_TOOLSETS", "core,lint,support")
     from zeus_dev_helper_mcp.walkthrough import enriched_next_step
 
     cfg = reload_config()

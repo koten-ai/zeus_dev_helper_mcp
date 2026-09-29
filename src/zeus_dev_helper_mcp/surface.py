@@ -74,22 +74,11 @@ def recommend_surface(
         trace_class = "direct.interactive"
         do_not = [_DO_NOT_PIPELINE_DIRECT, *_DO_NOT_COMMON]
         notes.append("Typeahead / suggest is Direct interactive — no LLM round.")
-        if needs_llm is False:
-            notes.append(
-                "beer-sample catalog search is use_sample(sample=beer): rt.agent.run_turn "
-                "with chat_request omitted. An LLM key is required. Do not clone travel. "
-                "Typeahead suggest stays rt.data.search."
-            )
     elif key == "single_verb":
         surface = "rt.data.verb"
         trace_class = "direct.read"
         do_not = [_DO_NOT_PIPELINE_DIRECT, *_DO_NOT_COMMON]
         notes.append("Single V2 verb on Direct (find/get/describe/search/…). pipeline is not on Direct.")
-        if needs_llm is False:
-            notes.append(
-                "beer-sample catalog search is use_sample(sample=beer): rt.agent.run_turn "
-                "with chat_request omitted. rt.data.verb still rejects pipeline."
-            )
     elif key == "multi_step":
         surface = "agent-for-pipeline"
         trace_class = "agent"
@@ -98,53 +87,34 @@ def recommend_surface(
             "Multi-step composition stays on the agent path (rt.agent.run_turn / catalog pipeline). "
             "Do not POST pipeline via Direct."
         )
-        if needs_llm is False:
-            notes.append(
-                "beer-sample search is use_sample(sample=beer): rt.agent.run_turn with "
-                "chat_request omitted so MINI-SCHEMA is merged. Do not POST pipeline through "
-                "rt.data.verb (060010). Do not clone demo_travel_sample."
-            )
     else:
-        # nl_question
+        # nl_question — one website plan (ZDM-15). Do not also ship run_turn when there is no key.
+        do_not = [_DO_NOT_PIPELINE_DIRECT, *_DO_NOT_COMMON]
         if needs_llm is False:
             surface = "rt.data.verb"
             trace_class = "direct.read"
-            do_not = [_DO_NOT_PIPELINE_DIRECT, *_DO_NOT_COMMON]
             notes.append(
-                "needs_llm=false: prefer Direct verb/search over rt.agent.run_turn. "
-                "Use intent=typeahead for suggest UI."
-            )
-            notes.append(
-                "Website + named sample (e.g. beer-sample) → use_sample(sample=beer), "
-                "not a clone of demo_travel_sample. The written beer search follows travel: "
-                "rt.agent.run_turn with chat_request omitted so catalog.load_for_turn merges "
-                "SCOPE BRIEF + MINI-SCHEMA. An LLM key is required for that search."
+                "List and detail are Direct find + get. Pour is omitted until an LLM key exists."
             )
         else:
             surface = "rt.agent.run_turn"
             trace_class = "agent"
-            do_not = [_DO_NOT_PIPELINE_DIRECT, *_DO_NOT_COMMON]
             notes.append(
-                "Natural-language questions go through ZeusRuntime.agent.run_turn → TurnResult. "
-                "Default cheap path: ClientSettings(ai_process_result=False)."
+                "List is Direct find + get. Pour is rt.agent.run_turn with chat_request omitted."
             )
 
-    if qps is not None and qps > 5:
+    if qps is not None and qps > 5 and key != "nl_question":
         notes.append(
             f"qps={qps}: keep this off the agent loop. Typeahead/single_verb stay Direct; "
             "do not spawn run_turn per keystroke."
         )
-        if key == "nl_question" and needs_llm is not False:
-            notes.append(
-                "High QPS plus NL usually means the UI should be typeahead (rt.data.search), "
-                "not an agent turn per character."
-            )
 
-    notes.append(
-        "ZeusRuntime.from_config() loads config and may set catalog_remote; "
-        "still assign rt.services.zeus = HttpxZeusPort(...) and "
-        "rt.services.llm = OpenAICompatibleLlmClient(...) for a live turn."
-    )
+    if key != "nl_question":
+        notes.append(
+            "ZeusRuntime.from_config() loads config and may set catalog_remote; "
+            "still assign rt.services.zeus = HttpxZeusPort(...) and "
+            "rt.services.llm = OpenAICompatibleLlmClient(...) for a live turn."
+        )
 
     return {
         "ok": True,
@@ -161,18 +131,20 @@ def recommend_surface(
             "for_ai_agents": docs_url("zeus-client/for-ai-agents.md"),
         },
         "next_action": (
-            "use_sample(sample=beer) for the beer catalog UI "
-            "(run_turn, chat_request omitted; LLM key required); "
-            "do not clone travel; never pipeline on Direct"
-            if needs_llm is False
+            "List and detail are Direct find + get. Leave Pour off until an LLM key is in this process."
+            if key == "nl_question" and needs_llm is False
             else (
-                "explain_verb / lint_verb_args for Direct; "
-                "rt.agent.run_turn for NL; never pipeline on Direct"
+                "List is Direct find + get. Pour is rt.agent.run_turn with chat_request omitted."
+                if key == "nl_question"
+                else (
+                    "explain_verb / lint_verb_args for Direct; "
+                    "rt.agent.run_turn for NL; never pipeline on Direct"
+                )
             )
         ),
         "recommended_tools": (
-            ["use_sample", "smoke_test_zeus", "explain_verb"]
-            if needs_llm is False and key in ("nl_question", "typeahead", "single_verb")
+            ["readiness_check", "use_sample"]
+            if key == "nl_question"
             else []
         ),
     }
