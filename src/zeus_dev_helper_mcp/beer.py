@@ -1869,11 +1869,12 @@ def write_beer_sample(
         else:
             return {
                 "ok": False,
+                "failure_class": "foreign_sample_dir",
                 "error": f"target_dir not empty and does not look like beer sample: {root}",
                 "local_dir": str(root),
                 "next_action": (
                     "Pick an empty directory / unused project_name, or point sample_dir "
-                    "at an existing demo_beer_sample tree"
+                    "at an existing demo_beer_sample tree. This directory was not written."
                 ),
             }
 
@@ -1942,6 +1943,26 @@ def write_beer_sample(
     return _attach_llm_key(root, result)
 
 
+def _nonempty(path: Path) -> bool:
+    try:
+        return path.exists() and any(path.iterdir())
+    except OSError:
+        return False
+
+
+def _foreign_beer_dir(path: Path) -> bool:
+    return _nonempty(path) and not looks_like_beer_sample(path)
+
+
+def _next_open_beer_dir(parent: Path) -> Path | None:
+    """Next demo_beer_sample-N that is missing, empty, or already the generated tree."""
+    for n in range(2, 100):
+        candidate = parent / f"{DEFAULT_BEER_DIR_NAME}-{n}"
+        if not _foreign_beer_dir(candidate):
+            return candidate
+    return None
+
+
 def ensure_beer_sample(
     cfg: HelperConfig,
     *,
@@ -1957,10 +1978,39 @@ def ensure_beer_sample(
         project_name=project_name,
         parent_dir=parent_dir,
     )
+    named = project_name.strip()
+    explicit = bool(sample_dir.strip()) or (
+        bool(named) and sanitize_beer_dir_name(named) != DEFAULT_BEER_DIR_NAME
+    )
+    relocated_from = ""
+    if not explicit and not force and _foreign_beer_dir(dest) and dest.name == DEFAULT_BEER_DIR_NAME:
+        sibling = _next_open_beer_dir(dest.parent)
+        if sibling is None:
+            return {
+                "ok": False,
+                "failure_class": "foreign_sample_dir",
+                "error": f"target_dir not empty and does not look like beer sample: {dest}",
+                "local_dir": str(dest),
+                "next_action": (
+                    "Pass project_name for an empty directory. "
+                    "The default demo_beer_sample path was not written."
+                ),
+            }
+        relocated_from = str(dest)
+        dest = sibling
+        dir_name = dest.name
 
-    return write_beer_sample(
+    result = write_beer_sample(
         cfg,
         dest,
         project_name=dir_name,
         force=force,
     )
+    if relocated_from and result.get("ok"):
+        result["relocated_from"] = relocated_from
+        prior = str(result.get("next_action") or "").strip()
+        result["next_action"] = (
+            f"Default demo_beer_sample was a foreign tree at {relocated_from}. "
+            f"Wrote the catalog UI to {dest}. {prior}"
+        ).strip()
+    return result
