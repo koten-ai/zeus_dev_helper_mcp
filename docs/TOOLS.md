@@ -95,7 +95,7 @@ Phases: **0** intent → **1** prereqs → **2** platform → **3** project on d
 | Tool | Job | Args | Effects | When / next |
 | --- | --- | --- | --- | --- |
 | `get_checklist` | Full checklist JSON | — | none | Only when the user asks for the whole list. Prefer `next_step`. |
-| `next_step` | Single current item + `recommended_tools` | — | none | Default coach turn. After smokes green, also suggests handoff tools. |
+| `next_step` | Single current item + `recommended_tools` + `result_shapes` | — | none | Default coach turn. `result_shapes` records the live V2 contract: find forwards limit and order_by, a null total renders 1–N shown, and search items are doc_key hits. After smokes green, also suggests handoff tools. |
 | `gap_report` | Open items (phases 4–7 emphasis) + progress | — | none | After smokes, or when asked “what’s left”. |
 | `mark_done` | Mark an item done | `item_id`, `evidence` (optional) | `state` | After a probe actually succeeded. Evidence: no secrets / tokens / bodies. |
 | `mark_blocked` | Mark an item blocked | `item_id`, `reason` | `state` | When a gate fails and the human must act. |
