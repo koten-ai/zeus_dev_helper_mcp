@@ -150,12 +150,12 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             "project_name": "demo_beer_sample",
             "note": "Beer catalog UI. Search is rt.agent.run_turn with chat_request omitted (MINI-SCHEMA merge). Do not clone travel.",
         }
-    elif sample == "beer" and item_id in ("5.2", "6.1"):
-        # Direct track: agent smoke is not the primary next step
-        tools = ["smoke_test_zeus", "recommend_surface", "diagnose_error"]
+    elif sample == "beer" and item_id in ("5.1", "5.2", "6.1"):
+        tools = ["website_green"]
         base["note"] = (
-            "Beer catalog search is rt.agent.run_turn with chat_request omitted. "
-            "An LLM key is required. Do not clone travel or switch the BFF to bare Direct verbs."
+            "The catalog sample is written. website_green installs, starts, and "
+            "checks the list page. smoke_test_agent is not this check. "
+            "A describe 200 is not this check."
         )
     if sample == "api":
         base["app_track"] = "api"

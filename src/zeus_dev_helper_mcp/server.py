@@ -969,6 +969,18 @@ def smoke_test_zeus(update_checklist: bool = True) -> dict[str, Any]:
     return smoke_zeus_impl(_cfg(), update_checklist=update_checklist)
 
 
+def website_green(target_dir: str = "") -> dict[str, Any]:
+    """Install, start, and check the catalog page.
+
+    Separate from smoke_test_zeus. Mints the scope session when auth is basic,
+    then checks list cards and, when Pour is on, one search. A describe 200
+    is not this check. Does not call smoke_test_agent. No secrets in the result.
+    """
+    from zeus_dev_helper_mcp.website_green import website_green as website_green_impl
+
+    return website_green_impl(_cfg(), target_dir=target_dir)
+
+
 def smoke_test_agent(
     question: str = "In one short sentence, what data is available in this scope?",
     update_checklist: bool = True,

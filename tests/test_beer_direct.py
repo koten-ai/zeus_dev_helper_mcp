@@ -289,5 +289,5 @@ def test_walkthrough_beer_skips_agent_smoke_primary(tmp_path: Path, monkeypatch)
     nxt = enriched_next_step(cfg)
     assert nxt.get("app_track") == "ui-direct"
     tools = nxt.get("recommended_tools") or []
-    assert "smoke_test_agent" not in tools or tools[0] != "smoke_test_agent"
-    assert "smoke_test_zeus" in tools or "recommend_surface" in tools
+    assert "smoke_test_agent" not in tools
+    assert tools == ["website_green"]
