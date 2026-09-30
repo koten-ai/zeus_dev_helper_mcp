@@ -973,8 +973,9 @@ def website_green(target_dir: str = "") -> dict[str, Any]:
     """Install, start, and check the catalog page.
 
     Separate from smoke_test_zeus. Mints the scope session when auth is basic,
-    then checks list cards and, when Pour is on, one search. A describe 200
-    is not this check. Does not call smoke_test_agent. No secrets in the result.
+    then checks list cards and, when Pour is on, one search. A title-cased
+    doc_key or src_keys entry is not a search card. A describe 200 is not
+    this check. Does not call smoke_test_agent. No secrets in the result.
     """
     from zeus_dev_helper_mcp.website_green import website_green as website_green_impl
 

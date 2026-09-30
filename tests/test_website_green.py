@@ -13,7 +13,7 @@ import pytest
 
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.smoke import smoke_test_zeus
-from zeus_dev_helper_mcp.website_green import website_green
+from zeus_dev_helper_mcp.website_green import card_display_name, website_green
 
 
 class _AppHandler(BaseHTTPRequestHandler):
@@ -269,12 +269,12 @@ def test_search_named_card_and_diagnosed_empty(
     _AppHandler.search = {
         "items": [],
         "cards": [],
-        "empty_state": "fts_doc_key_only",
+        "empty_state": "no_hits",
         "req_ids": ["req-empty"],
     }
     diagnosed = website_green(_cfg(tmp_path), target_dir=str(root))
     assert diagnosed["ok"] is True
-    assert diagnosed["search_class"] == "fts_doc_key_only"
+    assert diagnosed["search_class"] == "no_hits"
     assert diagnosed["search_card_count"] == 0
 
     _AppHandler.search = {"items": [], "cards": [], "req_ids": ["req-bare"]}
@@ -282,6 +282,79 @@ def test_search_named_card_and_diagnosed_empty(
     assert bare["ok"] is False
     assert bare["failure_class"] == "search_empty"
     assert "smoke_test_agent" not in bare["recommended_tools"]
+
+
+def test_doc_key_title_fails_and_friar_list_card_passes(
+    tmp_path: Path,
+    app_server: tuple[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base, _unused = app_server
+    root = _tree(tmp_path, base.rsplit(":", 1)[1])
+    monkeypatch.setattr(
+        "zeus_dev_helper_mcp.explain_scope.explain_scope",
+        lambda cfg: _scope(["Beer"]),
+    )
+    _AppHandler.config = {"pour_enabled": True, "bucket": "beer-sample"}
+    _AppHandler.search = {
+        "items": [{"node": {"doc_key": "cains-ipa"}, "score": 1.2}],
+        "cards": [{"id": "cains-ipa", "name": "Cains IPA", "doc_key": "cains-ipa"}],
+        "gets": [{"id": "other-beer", "name": "Other Beer"}],
+        "req_ids": ["req-search"],
+    }
+    missing = website_green(_cfg(tmp_path), target_dir=str(root))
+    blob = json.dumps(missing)
+    assert missing["ok"] is False
+    assert missing["failure_class"] == "fts_doc_key_only"
+    assert missing["list_count"] == 1
+    assert missing["search_card_count"] == 0
+    assert "label" not in blob.casefold()
+    assert "parse doc_key" not in missing["next_action"]
+    assert "smoke_test_agent" not in missing["recommended_tools"]
+
+    _AppHandler.search = {
+        "items": [{"src_keys": ["cains-ipa"], "score": 1}],
+        "cards": [{"name": "Cains IPA", "src_keys": ["cains-ipa"]}],
+        "gets": [],
+    }
+    src = website_green(_cfg(tmp_path), target_dir=str(root))
+    assert src["failure_class"] == "fts_doc_key_only"
+
+    _AppHandler.search = {
+        "items": [],
+        "cards": [],
+        "empty_state": "fts_doc_key_only",
+    }
+    empty_key = website_green(_cfg(tmp_path), target_dir=str(root))
+    assert empty_key["ok"] is False
+    assert empty_key["failure_class"] == "fts_doc_key_only"
+
+    _AppHandler.search = {
+        "items": [{"node": {"doc_key": "cains-ipa"}, "score": 1.2}],
+        "cards": [{"id": "cains-ipa", "name": "Cain's IPA", "doc_key": "cains-ipa"}],
+        "gets": [{"id": "cains-ipa", "metadata": {"name": "Cain's IPA"}}],
+    }
+    named = website_green(_cfg(tmp_path), target_dir=str(root))
+    assert named["ok"] is True
+    assert named["search_card_count"] == 1
+    assert named["list_count"] == 1
+
+    _AppHandler.search = {
+        "items": [{"id": "friar", "metadata": {"name": "Friar's Porter"}}],
+        "cards": [{"id": "friar", "metadata": {"name": "Friar's Porter"}}],
+    }
+    meta = website_green(_cfg(tmp_path), target_dir=str(root))
+    assert meta["ok"] is True
+    assert meta["search_card_count"] == 1
+
+
+def test_card_display_name_rejects_title_cased_key() -> None:
+    assert card_display_name({"name": "Friar's Porter"}) == "Friar's Porter"
+    assert card_display_name({"name": "Cains IPA", "doc_key": "cains-ipa"}) == ""
+    assert card_display_name({"title": "Cains IPA", "src_keys": ["cains-ipa"]}) == ""
+    assert (
+        card_display_name({"metadata": {"name": "Friar's Porter"}}) == "Friar's Porter"
+    )
 
 
 def test_entity_outside_the_live_scope_fails(
