@@ -33,6 +33,7 @@ _ROWS: tuple[tuple[str, str, bool, bool, bool, bool], ...] = (
     ("readiness_check", CORE, False, False, True, True),
     ("list_catalog_modes", CATALOG, True, False, True, False),
     ("fetch_chat_request", CATALOG, True, False, True, False),
+    ("explain_scope", CORE, True, False, True, True),
     ("explain", CATALOG, True, False, True, False),
     ("bootstrap_scope", CATALOG, False, False, True, True),
     ("scaffold_app", CORE, False, True, False, True),

@@ -234,13 +234,24 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
 ) -> dict[str, Any]:
-    """UI sample path: travel clone or beer Direct template.
+    """UI sample path: travel clone, beer catalog UI, or a live-stamp page.
 
     travel: locate/clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     beer: write demo_beer_sample catalog UI (run_turn, chat_request omitted; LLM key required).
+    catalog: write demo_catalog_sample from explain_scope. Beer bucket or Beer + Brewery
+    still writes the beer catalog UI.
     For API-only apps use scaffold_app(app_kind=api).
     """
     sample = (sample or "travel").lower().strip()
+    if sample in ("catalog", "generic"):
+        from zeus_dev_helper_mcp.explain_scope import use_catalog_sample
+
+        return use_catalog_sample(
+            cfg,
+            sample_dir=sample_dir,
+            project_name=project_name,
+            parent_dir=parent_dir,
+        )
     if sample in ("travel", "demo_travel", "travel_sample", "demo_travel_sample", "ui"):
         from zeus_dev_helper_mcp.travel import travel_golden_path
 
@@ -362,6 +373,7 @@ def use_sample(
         "sample": sample,
         "next_action": (
             "Use sample=travel (LLM UI), sample=beer (catalog UI, run_turn), "
+            "sample=catalog (page from the live stamp), "
             "or scaffold_app for custom domain"
         ),
     }
