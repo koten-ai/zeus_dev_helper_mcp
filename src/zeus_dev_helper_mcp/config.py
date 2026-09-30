@@ -113,7 +113,8 @@ def load_config() -> HelperConfig:
     pr = _load_prereq_file(state_dir)
 
     # Persisted set_prereq wins over env for routing fields (ZDM-3).
-    # Secrets stay env-only; presence flags still OR env + prereq below.
+    # Username and password presence are the process environment only.
+    # A stored has_username / has_password flag is not a login (ZDM-19).
     zeus_url = _prereq_or_env(pr, "zeus_url", os.environ.get("ZEUS_URL", ""))
     auth_mode = _prereq_or_env(pr, "auth_mode", os.environ.get("ZEUS_AUTH_MODE", ""), "none")
     bucket = _prereq_or_env(pr, "bucket", os.environ.get("ZEUS_BUCKET", ""))
@@ -124,10 +125,10 @@ def load_config() -> HelperConfig:
     mode = _prereq_or_env(pr, "mode", os.environ.get("ZEUS_MODE", ""), "analytics")
     role = _prereq_or_env(pr, "role", os.environ.get("ZEUS_HELPER_ROLE", ""), "dev")
 
-    has_user = bool(os.environ.get("ZEUS_USERNAME") or os.environ.get("ZEUS_USER")) or bool(
-        pr.get("has_username")
+    has_user = bool(
+        (os.environ.get("ZEUS_USERNAME") or os.environ.get("ZEUS_USER") or "").strip()
     )
-    has_password = bool(os.environ.get("ZEUS_PASSWORD")) or bool(pr.get("has_password"))
+    has_password = bool((os.environ.get("ZEUS_PASSWORD") or "").strip())
     has_bearer = bool(os.environ.get("ZEUS_BEARER_TOKEN") or os.environ.get("ZEUS_TOKEN")) or bool(
         pr.get("has_bearer")
     )

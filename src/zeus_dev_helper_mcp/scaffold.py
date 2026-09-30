@@ -289,7 +289,7 @@ def use_sample(
         info["app_kind"] = "ui"
         info["track"] = "ui-direct"
         info["llm_required"] = True
-        return {
+        payload = {
             "ok": bool(ensured.get("ok")),
             "sample": info,
             "app_kind": "ui",
@@ -315,6 +315,18 @@ def use_sample(
             "checklist_hint": "Mark 3.1 done after the beer Direct UI is on disk",
             "docs": ensured.get("docs"),
         }
+        for key in (
+            "failure_class",
+            "pour_enabled",
+            "pour_reason",
+            "recommended_tools",
+            "app_env",
+            "relocated_from",
+            "missing_env",
+        ):
+            if ensured.get(key) is not None:
+                payload[key] = ensured[key]
+        return payload
     if sample in ("api", "rest", "api_only", "api-only"):
         return {
             "ok": False,
@@ -490,6 +502,14 @@ def scaffold_app(
         }
 
     root = Path(target_dir).expanduser().resolve()
+    from zeus_dev_helper_mcp.app_env import basic_login_blocked
+
+    blocked = basic_login_blocked(cfg)
+    if blocked is not None:
+        blocked["app_kind"] = kind
+        blocked["coding_language"] = lang
+        blocked["target_dir"] = str(root)
+        return blocked
     if root.exists() and any(root.iterdir()) and not force:
         existing = list(root.iterdir())
         if existing and not (root / "main.py").exists() and not force:
@@ -656,6 +676,11 @@ dependencies = [
         written.append(str(path))
 
     env_info = write_env_example(cfg, root)
+    from zeus_dev_helper_mcp.app_env import annotate_app_env
+
+    hinted_env = annotate_app_env(cfg, root, {"run": run_cmd})
+    run_cmd = str(hinted_env.get("run") or run_cmd)
+    app_env = hinted_env.get("app_env")
 
     hint = {
         "zeus_url": zeus_url,
@@ -677,13 +702,14 @@ dependencies = [
     except Exception:  # noqa: BLE001, S110
         pass
 
+    from zeus_dev_helper_mcp.app_env import annotate_pour
     from zeus_dev_helper_mcp.llm_key import inspect_app_llm_key
 
     llm_key = inspect_app_llm_key(root)
     if llm_key.get("applies") and not llm_key.get("ok") and llm_key.get("message"):
         next_action = f"{llm_key['message']} {next_action}"
 
-    return {
+    return annotate_pour({
         "ok": True,
         "target_dir": str(root),
         "app_kind": kind,
@@ -691,6 +717,7 @@ dependencies = [
         "client_package": "kotenai-zeus-client",
         "written": written,
         "env_example": env_info,
+        "app_env": app_env,
         "llm_key": llm_key,
         "secrets_note": (
             "Put username/password/token/LLM keys in .env or the process environment. "
@@ -699,7 +726,7 @@ dependencies = [
         "run": run_cmd,
         "next_action": next_action,
         "docs": docs,
-    }
+    }, catalog_ui=False)
 
 
 def verify_local_setup(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any]:

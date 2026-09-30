@@ -252,6 +252,8 @@ def _doctor_health() -> dict[str, Any]:
 
     sibling = resolve_local_repo_hint()
     routing = _url_routing_view(cfg)
+    from zeus_dev_helper_mcp.app_env import credential_presence
+
     next_action = (
         "set_prereq with the user’s Zeus URL/sample (if named), then start_project → next_step"
     )
@@ -259,6 +261,7 @@ def _doctor_health() -> dict[str, Any]:
         "ok": True,
         "version": __version__,
         "config": cfg.public_view(),
+        "credentials": credential_presence(cfg),
         "url_routing": routing,
         "catalog": {
             "reachable": catalog_ok,
@@ -592,6 +595,8 @@ def validate_env() -> dict[str, Any]:
         issues.append({"field": "zeus_chat_request", "level": "warn", "message": str(e)})
 
     ok = not any(i.get("level") == "error" for i in issues)
+    from zeus_dev_helper_mcp.app_env import credential_presence
+
     if not cfg.zeus_url:
         next_action = "Set ZEUS_URL, then validate_env"
     elif needs_llm_key and not cfg.has_llm_key:
@@ -606,6 +611,7 @@ def validate_env() -> dict[str, Any]:
     return {
         "ok": ok,
         "config": cfg.public_view(),
+        "credentials": credential_presence(cfg),
         "prereqs": public_prereqs(cfg),
         "catalog_templates": catalog_note,
         "issues": issues,
