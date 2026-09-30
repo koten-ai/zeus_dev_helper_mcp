@@ -1479,6 +1479,13 @@ An **LLM key is required** for search. Put it in `.env` as `LLM_API_KEY`.
 the secret into that field. `client_floor` is `client-floor-6.1`.
 The semantic cache stays off.
 
+`settings.durable_sessions` is false. Session trace calls `post_trace`.
+When that call omits the turn target, basic auth uses `DataTarget`, and
+`DataTarget.bucket` is `yelp-data`. With the flag false, a turn for this
+app logs into the bucket and scope in `config.json` only. Turn the flag
+on after the installed `kotenai-zeus-client` passes this app's target
+into `post_trace`.
+
 ## Setup
 
 ```bash
@@ -1782,7 +1789,7 @@ def write_beer_config(cfg: HelperConfig, target_dir: str | Path) -> dict[str, An
         },
         "settings": {
             "mode": "analytics",
-            "durable_sessions": True,
+            "durable_sessions": False,
             "ai_process_result": False,
             "max_rounds": 12,
             "ignore_user_tool_path_hints": True,
@@ -1791,6 +1798,15 @@ def write_beer_config(cfg: HelperConfig, target_dir: str | Path) -> dict[str, An
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return {"ok": True, "path": str(path)}
+
+
+def _pin_trace_bucket(cfg: HelperConfig, root: Path) -> None:
+    """Keep an existing catalog tree off the default yelp-data session login."""
+    write_beer_config(cfg, root)
+    (root / "README.md").write_text(
+        _README.format(project_name=root.name),
+        encoding="utf-8",
+    )
 
 
 def _hero_asset() -> Path:
@@ -1882,6 +1898,7 @@ def write_beer_sample(
             if beer_bff_is_current(main_text):
                 env_path = set_demo_beer_sample_dir_env(root)
                 save_beer_sample_dir(cfg, root)
+                _pin_trace_bucket(cfg, root)
                 layout = validate_beer_layout(root)
                 if beer_page_is_current(root):
                     return _finish_beer_result(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import re
 from typing import Any
 from urllib.parse import urljoin, urlparse
@@ -23,6 +24,86 @@ def _base_url(url: str) -> str:
 
 def _looks_like_hub(url: str) -> bool:
     return bool(re.search(r":9091\b", url or "")) or "/hub" in (url or "").lower()
+
+
+# Paths the readiness and smoke probes actually request. /v1/ai/* and /v2/session/*
+# are control-plane routes, not a data bucket.
+_AUTH_BUCKET_RE = re.compile(r"/v1/(?P<bucket>[^/]+)/[^/]+/auth/session(?:$|\?)")
+_V2_BUCKET_RE = re.compile(r"/v2/(?P<bucket>[^/]+)/[^/]+/")
+_RESERVED_BUCKETS = frozenset({"ai", "session", "agent_memory"})
+_probe_urls: contextvars.ContextVar[list[str] | None] = contextvars.ContextVar(
+    "zeus_helper_probe_urls",
+    default=None,
+)
+
+
+def note_probe_url(url: str) -> None:
+    urls = _probe_urls.get()
+    if urls is not None:
+        urls.append(url)
+
+
+def buckets_from_probe_url(url: str) -> tuple[str | None, str | None]:
+    """Return (auth bucket, v2 data bucket) for one probe URL."""
+    path = urlparse(url).path or ""
+    auth_bucket = None
+    data_bucket = None
+    auth_match = _AUTH_BUCKET_RE.search(path)
+    if auth_match and auth_match.group("bucket") not in _RESERVED_BUCKETS:
+        auth_bucket = auth_match.group("bucket")
+    data_match = _V2_BUCKET_RE.search(path)
+    if data_match and data_match.group("bucket") not in _RESERVED_BUCKETS:
+        data_bucket = data_match.group("bucket")
+    return auth_bucket, data_bucket
+
+
+def bucket_probe_from_names(
+    prereq_bucket: str,
+    request_buckets: list[str],
+    authenticated_bucket: str | None,
+) -> dict[str, Any]:
+    """Fail when a probe bucket is not the set_prereq bucket."""
+    prereq = (prereq_bucket or "").strip()
+    names: list[str] = []
+    for name in request_buckets:
+        if name and name not in names:
+            names.append(name)
+    if prereq:
+        foreign = [name for name in names if name != prereq]
+    else:
+        foreign = list(names)
+    report: dict[str, Any] = {
+        "ok": not foreign,
+        "authenticated_bucket": authenticated_bucket,
+        "prereq_bucket": prereq or None,
+        "request_buckets": names,
+    }
+    if foreign:
+        shown = ",".join(names) if names else "(none)"
+        report["failure_class"] = "auth_default_bucket"
+        report["foreign_buckets"] = foreign
+        report["next_action"] = (
+            "A probe touched a bucket other than the set_prereq bucket. "
+            f"prereq_bucket={prereq or '(empty)'} "
+            f"authenticated_bucket={authenticated_bucket or '(none)'} "
+            f"request_buckets={shown}. "
+            "Generated apps keep settings.durable_sessions false until post_trace "
+            "receives this target."
+        )
+    return report
+
+
+def bucket_probe_report(prereq_bucket: str, urls: list[str]) -> dict[str, Any]:
+    auth_bucket: str | None = None
+    names: list[str] = []
+    for url in urls:
+        auth, data = buckets_from_probe_url(url)
+        if auth and auth_bucket is None:
+            auth_bucket = auth
+        for name in (auth, data):
+            if name and name not in names:
+                names.append(name)
+    return bucket_probe_from_names(prereq_bucket, names, auth_bucket)
 
 
 def _auth_headers(cfg: HelperConfig) -> dict[str, str]:
@@ -97,6 +178,8 @@ def mint_scope_session(
 
     path = f"/v1/{bucket}/{scope}/auth/session"
     public["login_probe"] = f"POST {path}"
+    login_url = urljoin(base + "/", path.lstrip("/"))
+    note_probe_url(login_url)
     owns_client = client is None
     if client is None:
         client = httpx.Client(
@@ -106,7 +189,7 @@ def mint_scope_session(
         )
     try:
         response = client.post(
-            urljoin(base + "/", path.lstrip("/")),
+            login_url,
             auth=basic,
             headers=_auth_headers(cfg),
         )
@@ -288,6 +371,7 @@ def _get(
     auth: tuple[str, str] | None = None,
 ) -> httpx.Response:
     url = urljoin(base + "/", path.lstrip("/"))
+    note_probe_url(url)
     return client.get(url, auth=auth)
 
 
@@ -298,6 +382,28 @@ def run_readiness_check(
     probe_bootstrap: bool = True,
 ) -> dict[str, Any]:
     """Ordered platform gates. Never returns secret values."""
+    probe_urls: list[str] = []
+    token = _probe_urls.set(probe_urls)
+    try:
+        return _readiness_check_impl(
+            cfg,
+            update_checklist=update_checklist,
+            probe_bootstrap=probe_bootstrap,
+            probe_urls=probe_urls,
+        )
+    finally:
+        _probe_urls.reset(token)
+
+
+def _readiness_check_impl(
+    cfg: HelperConfig,
+    *,
+    update_checklist: bool = True,
+    probe_bootstrap: bool = True,
+    probe_urls: list[str] | None = None,
+) -> dict[str, Any]:
+    """Ordered platform gates. Never returns secret values."""
+    recorded = probe_urls if probe_urls is not None else []
     gates: list[dict[str, Any]] = []
     base = _base_url(cfg.zeus_url)
 
@@ -313,7 +419,9 @@ def run_readiness_check(
                 next_action="Set ZEUS_URL=http://<host>:8080 or call set_prereq(zeus_url=...)",
             )
         )
-        return _finish(cfg, gates, update_checklist=update_checklist)
+        return _finish_readiness(
+            cfg, gates, update_checklist=update_checklist, urls=recorded
+        )
 
     gates.append(
         _gate(
@@ -366,7 +474,9 @@ def run_readiness_check(
                 next_action="Fix local HTTP client configuration",
             )
         )
-        return _finish(cfg, gates, update_checklist=update_checklist)
+        return _finish_readiness(
+            cfg, gates, update_checklist=update_checklist, urls=recorded
+        )
 
     with client:
         # Gate 2: healthz
@@ -582,7 +692,9 @@ def run_readiness_check(
             )
         )
 
-    return _finish(cfg, gates, update_checklist=update_checklist)
+    return _finish_readiness(
+        cfg, gates, update_checklist=update_checklist, urls=recorded
+    )
 
 
 def _probe_json(
@@ -651,6 +763,43 @@ def _probe_json(
         detail=f"HTTP {r.status_code} on {path}",
         next_action="Inspect Zeus logs / confirm public API path",
     )
+
+
+def _finish_readiness(
+    cfg: HelperConfig,
+    gates: list[dict[str, Any]],
+    *,
+    update_checklist: bool,
+    urls: list[str],
+) -> dict[str, Any]:
+    report = bucket_probe_report(cfg.default_bucket or "", urls)
+    detail = (
+        f"authenticated bucket={report['authenticated_bucket'] or '(none)'} "
+        f"prereq bucket={report['prereq_bucket'] or '(none)'}"
+    )
+    evidence = {
+        "authenticated_bucket": report["authenticated_bucket"],
+        "prereq_bucket": report["prereq_bucket"],
+        "request_buckets": report["request_buckets"],
+    }
+    gate = _gate(
+        "probe_bucket",
+        "Probes stay on the set_prereq bucket",
+        "pass" if report["ok"] else "fail",
+        failure_class=None if report["ok"] else "auth_default_bucket",
+        detail=detail,
+        next_action="" if report["ok"] else str(report.get("next_action") or ""),
+        evidence=evidence,
+    )
+    if report["ok"]:
+        gates.append(gate)
+    else:
+        gates.insert(0, gate)
+    out = _finish(cfg, gates, update_checklist=update_checklist)
+    out["authenticated_bucket"] = report["authenticated_bucket"]
+    out["prereq_bucket"] = report["prereq_bucket"]
+    out["request_buckets"] = list(report["request_buckets"])
+    return out
 
 
 def _finish(

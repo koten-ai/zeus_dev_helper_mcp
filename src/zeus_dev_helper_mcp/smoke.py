@@ -11,7 +11,11 @@ import httpx
 from zeus_dev_helper_mcp.checklist import set_item_status
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.docs_links import docs_url
-from zeus_dev_helper_mcp.readiness import run_readiness_check
+from zeus_dev_helper_mcp.readiness import (
+    bucket_probe_from_names,
+    bucket_probe_report,
+    run_readiness_check,
+)
 
 
 def _base(cfg: HelperConfig) -> str:
@@ -52,6 +56,19 @@ def _auth(cfg: HelperConfig) -> tuple[str, str] | None:
 
 def _headers() -> dict[str, str]:
     return request_headers()
+
+
+def _merge_probe_buckets(
+    ready: dict[str, Any],
+    prereq_bucket: str,
+    extra_urls: list[str],
+) -> dict[str, Any]:
+    extra = bucket_probe_report(prereq_bucket, extra_urls)
+    return bucket_probe_from_names(
+        prereq_bucket,
+        list(ready.get("request_buckets") or []) + list(extra["request_buckets"]),
+        ready.get("authenticated_bucket") or extra.get("authenticated_bucket"),
+    )
 
 
 def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict[str, Any]:
@@ -97,8 +114,24 @@ def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict
         }
         return out
 
-    # Scope-level describe (V2)
+    # Scope-level describe (V2). A foreign bucket is a failed check and is not sent.
     url = describe_scope_url(cfg) or f"{base}/v2/{bucket}/{scope}/describe"
+    buckets = _merge_probe_buckets(ready, bucket, [url])
+    if not buckets["ok"]:
+        return {
+            "ok": False,
+            "failure_class": "auth_default_bucket",
+            "next_action": buckets.get("next_action")
+            or "Keep probes on the set_prereq bucket",
+            "bucket": bucket,
+            "scope": scope,
+            "collection": collection,
+            "authenticated_bucket": buckets.get("authenticated_bucket"),
+            "prereq_bucket": buckets.get("prereq_bucket"),
+            "request_buckets": buckets.get("request_buckets") or [],
+            "steps": steps,
+            "readiness": ready,
+        }
     body: dict[str, Any] = {}  # server defaults
     status = 0
     req_id = ""
@@ -126,6 +159,11 @@ def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict
             "ok": False,
             "failure_class": "network_timeout",
             "next_action": "Check ZEUS_URL / network; ensure Zeus is up",
+            "bucket": bucket,
+            "scope": scope,
+            "authenticated_bucket": buckets.get("authenticated_bucket"),
+            "prereq_bucket": buckets.get("prereq_bucket"),
+            "request_buckets": buckets.get("request_buckets") or [],
             "steps": steps,
             "readiness": ready,
         }
@@ -195,6 +233,9 @@ def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict
         "bucket": bucket,
         "scope": scope,
         "collection": collection,
+        "authenticated_bucket": buckets.get("authenticated_bucket"),
+        "prereq_bucket": buckets.get("prereq_bucket"),
+        "request_buckets": buckets.get("request_buckets") or [],
         "req_id": req_id or None,
         "steps": steps,
         "docs": {
