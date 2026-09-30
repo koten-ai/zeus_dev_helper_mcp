@@ -459,12 +459,32 @@ def _search_check(
     return _search_outcome(body)
 
 
+def _record_website_green(cfg: HelperConfig, result: dict[str, Any]) -> None:
+    """Remember ok and failure_class only. No URL, password, or session id."""
+    path = cfg.state_dir / "website_green.json"
+    payload = {
+        "ok": bool(result.get("ok")),
+        "failure_class": result.get("failure_class"),
+    }
+    try:
+        cfg.state_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    except OSError:
+        return
+
+
 def website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any]:
     """Install, start, and check the catalog page.
 
     Calls the session mint when auth is basic. Does not call describe and
     does not call smoke_test_agent.
     """
+    out = _run_website_green(cfg, target_dir)
+    _record_website_green(cfg, out)
+    return out
+
+
+def _run_website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any]:
     blocked = _mint_failure(cfg)
     if blocked is not None:
         return blocked

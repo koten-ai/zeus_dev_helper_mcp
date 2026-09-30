@@ -1,4 +1,5 @@
 import ast
+import json
 from pathlib import Path
 
 from zeus_dev_helper_mcp.config import HelperConfig
@@ -113,6 +114,104 @@ def test_diagnose_fts_doc_key_only() -> None:
     assert out["failure_class"] == "fts_doc_key_only"
     assert out["doc_anchor"] == "err-fts-doc-key-only"
     assert "doc_key" in out["next_action"]
+    assert "parse doc_key into cards" not in out["next_action"]
+    assert "fts_search.go" not in out["next_action"]
+    assert "labeler" not in out["next_action"].lower()
+    assert out["generated_file"] == "main.py"
+    assert "parser" in out["change"]
+
+
+def test_diagnose_find_offset_ignored() -> None:
+    out = diagnose_error(
+        HelperConfig(),
+        symptom="page 2 returned the same ids as page 1",
+    )
+    assert out["failure_class"] == "find_offset_ignored"
+    assert out["generated_file"] == "static/index.html"
+    assert out["change"].startswith("pager:")
+
+
+def test_diagnose_total_null_rendered_as_zero() -> None:
+    out = diagnose_error(
+        HelperConfig(),
+        symptom="range label is 1–1 of 0 and total_count is null",
+    )
+    assert out["failure_class"] == "total_null_rendered_as_zero"
+    assert out["generated_file"] == "main.py"
+    assert out["change"].startswith("pager:")
+
+
+def test_diagnose_hop_name_parsed_as_card() -> None:
+    out = diagnose_error(
+        HelperConfig(),
+        hop_name="find",
+        symptom="card title is the hop name find",
+    )
+    assert out["failure_class"] == "hop_name_parsed_as_card"
+    assert out["generated_file"] == "main.py"
+    assert out["change"].startswith("parser:")
+    assert "explain_scope" in out["next_action"]
+
+
+def test_diagnose_auth_default_bucket_before_auth_failed(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "prereqs.json").write_text(json.dumps({"bucket": "beer-sample"}), encoding="utf-8")
+    cfg = HelperConfig(state_dir=state, default_bucket="yelp-data")
+    out = diagnose_error(
+        cfg,
+        status="401",
+        symptom="basic login failed bucket=yelp-data password=s3cret session_id=sid-secret",
+        session_id="sid-secret",
+        body='{"name":"Secret Porter","description":"the secret body"}',
+    )
+    blob = json.dumps(out)
+    assert out["failure_class"] == "auth_default_bucket"
+    assert out["generated_file"] == "config.json"
+    assert out["change"].startswith("durable_sessions:")
+    assert "s3cret" not in blob
+    assert "sid-secret" not in blob
+    assert "Secret Porter" not in blob
+    assert "the secret body" not in blob
+
+    same = diagnose_error(
+        cfg,
+        status="401",
+        symptom="basic login failed bucket=beer-sample",
+    )
+    assert same["failure_class"] == "auth_failed"
+
+
+def test_diagnose_list_cached_short_page() -> None:
+    out = diagnose_error(
+        HelperConfig(),
+        symptom="the list cached a short page for CELLAR_CACHE_TTL 600",
+    )
+    assert out["failure_class"] == "list_cached_short_page"
+    assert out["generated_file"] == "main.py"
+    assert out["change"].startswith("cache TTL:")
+
+
+def test_diagnose_search_hop_doc_key_shape_drops_the_document() -> None:
+    out = diagnose_error(
+        HelperConfig(),
+        hop_name="search",
+        symptom="search hop",
+        item_keys='{"node": {"name": "Secret Porter", "description": "the secret body"}, "score": 1}',
+        node_keys="doc_key",
+        result_keys='{"items": [{"name": "Secret Porter"}], "node_ids": []}',
+    )
+    blob = json.dumps(out)
+    assert out["failure_class"] == "fts_doc_key_only"
+    assert out["generated_file"] == "main.py"
+    assert "explain_scope" in out["next_action"]
+    assert "fts_search.go" not in blob
+    assert "labeler" not in blob.lower()
+    assert "parse doc_key into cards" not in out["next_action"]
+    assert "Secret Porter" not in blob
+    assert "the secret body" not in blob
+    assert out["evidence"]["result_keys"] == ["items", "node_ids"]
+    assert out["evidence"]["session_id"] is None
 
 
 def test_diagnose_does_not_import_zeus_client() -> None:

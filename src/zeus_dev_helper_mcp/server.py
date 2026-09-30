@@ -998,6 +998,12 @@ def diagnose_error(
     status: str = "",
     body: str = "",
     message: str = "",
+    symptom: str = "",
+    hop_name: str = "",
+    hop_bucket: str = "",
+    result_keys: str = "",
+    item_keys: str = "",
+    node_keys: str = "",
     req_id: str = "",
     session_id: str = "",
     zeus_url: str = "",
@@ -1006,16 +1012,24 @@ def diagnose_error(
     chat_id: str = "",
     turn_id: str = "",
 ) -> dict[str, Any]:
-    """Map error signals to failure_class + errors.md anchor (ZDH-7 / ZDH-19).
+    """Map a symptom to failure_class + one generated-file change.
 
-    Includes Detective URL templates when req_id/chat_id are present (folded
-    detective_links). Does not scrape Hub.
+    Accepts symptom text, optional req_id, hop name, HTTP status, and the
+    top-level keys of the hop result. Does not accept document bodies.
+    Does not echo a password, session id, or document body. Includes Detective
+    URL templates when req_id/chat_id are present. Does not scrape Hub.
     """
     return diagnose_error_impl(
         _cfg(),
         status=status,
         body=body,
         message=message,
+        symptom=symptom,
+        hop_name=hop_name,
+        hop_bucket=hop_bucket,
+        result_keys=result_keys,
+        item_keys=item_keys,
+        node_keys=node_keys,
         req_id=req_id,
         session_id=session_id,
         zeus_url=zeus_url,

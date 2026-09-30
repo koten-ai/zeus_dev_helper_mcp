@@ -5,6 +5,8 @@ Does **not** import kotenai-zeus-client. ErrorCode strings are a static table.
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -176,8 +178,54 @@ _NEXT: dict[str, str] = {
         "with chat_request omitted."
     ),
     "fts_doc_key_only": (
-        "FTS returned items with empty node_ids and doc_key only. Parse doc_key into cards; "
-        "do not get without n_* graph ids."
+        "main.py parser: a search hit whose item keys are node and score, and whose node key "
+        "is doc_key, is an empty state. Do not turn doc_key into a card title. "
+        "Call explain_scope before inventing an entity or field."
+    ),
+    "find_offset_ignored": (
+        "static/index.html pager: hide Next until a probe shows page 2 ids differ from page 1."
+    ),
+    "total_null_rendered_as_zero": (
+        "main.py pager: when total_count is null, render 1–N shown. Do not render of 0."
+    ),
+    "hop_name_parsed_as_card": (
+        "main.py parser: do not use the hop name as a card title. "
+        "Call explain_scope before inventing an entity or field."
+    ),
+    "auth_default_bucket": (
+        "config.json durable_sessions: leave settings.durable_sessions false. "
+        "The hop bucket is not the prereq bucket."
+    ),
+    "list_cached_short_page": (
+        "main.py cache TTL: leave the list cache off until one list check passes, "
+        "then at most 30 seconds."
+    ),
+}
+
+_GENERATED_FIX: dict[str, tuple[str, str]] = {
+    "fts_doc_key_only": (
+        "main.py",
+        "parser: leave a doc_key-only hit as an empty state",
+    ),
+    "find_offset_ignored": (
+        "static/index.html",
+        "pager: hide Next until a probe shows page 2 ids differ from page 1",
+    ),
+    "total_null_rendered_as_zero": (
+        "main.py",
+        "pager: when total_count is null, render 1–N shown",
+    ),
+    "hop_name_parsed_as_card": (
+        "main.py",
+        "parser: do not use the hop name as a card title",
+    ),
+    "auth_default_bucket": (
+        "config.json",
+        "durable_sessions: leave settings.durable_sessions false",
+    ),
+    "list_cached_short_page": (
+        "main.py",
+        "cache TTL: leave the list cache off until one list check passes, then at most 30 seconds",
     ),
 }
 
@@ -203,7 +251,16 @@ _ANCHOR: dict[str, str] = {
     "session_force_closed": "err-session-force-closed",
     "empty_find_get": "err-empty-find-get",
     "fts_doc_key_only": "err-fts-doc-key-only",
+    "find_offset_ignored": "err-find-offset-ignored",
+    "total_null_rendered_as_zero": "err-total-null-rendered-as-zero",
+    "hop_name_parsed_as_card": "err-hop-name-parsed-as-card",
+    "auth_default_bucket": "err-auth-default-bucket",
+    "list_cached_short_page": "err-list-cached-short-page",
 }
+
+_SECRET_RE = re.compile(
+    r"(?i)\b(password|session_id|api_key|authorization|bearer)\b\s*[:=]\s*\S+"
+)
 
 
 def _norm_code(value: str) -> str:
@@ -274,12 +331,116 @@ def _detective_links(
     return links or None
 
 
+def _redact_preview(text: str) -> str | None:
+    """Symptom text only. A JSON document becomes its keys, never its values."""
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    if raw[:1] in "{[":
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict):
+            names = ",".join(sorted(str(key) for key in parsed))
+            return f"keys: {names}"[:300]
+        if isinstance(parsed, list):
+            return "list"
+    redacted = _SECRET_RE.sub(r"\1=[redacted]", raw)
+    return redacted[:300] or None
+
+
+def _key_set(value: str) -> set[str]:
+    """Top-level key names. Object values are discarded."""
+    text = (value or "").strip()
+    if not text:
+        return set()
+    if text[:1] in "{[":
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return {str(key).strip() for key in parsed if str(key).strip()}
+        if isinstance(parsed, list) and all(not isinstance(item, (dict, list)) for item in parsed):
+            return {str(item).strip() for item in parsed if str(item).strip()}
+        return set()
+    return {part.strip() for part in text.split(",") if part.strip()}
+
+
+def _prereq_bucket(cfg: HelperConfig) -> str:
+    stored = ""
+    path = cfg.state_dir / "prereqs.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    if isinstance(data, dict):
+        stored = str(data.get("bucket") or "").strip()
+    return stored or str(cfg.default_bucket or "").strip()
+
+
+def _bucket_from_text(blob: str) -> str:
+    match = re.search(r"bucket=([a-z0-9_.-]+)", blob)
+    if match:
+        return match.group(1)
+    match = re.search(r"/v1/([a-z0-9_.-]+)/", blob)
+    if match:
+        return match.group(1)
+    return ""
+
+
+def _auth_shaped(blob: str, status: str) -> bool:
+    if str(status).strip() == "401":
+        return True
+    return any(needle in blob for needle in ("login failed", "auth failed", "unauthor"))
+
+
+def _foreign_auth_bucket(cfg: HelperConfig, blob: str, hop_bucket: str, status: str) -> bool:
+    if not _auth_shaped(blob, status):
+        return False
+    hop = (hop_bucket or "").strip().lower() or _bucket_from_text(blob)
+    home = _prereq_bucket(cfg).lower()
+    return bool(hop and home and hop != home)
+
+
+def _search_doc_key_shape(hop_name: str, item_keys: set[str], node_keys: set[str]) -> bool:
+    hop = hop_name.strip().lower()
+    if hop not in {"search", "fts"}:
+        return False
+    items = {key.casefold() for key in item_keys}
+    nodes = {key.casefold() for key in node_keys}
+    return items == {"node", "score"} and nodes == {"doc_key"}
+
+
+def _phrase_class(blob: str) -> tuple[str, str] | None:
+    if "find_offset_ignored" in blob or ("page 2" in blob and "same" in blob and "id" in blob):
+        return "find_offset_ignored", "err-find-offset-ignored"
+    if "total_null_rendered_as_zero" in blob or (
+        "of 0" in blob and any(word in blob for word in ("total", "label", "range"))
+    ):
+        return "total_null_rendered_as_zero", "err-total-null-rendered-as-zero"
+    if "hop_name_parsed_as_card" in blob or ("hop name" in blob and "card" in blob):
+        return "hop_name_parsed_as_card", "err-hop-name-parsed-as-card"
+    if "list_cached_short_page" in blob or (
+        "cache" in blob and ("600" in blob or "short page" in blob)
+    ):
+        return "list_cached_short_page", "err-list-cached-short-page"
+    return None
+
+
 def diagnose_error(
     cfg: HelperConfig,
     *,
     status: str = "",
     body: str = "",
     message: str = "",
+    symptom: str = "",
+    hop_name: str = "",
+    hop_bucket: str = "",
+    result_keys: str = "",
+    item_keys: str = "",
+    node_keys: str = "",
     req_id: str = "",
     session_id: str = "",
     zeus_url: str = "",
@@ -288,58 +449,79 @@ def diagnose_error(
     chat_id: str = "",
     turn_id: str = "",
 ) -> dict[str, Any]:
-    blob = f"{status} {body} {message} {zeus_url} {error_code} {error_class}".lower()
+    del session_id  # accepted so callers can pass it; never echoed
+    blob = (
+        f"{status} {body} {message} {symptom} {hop_name} {hop_bucket} "
+        f"{zeus_url} {error_code} {error_class}"
+    ).lower()
     failure = "dispatch_failed"
     anchor = "err-dispatch-failed"
     matched = "default"
+    shaped = _search_doc_key_shape(hop_name, _key_set(item_keys), _key_set(node_keys))
+    phrase = _phrase_class(blob)
 
-    # 1. Explicit client ErrorCode / Zeus error_class
-    hit = _lookup_code(error_code) or _lookup_class(error_class)
-    if hit:
-        failure, anchor = hit
-        matched = "error_code" if error_code else "error_class"
-        if failure == "invalid_req_id" and (
-            "base:1" in blob or "composite" in blob or (error_class or "").lower() == "composite_hop"
-        ):
-            failure, anchor = "composite_req_id", "err-composite-req-id"
+    if _foreign_auth_bucket(cfg, blob, hop_bucket, status):
+        failure, anchor = "auth_default_bucket", "err-auth-default-bucket"
+        matched = "hop_bucket"
     else:
-        # 2. HTTP status
-        st = str(status).strip()
-        if st == "401":
-            failure, anchor = "auth_failed", "err-401-auth"
-            matched = "status"
-        elif st == "409":
-            failure, anchor = "hash_drift", "err-409-drift"
-            matched = "status"
-        elif st == "429" and any(
-            n in blob
-            for n in (
-                "session_force_closed",
-                "round budget",
-                "per-session",
-                "re-authenticate",
-                "session exceeded",
-            )
-        ):
-            failure, anchor = "session_force_closed", "err-session-force-closed"
-            matched = "status"
-        elif st == "404" and any(n in blob for n in ("/v1/session", "v1/session", "v1 session", "v1/tools")):
-            failure, anchor = "v1_session_removed", "err-v1-session-removed"
-            matched = "status"
-        elif st == "400" and ("invalid_req_id" in blob or "base:1" in blob or "composite_hop" in blob):
-            if "base:1" in blob or "composite" in blob:
+        # 1. Explicit client ErrorCode / Zeus error_class
+        hit = _lookup_code(error_code) or _lookup_class(error_class)
+        if hit:
+            failure, anchor = hit
+            matched = "error_code" if error_code else "error_class"
+            if failure == "invalid_req_id" and (
+                "base:1" in blob
+                or "composite" in blob
+                or (error_class or "").lower() == "composite_hop"
+            ):
                 failure, anchor = "composite_req_id", "err-composite-req-id"
-            else:
-                failure, anchor = "invalid_req_id", "err-invalid-req-id"
-            matched = "status"
+        elif shaped:
+            failure, anchor = "fts_doc_key_only", "err-fts-doc-key-only"
+            matched = "result_keys"
+        elif phrase:
+            failure, anchor = phrase
+            matched = "symptom"
         else:
-            # 3. Needles
-            for needles, fc, anc in _RULES:
-                if any(n in blob for n in needles):
-                    failure = fc
-                    anchor = anc
-                    matched = "needle"
-                    break
+            # 2. HTTP status, then needles
+            st = str(status).strip()
+            if st == "401":
+                failure, anchor = "auth_failed", "err-401-auth"
+                matched = "status"
+            elif st == "409":
+                failure, anchor = "hash_drift", "err-409-drift"
+                matched = "status"
+            elif st == "429" and any(
+                n in blob
+                for n in (
+                    "session_force_closed",
+                    "round budget",
+                    "per-session",
+                    "re-authenticate",
+                    "session exceeded",
+                )
+            ):
+                failure, anchor = "session_force_closed", "err-session-force-closed"
+                matched = "status"
+            elif st == "404" and any(
+                n in blob for n in ("/v1/session", "v1/session", "v1 session", "v1/tools")
+            ):
+                failure, anchor = "v1_session_removed", "err-v1-session-removed"
+                matched = "status"
+            elif st == "400" and (
+                "invalid_req_id" in blob or "base:1" in blob or "composite_hop" in blob
+            ):
+                if "base:1" in blob or "composite" in blob:
+                    failure, anchor = "composite_req_id", "err-composite-req-id"
+                else:
+                    failure, anchor = "invalid_req_id", "err-invalid-req-id"
+                matched = "status"
+            else:
+                for needles, fc, anc in _RULES:
+                    if any(n in blob for n in needles):
+                        failure = fc
+                        anchor = anc
+                        matched = "needle"
+                        break
 
     url = zeus_url or cfg.zeus_url or ""
     detective = _detective_links(zeus_url=url, req_id=req_id.strip(), chat_id=chat_id.strip())
@@ -357,14 +539,20 @@ def diagnose_error(
             "error_code": error_code or None,
             "error_class": error_class or None,
             "req_id": req_id or None,
-            "session_id": session_id or None,
+            "session_id": None,
             "chat_id": chat_id or None,
             "turn_id": turn_id or None,
             "zeus_url": url or None,
-            "message_preview": (message or body)[:300] or None,
+            "hop_name": hop_name or None,
+            "result_keys": sorted(_key_set(result_keys)) or None,
+            "message_preview": _redact_preview(symptom or message),
         },
         "agent_index": docs_url("agent-index.yaml"),
     }
+    fix = _GENERATED_FIX.get(failure)
+    if fix:
+        out["generated_file"] = fix[0]
+        out["change"] = fix[1]
     if detective:
         out["detective"] = detective
         out["detective_note"] = "URL templates only — Helper does not scrape Hub/Detective."

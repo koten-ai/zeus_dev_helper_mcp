@@ -456,6 +456,54 @@ def test_api_app_health_has_no_catalog_list(
     assert not any("describe" in path for path in _AppHandler.paths)
 
 
+def test_next_step_after_website_green_failure_is_diagnose(
+    tmp_path: Path,
+    app_server: tuple[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    from zeus_dev_helper_mcp.checklist import set_item_status
+    from zeus_dev_helper_mcp.config import reload_config
+    from zeus_dev_helper_mcp.server import start_project
+    from zeus_dev_helper_mcp.walkthrough import enriched_next_step
+
+    base, _unused = app_server
+    _AppHandler.beers = {
+        "items": [],
+        "cards": [],
+        "range_label": "0 shown",
+        "entity": "Beer",
+        "req_ids": ["req-list"],
+    }
+    start_project(sample="beer")
+    cfg = reload_config()
+    for item_id in (
+        "0.1",
+        "0.2",
+        "1.1",
+        "1.2",
+        "2.1",
+        "2.2",
+        "2.3",
+        "3.1",
+        "3.2",
+        "4.1",
+        "4.2",
+        "5.1",
+    ):
+        set_item_status(cfg, item_id, "done", evidence="test")
+    out = website_green(cfg, target_dir=str(_tree(tmp_path, base.rsplit(":", 1)[1])))
+    assert out["ok"] is False
+    saved = json.loads((tmp_path / "state" / "website_green.json").read_text(encoding="utf-8"))
+    assert saved["ok"] is False
+    assert "local-secret" not in json.dumps(saved)
+    nxt = enriched_next_step(cfg)
+    tools = nxt.get("recommended_tools") or []
+    assert tools == ["diagnose_error"]
+    assert "scaffold_app" not in tools
+    assert "use_sample" not in tools
+
+
 def test_missing_directory(tmp_path: Path) -> None:
     out = website_green(_cfg(tmp_path), target_dir=str(tmp_path / "missing"))
     assert out["failure_class"] == "sample_dir_missing"

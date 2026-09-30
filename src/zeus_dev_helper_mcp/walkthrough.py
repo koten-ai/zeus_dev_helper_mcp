@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from zeus_dev_helper_mcp.checklist import load_checklist
@@ -116,6 +117,15 @@ RESULT_SHAPES: dict[str, str] = {
 }
 
 
+def _website_green_failed(cfg: HelperConfig) -> bool:
+    path = cfg.state_dir / "website_green.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("ok") is False
+
+
 def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
     from zeus_dev_helper_mcp.beer import missing_recorded_beer_dir
 
@@ -151,12 +161,19 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             "note": "Beer catalog UI. Search is rt.agent.run_turn with chat_request omitted (MINI-SCHEMA merge). Do not clone travel.",
         }
     elif sample == "beer" and item_id in ("5.1", "5.2", "6.1"):
-        tools = ["website_green"]
-        base["note"] = (
-            "The catalog sample is written. website_green installs, starts, and "
-            "checks the list page. smoke_test_agent is not this check. "
-            "A describe 200 is not this check."
-        )
+        if _website_green_failed(cfg):
+            tools = ["diagnose_error"]
+            base["note"] = (
+                "website_green failed on the running app. diagnose_error maps the symptom. "
+                "Do not scaffold another app."
+            )
+        else:
+            tools = ["website_green"]
+            base["note"] = (
+                "The catalog sample is written. website_green installs, starts, and "
+                "checks the list page. smoke_test_agent is not this check. "
+                "A describe 200 is not this check."
+            )
     if sample == "api":
         base["app_track"] = "api"
     elif sample == "beer":
