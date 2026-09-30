@@ -77,6 +77,29 @@ def _keep_enabled(tools: list[str]) -> list[str]:
     return kept
 
 
+def _yelp_sample_unbound(cfg: HelperConfig) -> bool:
+    """True when neither the env var nor yelp_sample.json names a directory."""
+    from zeus_dev_helper_mcp.yelp import recorded_yelp_sample_dir
+
+    return recorded_yelp_sample_dir(cfg) is None
+
+
+def _yelp_use_sample_hint() -> dict[str, str]:
+    return {
+        "sample": "demo_yelp",
+        "project_name": "demo_yelp",
+        "note": (
+            "Clone https://github.com/koten-ai/demo_yelp. "
+            "When parent_dir is set, create the clone there instead of binding "
+            "a checkout outside that directory. "
+            "The checkout is the app: run it. Do not write a new app and do not "
+            "copy demo_beer_sample. Sets DEMO_YELP_SAMPLE_DIR. "
+            "Bucket yelp-demo, scope _default. "
+            "Do not clone demo_travel_sample. Do not pass sample=yelp."
+        ),
+    }
+
+
 def _stored_zeus_url(cfg: HelperConfig) -> str:
     try:
         from zeus_dev_helper_mcp.prereqs import load_prereqs
@@ -148,6 +171,33 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
     item_id = item.get("id") if isinstance(item, dict) else None
     tools = list(TOOL_HINTS.get(item_id or "", ["next_step", "doctor"]))
     sample = _checklist_sample(cfg)
+    if (
+        sample == "demo_yelp"
+        and item_id not in ("0.1", "0.2")
+        and _yelp_sample_unbound(cfg)
+    ):
+        base["app_track"] = "ui"
+        base["use_sample_args_hint"] = _yelp_use_sample_hint()
+        base["note"] = (
+            "demo_yelp is not bound. use_sample(sample=demo_yelp) locates or "
+            "clones it and sets DEMO_YELP_SAMPLE_DIR."
+        )
+        base["recommended_tools"] = _keep_enabled(["use_sample"])
+        return base
+    if sample == "demo_yelp" and item_id not in ("0.1", "0.2") and not _yelp_sample_unbound(cfg):
+        from zeus_dev_helper_mcp.yelp import recorded_yelp_sample_dir
+
+        recorded = recorded_yelp_sample_dir(cfg)
+        base["app_track"] = "ui"
+        base["local_dir"] = str(recorded) if recorded is not None else ""
+        base["note"] = (
+            f"The app is the demo_yelp git checkout at {recorded}. "
+            "Run that repository (cd frontend && npm install && npm run dev, "
+            "http://localhost:5173). It is the template. "
+            "Do not scaffold_app, do not copy demo_beer_sample, and do not write a new app."
+        )
+        base["recommended_tools"] = []
+        return base
     if sample == "api" and item_id in ("0.2", "3.1"):
         # API track: scaffold FastAPI, not travel UI sample
         tools = ["scaffold_app", "verify_local_setup", "write_env"]
@@ -179,15 +229,7 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             )
     elif sample == "demo_yelp" and item_id in ("0.2", "3.1"):
         tools = ["use_sample"]
-        base["use_sample_args_hint"] = {
-            "sample": "demo_yelp",
-            "project_name": "demo_yelp",
-            "note": (
-                "Clone https://github.com/koten-ai/demo_yelp when missing. "
-                "Sets DEMO_YELP_SAMPLE_DIR. Do not clone demo_travel_sample. "
-                "Do not pass sample=yelp."
-            ),
-        }
+        base["use_sample_args_hint"] = _yelp_use_sample_hint()
     if sample == "api":
         base["app_track"] = "api"
     elif sample == "beer":
@@ -246,7 +288,7 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             "Do not run the app or smoke_test_agent before that."
         )
     # ZDM-15: after the app is chosen, one next action. Host ZEUS_URL does not count.
-    if item_id == "0.2" and sample in ("beer", "travel", "api"):
+    if item_id == "0.2" and sample in ("beer", "travel", "api", "demo_yelp"):
         if not _stored_zeus_url(cfg):
             tools = ["set_prereq"]
             base["note"] = (
@@ -258,6 +300,12 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             base["note"] = (
                 "URL is stored. readiness_check, then "
                 "scaffold_app(app_kind=api, coding_language=python)."
+            )
+        elif sample == "demo_yelp":
+            tools = ["readiness_check", "use_sample"]
+            base["use_sample_args_hint"] = _yelp_use_sample_hint()
+            base["note"] = (
+                "URL is stored. readiness_check, then use_sample(sample=demo_yelp)."
             )
         else:
             tools = ["readiness_check", "use_sample"]

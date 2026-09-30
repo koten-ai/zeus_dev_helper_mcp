@@ -228,10 +228,12 @@ TOPICS: dict[str, dict[str, str]] = {
     },
     "demo_yelp": {
         "summary": (
-            "demo_yelp is the yelp-demo UI template. use_sample(sample=demo_yelp) locates "
-            "or shallow-clones https://github.com/koten-ai/demo_yelp and sets "
-            "DEMO_YELP_SAMPLE_DIR. Zeus bucket is yelp-demo, scope _default. "
-            "UI quick start is cd frontend && npm install && npm run dev. "
+            "demo_yelp is the yelp-demo UI template from https://github.com/koten-ai/demo_yelp. "
+            "use_sample(sample=demo_yelp) locates or shallow-clones that repository and sets "
+            "DEMO_YELP_SAMPLE_DIR. When parent_dir is set, the clone is created there. "
+            "That checkout is the app. Run cd frontend && npm install && npm run dev. "
+            "Do not scaffold a replacement and do not copy demo_beer_sample. "
+            "Zeus bucket is yelp-demo, scope _default. "
             "Do not pass sample=yelp — that name is the multi-agent handoff. "
             "Do not clone demo_travel_sample on this path."
         ),

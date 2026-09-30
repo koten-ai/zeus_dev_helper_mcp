@@ -376,8 +376,11 @@ def use_sample(
             "private": True,
             "app_kind": "ui",
             "note": (
-                "Yelp demo UI. use_sample clones demo_yelp when missing and sets "
-                "DEMO_YELP_SAMPLE_DIR. Do not pass sample=yelp (multi-agent handoff)."
+                "Yelp demo UI. The git checkout at local_dir is the app from "
+                "https://github.com/koten-ai/demo_yelp. Run it. "
+                "Do not scaffold a replacement and do not copy demo_beer_sample. "
+                "When parent_dir is set, the clone is created there. "
+                "Do not pass sample=yelp (multi-agent handoff)."
             ),
             "clone": f"git clone --depth 1 {YELP_REPO_GIT}",
         }
@@ -394,6 +397,7 @@ def use_sample(
             "next_action": ensured.get("next_action")
             or "Clone demo_yelp and set DEMO_YELP_SAMPLE_DIR",
             "checklist_hint": "Mark 3.1 done after the yelp demo clone or reuse",
+            "do_not": ensured.get("do_not"),
         }
     if sample in ("api", "rest", "api_only", "api-only"):
         return {

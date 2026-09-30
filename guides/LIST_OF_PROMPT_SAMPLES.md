@@ -242,7 +242,7 @@ Locate or clone public `demo_travel_sample` (UI default). Sets `DEMO_TRAVEL_SAMP
 4. Can I switch the sample to Yelp/multi now? Use `use_sample` and show the single-agent gate if it blocks.
 5. Create a Zeus app using yelp-demo.
 
-**Expected tool sequence:** `set_prereq(bucket=yelp-demo, scope=_default)` → `start_project(sample=demo_yelp)` → `use_sample(sample=demo_yelp)`. Clones https://github.com/koten-ai/demo_yelp when the directory is missing and sets `DEMO_YELP_SAMPLE_DIR`. Do not pass `sample=yelp` (multi-agent gate) and do not clone `demo_travel_sample`.
+**Expected tool sequence:** `set_prereq(bucket=yelp-demo, scope=_default)` → `start_project(sample=demo_yelp)` → `use_sample(sample=demo_yelp)`. Clones https://github.com/koten-ai/demo_yelp when the directory is missing and sets `DEMO_YELP_SAMPLE_DIR`. When `parent_dir` is set, the clone is created in that directory. That git checkout is the app: run `cd frontend && npm install && npm run dev`. Do not scaffold a replacement and do not copy `demo_beer_sample`. Do not pass `sample=yelp` (multi-agent gate) and do not clone `demo_travel_sample`.
 
 ### `travel_golden_path`
 

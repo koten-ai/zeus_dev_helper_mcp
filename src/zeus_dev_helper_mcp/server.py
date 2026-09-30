@@ -165,6 +165,9 @@ INSTRUCTIONS = (
     "Yelp demo: utterances yelp-demo / demo_yelp use start_project(sample=demo_yelp) → "
     "use_sample(sample=demo_yelp), which clones https://github.com/koten-ai/demo_yelp when "
     "missing and sets DEMO_YELP_SAMPLE_DIR. set_prereq bucket yelp-demo scope _default. "
+    "When parent_dir is set, the clone is created in that directory. "
+    "That git checkout is the app: run it (cd frontend && npm install && npm run dev). "
+    "Do not scaffold a replacement and do not copy demo_beer_sample. "
     "Do not clone demo_travel_sample on that path. Bare sample=yelp stays the multi-agent handoff. "
     "API-only: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python) "
     "(FastAPI POST /turn). Other coding languages are not scaffolded yet. "
@@ -449,7 +452,7 @@ def _start_project_body(
     from zeus_dev_helper_mcp.checklist import save_checklist
 
     save_checklist(cfg, data)
-    if sample_l in ("beer", "travel", "api"):
+    if sample_l in ("beer", "travel", "api", "demo_yelp"):
         try:
             set_item_status(cfg, "0.1", "done", evidence=f"sample={sample}")
         except Exception:  # noqa: BLE001, S110
@@ -514,17 +517,14 @@ def _start_project_body(
         out["note"] = (
             "Yelp demo UI: after prereqs/readiness, use_sample(sample=demo_yelp) "
             "locates or clones demo_yelp and sets DEMO_YELP_SAMPLE_DIR. "
+            "When parent_dir is set, the clone is created in that directory. "
+            "That git checkout is the app. Run it. "
+            "Do not scaffold a replacement and do not copy demo_beer_sample. "
             "set_prereq bucket yelp-demo scope _default. "
             "Do not clone demo_travel_sample. Do not pass sample=yelp "
             "(that name is the multi-agent handoff)."
         )
-        out["recommended_tools"] = [
-            "set_prereq",
-            "readiness_check",
-            "use_sample",
-            "smoke_test_zeus",
-            "smoke_test_agent",
-        ]
+        out["recommended_tools"] = list(nxt.get("recommended_tools") or [])
     elif wants_multi:
         out["track"] = "multi-agent"
         out["handoff_to_multi"] = handoff_to_multi_impl(cfg, force=True)
@@ -930,7 +930,7 @@ def use_sample(
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     sample=beer — write demo_beer_sample catalog UI. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
     sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
-    sample=demo_yelp — locate/clone demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. Bare sample=yelp stays the multi-agent handoff.
+    sample=demo_yelp — locate/clone demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: run it, and do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample / demo_yelp).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     When no Zeus URL is stored, the MCP call asks before writing or cloning.

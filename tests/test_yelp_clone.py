@@ -218,8 +218,9 @@ def test_failed_clone_does_not_fall_through(tmp_path: Path, monkeypatch) -> None
 
 def test_start_project_demo_yelp(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
-    from zeus_dev_helper_mcp.checklist import set_item_status
+    monkeypatch.delenv(ENV_YELP_DIR, raising=False)
     from zeus_dev_helper_mcp.config import reload_config
+    from zeus_dev_helper_mcp.prereqs import save_prereqs
     from zeus_dev_helper_mcp.server import start_project
     from zeus_dev_helper_mcp.walkthrough import enriched_next_step
 
@@ -229,18 +230,154 @@ def test_start_project_demo_yelp(tmp_path: Path, monkeypatch) -> None:
     assert out["sample"] == "demo_yelp"
     assert out["track"] == "ui"
     assert out["app_kind"] == "ui"
-    tools = out.get("recommended_tools") or []
-    assert "use_sample" in tools
-    assert "smoke_test_agent" in tools
+    assert out.get("recommended_tools") == ["set_prereq"]
 
     cfg = reload_config()
-    set_item_status(cfg, "0.1", "done", evidence="test")
+    checklist = load_checklist(cfg)
+    item_01 = next(
+        item
+        for phase in checklist["phases"]
+        for item in phase["items"]
+        if item["id"] == "0.1"
+    )
+    assert item_01["status"] == "done"
     nxt = enriched_next_step(cfg)
     assert nxt.get("app_track") == "ui"
-    assert "use_sample" in (nxt.get("recommended_tools") or [])
+    assert nxt.get("item", {}).get("id") == "0.2"
+    assert nxt.get("recommended_tools") == ["set_prereq"]
+
+    save_prereqs(
+        cfg,
+        {
+            "zeus_url": "http://192.168.0.219:8080",
+            "bucket": "yelp-demo",
+            "scope": "_default",
+        },
+    )
+    nxt = enriched_next_step(cfg)
+    assert nxt.get("recommended_tools") == ["readiness_check", "use_sample"]
     hint = nxt.get("use_sample_args_hint") or {}
     assert hint.get("sample") == "demo_yelp"
     assert hint.get("project_name") == "demo_yelp"
+    assert "yelp-demo" in (hint.get("note") or "")
+
+
+def test_next_step_unbound_yelp_after_green_checklist(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.delenv(ENV_YELP_DIR, raising=False)
+    from zeus_dev_helper_mcp.checklist import set_item_status
+    from zeus_dev_helper_mcp.config import reload_config
+    from zeus_dev_helper_mcp.server import start_project
+    from zeus_dev_helper_mcp.walkthrough import enriched_next_step
+    from zeus_dev_helper_mcp.yelp import save_yelp_sample_dir
+
+    start_project(sample="yelp-demo")
+    cfg = reload_config()
+    for iid in (
+        "0.1",
+        "0.2",
+        "1.1",
+        "1.2",
+        "2.1",
+        "2.2",
+        "2.3",
+        "3.1",
+        "3.2",
+        "4.1",
+        "4.2",
+        "5.1",
+        "5.2",
+    ):
+        set_item_status(cfg, iid, "done", evidence="test")
+    nxt = enriched_next_step(cfg)
+    assert nxt.get("recommended_tools") == ["use_sample"]
+    hint = nxt.get("use_sample_args_hint") or {}
+    assert hint.get("sample") == "demo_yelp"
+    assert hint.get("project_name") == "demo_yelp"
+
+    root = tmp_path / "demo_yelp"
+    root.mkdir()
+    save_yelp_sample_dir(cfg, root)
+    nxt = enriched_next_step(cfg)
+    assert nxt.get("recommended_tools") == []
+    note = nxt.get("note") or ""
+    assert str(root.resolve()) in note
+    assert "demo_beer_sample" in note
+    assert "template" in note
+
+
+def test_parent_dir_clones_instead_of_outside_checkout(tmp_path: Path, monkeypatch) -> None:
+    sibling = tmp_path / "elsewhere" / "demo_yelp"
+    _write_layout(sibling)
+    parent = tmp_path / "demos"
+    parent.mkdir()
+    dest = parent / "demo_yelp"
+    monkeypatch.delenv(ENV_YELP_DIR, raising=False)
+    monkeypatch.setattr(
+        "zeus_dev_helper_mcp.yelp._find_yelp_dir",
+        lambda explicit="", cfg=None: sibling,
+    )
+
+    def fake_run(cmd, **kwargs):
+        assert cmd[-1] == str(dest.resolve())
+        _write_layout(dest)
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.stderr = ""
+        proc.stdout = ""
+        return proc
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.yelp.subprocess.run", fake_run)
+    cfg = _cfg(tmp_path)
+    out = use_sample(
+        cfg,
+        sample="demo_yelp",
+        project_name="demo_yelp",
+        parent_dir=str(parent),
+    )
+    assert out["ok"] is True
+    assert out["cloned"] is True
+    assert out["local_dir"] == str(dest.resolve())
+    assert out["local_dir"] != str(sibling.resolve())
+    assert "template" in (out.get("next_action") or "")
+    assert "demo_beer_sample" in (out.get("next_action") or "")
+    joined = " ".join(out.get("do_not") or [])
+    assert "scaffold_app" in joined
+    assert "demo_beer_sample" in joined
+
+
+def test_parent_dir_clone_failure_names_outside_checkout(
+    tmp_path: Path, monkeypatch
+) -> None:
+    sibling = tmp_path / "elsewhere" / "demo_yelp"
+    _write_layout(sibling)
+    parent = tmp_path / "demos"
+    parent.mkdir()
+    monkeypatch.delenv(ENV_YELP_DIR, raising=False)
+    monkeypatch.setattr(
+        "zeus_dev_helper_mcp.yelp._find_yelp_dir",
+        lambda explicit="", cfg=None: sibling,
+    )
+
+    def fake_run(cmd, **kwargs):
+        proc = MagicMock()
+        proc.returncode = 1
+        proc.stderr = "authentication failed"
+        proc.stdout = ""
+        return proc
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.yelp.subprocess.run", fake_run)
+    cfg = _cfg(tmp_path)
+    out = ensure_yelp_sample(cfg, project_name="demo_yelp", parent_dir=str(parent))
+    assert out["ok"] is False
+    assert out["local_dir"] is None
+    assert str(sibling.resolve()) in (out.get("next_action") or "")
+    assert "sample_dir" in (out.get("next_action") or "")
+    assert "demo_beer_sample" in " ".join(out.get("do_not") or [])
+    assert os.environ.get(ENV_YELP_DIR) is None
+    assert not (parent / "demo_yelp").exists()
 
 
 def test_start_project_bare_yelp_still_blocked(tmp_path: Path, monkeypatch) -> None:

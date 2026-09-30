@@ -17,7 +17,7 @@
 - Checklist 3.2 stays open until the app `.env` has that variable and `config.json` `llm.api_key_env` is the variable name. `verify_local_setup` checks presence only and does not echo the secret. `lint_runtime_config` reports a secret pasted into `api_key_env` as `llm_key_missing`.
 
 ### Added
-- `sample=demo_yelp` (aliases `yelp-demo`, `demo-yelp`, `yelp_demo`, `yelpdemo`) locates or shallow-clones https://github.com/koten-ai/demo_yelp and sets `DEMO_YELP_SAMPLE_DIR`. `set_prereq` bucket hint is `yelp-demo` / `_default`. Bare `sample=yelp` stays the multi-agent handoff.
+- `sample=demo_yelp` (aliases `yelp-demo`, `demo-yelp`, `yelp_demo`, `yelpdemo`) locates or shallow-clones https://github.com/koten-ai/demo_yelp and sets `DEMO_YELP_SAMPLE_DIR`. `set_prereq` bucket hint is `yelp-demo` / `_default`. Bare `sample=yelp` stays the multi-agent handoff. `start_project(sample=demo_yelp)` marks checklist 0.1 done. With no stored Zeus URL, `next_step` recommends `set_prereq`; otherwise `readiness_check`, then `use_sample`. If the checklist is already past item 0.2 and neither `DEMO_YELP_SAMPLE_DIR` nor `yelp_sample.json` names a directory, `next_step` recommends only `use_sample`. When `parent_dir` is set, the clone is created in that directory even if another checkout exists elsewhere. The checkout is the app: `use_sample` tells the caller to run it, and a bound `next_step` recommends no new app, no `scaffold_app`, and no beer copy.
 
 ## 0.7.5
 
