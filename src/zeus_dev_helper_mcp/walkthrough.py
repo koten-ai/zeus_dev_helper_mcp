@@ -117,7 +117,20 @@ RESULT_SHAPES: dict[str, str] = {
 
 
 def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
+    from zeus_dev_helper_mcp.beer import missing_recorded_beer_dir
+
     base = base_next_step(cfg)
+    missing = missing_recorded_beer_dir(cfg)
+    if missing is not None:
+        base["failure_class"] = "sample_dir_missing"
+        base["sample_dir"] = missing
+        base["recommended_tools"] = _keep_enabled(["use_sample"])
+        base["note"] = (
+            "Recorded beer sample directory is not on disk. "
+            "use_sample(sample=beer) writes the catalog UI."
+        )
+        base["result_shapes"] = dict(RESULT_SHAPES)
+        return base
     item = base.get("item") or {}
     item_id = item.get("id") if isinstance(item, dict) else None
     tools = list(TOOL_HINTS.get(item_id or "", ["next_step", "doctor"]))

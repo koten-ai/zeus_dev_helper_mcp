@@ -870,7 +870,7 @@ async def _run_search(query: str, *, limit: int) -> dict[str, Any]:
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "sample": "beer"}
 
 
 def _zeus_version(url: str) -> str:
@@ -2061,6 +2061,188 @@ def _write_generated_tree(cfg: HelperConfig, root: Path, name: str) -> list[str]
     return written
 
 
+def load_recorded_beer_dir(cfg: HelperConfig) -> Path | None:
+    """Path from ``DEMO_BEER_SAMPLE_DIR`` or ``beer_sample.json``. It may be missing."""
+    env = os.environ.get(ENV_BEER_DIR, "").strip()
+    if env:
+        return Path(env).expanduser()
+    path = _beer_state_path(cfg)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw = str(data.get("beer_sample_dir") or "").strip()
+    if not raw:
+        return None
+    return Path(raw).expanduser()
+
+
+def missing_recorded_beer_dir(cfg: HelperConfig) -> str | None:
+    """Recorded beer path that is not a directory, if one is set."""
+    recorded = load_recorded_beer_dir(cfg)
+    if recorded is None or recorded.is_dir():
+        return None
+    return str(recorded)
+
+
+def beer_listen_port(root: Path) -> int:
+    """Port the generated catalog binds. ``.env`` wins over ``.env.example``."""
+    for name in (".env", ".env.example"):
+        path = root / name
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or not stripped.startswith("PORT="):
+                continue
+            raw = stripped.split("=", 1)[1].strip().strip('"').strip("'")
+            try:
+                port = int(raw)
+            except ValueError:
+                continue
+            if 1 <= port <= 65535:
+                return port
+    return 8090
+
+
+def _prereq_bucket(cfg: HelperConfig) -> str:
+    try:
+        from zeus_dev_helper_mcp.prereqs import load_prereqs
+
+        prefs = load_prereqs(cfg)
+    except Exception:  # noqa: BLE001
+        prefs = {}
+    stored = str((prefs or {}).get("bucket") or "").strip()
+    if stored:
+        return stored
+    return (cfg.default_bucket or "beer-sample").strip() or "beer-sample"
+
+
+def _health_is_this_app(body: dict[str, Any]) -> bool:
+    if body.get("status") != "ok":
+        return False
+    sample = body.get("sample")
+    return sample in (None, "", "beer")
+
+
+def probe_catalog_port(port: int, *, timeout: float = 0.6) -> dict[str, Any]:
+    """GET /healthz and /api/config on 127.0.0.1. A closed port is not reachable."""
+    import httpx
+
+    url = f"http://127.0.0.1:{int(port)}/"
+    out: dict[str, Any] = {
+        "url": url,
+        "reachable": False,
+        "health_ok": False,
+        "config": None,
+    }
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            try:
+                health = client.get(url + "healthz")
+                out["reachable"] = True
+                if health.status_code == 200:
+                    try:
+                        body = health.json()
+                    except Exception:  # noqa: BLE001
+                        body = {}
+                    if isinstance(body, dict) and _health_is_this_app(body):
+                        out["health_ok"] = True
+            except httpx.HTTPError:
+                pass
+            try:
+                resp = client.get(url + "api/config")
+                out["reachable"] = True
+                if resp.status_code == 200:
+                    try:
+                        payload = resp.json()
+                    except Exception:  # noqa: BLE001
+                        payload = None
+                    if isinstance(payload, dict):
+                        out["config"] = {
+                            "bucket": str(payload.get("bucket") or ""),
+                            "zeus_url": str(payload.get("zeus_url") or ""),
+                            "version": str(
+                                payload.get("zeus_version") or payload.get("version") or ""
+                            ),
+                        }
+            except httpx.HTTPError:
+                pass
+    except httpx.HTTPError:
+        return out
+    return out
+
+
+def catalog_port_verdict(root: Path, cfg: HelperConfig) -> dict[str, Any] | None:
+    """Report a live catalog process. None when the port is closed.
+
+    A matching health check and bucket is ``already_serving``. Any other open
+    port is ``port_in_use``. This does not start a process.
+    """
+    probe = probe_catalog_port(beer_listen_port(root))
+    if not probe["reachable"]:
+        return None
+    expected = _prereq_bucket(cfg)
+    config = probe.get("config") or {}
+    bucket = str(config.get("bucket") or "").strip()
+    url = str(probe["url"])
+    if probe["health_ok"] and bucket == expected:
+        version = str(config.get("version") or "")
+        zeus_url = str(config.get("zeus_url") or "")
+        return {
+            "ok": True,
+            "already_serving": True,
+            "written": False,
+            "url": url,
+            "zeus_url": zeus_url,
+            "version": version,
+            "run": url,
+            "next_action": (
+                f"Catalog UI is already serving at {url}. "
+                f"Zeus {version} from {zeus_url}. "
+                "Leave the process running."
+            ),
+        }
+    live = bucket or "unknown"
+    return {
+        "ok": False,
+        "already_serving": False,
+        "written": False,
+        "failure_class": "port_in_use",
+        "url": url,
+        "bucket": bucket,
+        "prereq_bucket": expected,
+        "run": "",
+        "next_action": (
+            f"{url} is open. /api/config bucket is {live}. "
+            f"set_prereq bucket is {expected}. "
+            "Do not start another process on this port."
+        ),
+    }
+
+
+def _attach_serving_verdict(
+    cfg: HelperConfig,
+    root: Path,
+    verdict: dict[str, Any],
+) -> dict[str, Any]:
+    verdict["local_dir"] = str(root.resolve())
+    verdict["project_name"] = root.name
+    verdict["env"] = {ENV_BEER_DIR: set_demo_beer_sample_dir_env(root)}
+    save_beer_sample_dir(cfg, root)
+    if verdict.get("ok"):
+        return _finish_beer_result(cfg, root, verdict)
+    return verdict
+
+
 def _finish_beer_result(cfg: HelperConfig, root: Path, result: dict[str, Any]) -> dict[str, Any]:
     """Attach env, key presence, and Pour state. Secret values stay out of the result."""
     from zeus_dev_helper_mcp.app_env import annotate_app_env, annotate_pour
@@ -2079,11 +2261,20 @@ def write_beer_sample(
     """Write the beer catalog UI. Search uses rt.agent.run_turn like travel."""
     from zeus_dev_helper_mcp.app_env import basic_login_blocked
 
+    root = Path(target_dir).expanduser().resolve()
+    if not force and root.is_dir() and looks_like_beer_sample(root):
+        try:
+            main_text = (root / "main.py").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            main_text = ""
+        if beer_bff_is_current(main_text):
+            verdict = catalog_port_verdict(root, cfg)
+            if verdict is not None:
+                return _attach_serving_verdict(cfg, root, verdict)
     blocked = basic_login_blocked(cfg)
     if blocked is not None:
-        blocked["local_dir"] = str(Path(target_dir).expanduser().resolve())
+        blocked["local_dir"] = str(root)
         return blocked
-    root = Path(target_dir).expanduser().resolve()
     name = sanitize_beer_dir_name(project_name) if project_name else root.name
     if name == DEFAULT_BEER_DIR_NAME and project_name:
         name = sanitize_beer_dir_name(project_name)
@@ -2257,6 +2448,17 @@ def ensure_beer_sample(
     explicit = bool(sample_dir.strip()) or (
         bool(named) and sanitize_beer_dir_name(named) != DEFAULT_BEER_DIR_NAME
     )
+    if not explicit and not force:
+        recorded = load_recorded_beer_dir(cfg)
+        if recorded is not None and recorded.is_dir() and looks_like_beer_sample(recorded):
+            try:
+                recorded_text = (recorded / "main.py").read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                recorded_text = ""
+            if beer_bff_is_current(recorded_text):
+                verdict = catalog_port_verdict(recorded, cfg)
+                if verdict is not None:
+                    return _attach_serving_verdict(cfg, recorded, verdict)
     relocated_from = ""
     if not explicit and not force and _foreign_beer_dir(dest) and dest.name == DEFAULT_BEER_DIR_NAME:
         sibling = _next_open_beer_dir(dest.parent)

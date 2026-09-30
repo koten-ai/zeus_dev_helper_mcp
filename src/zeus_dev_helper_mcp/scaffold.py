@@ -323,6 +323,10 @@ def use_sample(
             "app_env",
             "relocated_from",
             "missing_env",
+            "already_serving",
+            "url",
+            "zeus_url",
+            "version",
         ):
             if ensured.get(key) is not None:
                 payload[key] = ensured[key]
