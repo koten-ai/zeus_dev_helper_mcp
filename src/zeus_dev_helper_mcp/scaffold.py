@@ -234,13 +234,16 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
 ) -> dict[str, Any]:
-    """UI sample path: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
+    """UI sample path: travel clone, beer catalog UI, live-stamp page, or yelp-demo app.
 
     travel: locate/clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     beer: write demo_beer_sample catalog UI (run_turn, chat_request omitted; LLM key required).
     catalog: write demo_catalog_sample from explain_scope. Beer bucket or Beer + Brewery
     still writes the beer catalog UI.
-    demo_yelp: locate/clone demo_yelp; set DEMO_YELP_SAMPLE_DIR. Aliases include yelp-demo.
+    demo_yelp: write the yelp-demo app. POST /api/search calls rt.agent.run_turn and
+    omits chat_request so catalog.load_for_turn reads
+    data/chat_requests/yelp-demo__default/chat_request_analytics_v2.json.
+    Suggest, the header count, and the business page stay on Direct find.
     Bare sample=yelp stays the multi-agent handoff.
     For API-only apps use scaffold_app(app_kind=api).
     """
@@ -346,7 +349,6 @@ def use_sample(
         return payload
     from zeus_dev_helper_mcp.yelp import (
         YELP_REPO,
-        YELP_REPO_GIT,
         ensure_yelp_sample,
         is_yelp_demo_sample,
     )
@@ -375,30 +377,51 @@ def use_sample(
             "sample": "demo_yelp",
             "private": True,
             "app_kind": "ui",
+            "llm_required": True,
             "note": (
-                "Yelp demo UI. The git checkout at local_dir is the app from "
-                "https://github.com/koten-ai/demo_yelp. Run it. "
-                "Do not scaffold a replacement and do not copy demo_beer_sample. "
-                "When parent_dir is set, the clone is created there. "
+                "Yelp-demo app. POST /api/search calls rt.agent.run_turn and omits "
+                "chat_request so catalog.load_for_turn reads "
+                "data/chat_requests/yelp-demo__default/chat_request_analytics_v2.json. "
+                "Suggest, the header count, and the business page page find on User "
+                "and keep biz: rows. Do not copy demo_beer_sample. "
                 "Do not pass sample=yelp (multi-agent handoff)."
             ),
-            "clone": f"git clone --depth 1 {YELP_REPO_GIT}",
         }
-        return {
+        payload = {
             "ok": bool(ensured.get("ok")),
             "sample": info,
             "app_kind": "ui",
+            "llm_required": True,
             "local_dir": ensured.get("local_dir"),
             "cloned": ensured.get("cloned"),
+            "written": ensured.get("written"),
             "project_name": ensured.get("project_name"),
             "layout": ensured.get("layout"),
             "env": ensured.get("env"),
-            "error": (ensured.get("clone") or {}).get("error") if not ensured.get("ok") else None,
+            "error": ensured.get("error") if not ensured.get("ok") else None,
             "next_action": ensured.get("next_action")
-            or "Clone demo_yelp and set DEMO_YELP_SAMPLE_DIR",
-            "checklist_hint": "Mark 3.1 done after the yelp demo clone or reuse",
+            or (
+                "POST /api/search calls rt.agent.run_turn and omits chat_request. "
+                "Catalog file is data/chat_requests/yelp-demo__default/"
+                "chat_request_analytics_v2.json."
+            ),
+            "checklist_hint": "Mark 3.1 done after the yelp-demo app is on disk",
             "do_not": ensured.get("do_not"),
         }
+        for key in (
+            "failure_class",
+            "pour_enabled",
+            "pour_reason",
+            "recommended_tools",
+            "app_env",
+            "relocated_from",
+            "missing_env",
+            "llm_key",
+            "run",
+        ):
+            if ensured.get(key) is not None:
+                payload[key] = ensured[key]
+        return payload
     if sample in ("api", "rest", "api_only", "api-only"):
         return {
             "ok": False,
@@ -431,7 +454,7 @@ def use_sample(
         "next_action": (
             "Use sample=travel (LLM UI), sample=beer (catalog UI, run_turn), "
             "sample=catalog (page from the live stamp), "
-            "sample=demo_yelp (yelp demo clone), or scaffold_app for custom domain"
+            "sample=demo_yelp (yelp-demo app, search is run_turn), or scaffold_app for custom domain"
         ),
     }
 

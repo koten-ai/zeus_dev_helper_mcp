@@ -228,11 +228,13 @@ TOPICS: dict[str, dict[str, str]] = {
     },
     "demo_yelp": {
         "summary": (
-            "demo_yelp is the yelp-demo UI template from https://github.com/koten-ai/demo_yelp. "
-            "use_sample(sample=demo_yelp) locates or shallow-clones that repository and sets "
-            "DEMO_YELP_SAMPLE_DIR. When parent_dir is set, the clone is created there. "
-            "That checkout is the app. Run cd frontend && npm install && npm run dev. "
-            "Do not scaffold a replacement and do not copy demo_beer_sample. "
+            "demo_yelp is the yelp-demo app written by use_sample(sample=demo_yelp). "
+            "POST /api/search calls rt.agent.run_turn and omits chat_request so "
+            "catalog.load_for_turn reads "
+            "data/chat_requests/yelp-demo__default/chat_request_analytics_v2.json. "
+            "Suggest, the header count, and the business page page find on User and keep "
+            "biz: rows. Search does not scan those rows. "
+            "Do not copy demo_beer_sample. "
             "Zeus bucket is yelp-demo, scope _default. "
             "Do not pass sample=yelp — that name is the multi-agent handoff. "
             "Do not clone demo_travel_sample on this path."

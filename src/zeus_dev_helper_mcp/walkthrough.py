@@ -77,11 +77,22 @@ def _keep_enabled(tools: list[str]) -> list[str]:
     return kept
 
 
-def _yelp_sample_unbound(cfg: HelperConfig) -> bool:
-    """True when neither the env var nor yelp_sample.json names a directory."""
+def _yelp_app_current(cfg: HelperConfig) -> bool:
+    """True when the recorded directory is the yelp-demo app whose search is a turn."""
     from zeus_dev_helper_mcp.yelp import recorded_yelp_sample_dir
+    from zeus_dev_helper_mcp.yelp_app import yelp_bff_is_current
 
-    return recorded_yelp_sample_dir(cfg) is None
+    root = recorded_yelp_sample_dir(cfg)
+    if root is None:
+        return False
+    main = root / "main.py"
+    if not main.is_file():
+        return False
+    try:
+        text = main.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return yelp_bff_is_current(text)
 
 
 def _yelp_use_sample_hint() -> dict[str, str]:
@@ -89,12 +100,13 @@ def _yelp_use_sample_hint() -> dict[str, str]:
         "sample": "demo_yelp",
         "project_name": "demo_yelp",
         "note": (
-            "Clone https://github.com/koten-ai/demo_yelp. "
-            "When parent_dir is set, create the clone there instead of binding "
-            "a checkout outside that directory. "
-            "The checkout is the app: run it. Do not write a new app and do not "
-            "copy demo_beer_sample. Sets DEMO_YELP_SAMPLE_DIR. "
-            "Bucket yelp-demo, scope _default. "
+            "Write the yelp-demo app and set DEMO_YELP_SAMPLE_DIR. "
+            "POST /api/search calls rt.agent.run_turn and omits chat_request so "
+            "catalog.load_for_turn reads "
+            "data/chat_requests/yelp-demo__default/chat_request_analytics_v2.json. "
+            "Suggest, the header count, and the business page page find on User "
+            "and keep biz: rows. Do not scan those rows for search. "
+            "Do not copy demo_beer_sample. Bucket yelp-demo, scope _default. "
             "Do not clone demo_travel_sample. Do not pass sample=yelp."
         ),
     }
@@ -174,27 +186,30 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
     if (
         sample == "demo_yelp"
         and item_id not in ("0.1", "0.2")
-        and _yelp_sample_unbound(cfg)
+        and not _yelp_app_current(cfg)
     ):
         base["app_track"] = "ui"
         base["use_sample_args_hint"] = _yelp_use_sample_hint()
         base["note"] = (
-            "demo_yelp is not bound. use_sample(sample=demo_yelp) locates or "
-            "clones it and sets DEMO_YELP_SAMPLE_DIR."
+            "The yelp-demo app is not on disk yet. use_sample(sample=demo_yelp) "
+            "writes it. POST /api/search calls rt.agent.run_turn and omits "
+            "chat_request so catalog.load_for_turn reads "
+            "data/chat_requests/yelp-demo__default/chat_request_analytics_v2.json."
         )
         base["recommended_tools"] = _keep_enabled(["use_sample"])
         return base
-    if sample == "demo_yelp" and item_id not in ("0.1", "0.2") and not _yelp_sample_unbound(cfg):
+    if sample == "demo_yelp" and item_id not in ("0.1", "0.2") and _yelp_app_current(cfg):
         from zeus_dev_helper_mcp.yelp import recorded_yelp_sample_dir
 
         recorded = recorded_yelp_sample_dir(cfg)
         base["app_track"] = "ui"
         base["local_dir"] = str(recorded) if recorded is not None else ""
         base["note"] = (
-            f"The app is the demo_yelp git checkout at {recorded}. "
-            "Run that repository (cd frontend && npm install && npm run dev, "
-            "http://localhost:5173). It is the template. "
-            "Do not scaffold_app, do not copy demo_beer_sample, and do not write a new app."
+            f"The yelp-demo app is at {recorded}. "
+            "POST /api/search calls rt.agent.run_turn and omits chat_request. "
+            "Suggest, the header count, and the business page page find on User "
+            "and keep biz: rows. "
+            "Do not scaffold_app and do not copy demo_beer_sample."
         )
         base["recommended_tools"] = []
         return base
