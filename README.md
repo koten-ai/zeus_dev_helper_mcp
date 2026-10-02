@@ -152,7 +152,7 @@ Prefer `next_step` over dumping the full checklist. Two first-green paths (Trave
 
 - **Travel + LLM (UI default):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`. Checklist **1.2** stays open until this process has `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY`. `smoke_test_agent` reads that variable. Standalone clones pin `kotenai-zeus-client>=2.4.0,<2.5` so `run_turn` can recover a fenced pipeline inside the SDK.
 - **Beer catalog UI:** `start_project(sample=beer)` → `use_sample(sample=beer)` **writes** `demo_beer_sample` (FastAPI BFF + static page). Search matches travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. The key is required even when `has_llm_key=false`. Put it in the app `.env`. Leave `config.json` `llm.api_key_env` as that variable name. `verify_local_setup` keeps checklist **3.2** open until that file check passes. The BFF does not build a pipeline body. Do not clone `demo_travel_sample`.
-- **Yelp demo UI:** `start_project(sample=demo_yelp)` → `use_sample(sample=demo_yelp)` **writes** the yelp-demo app (utterances `yelp-demo` / `demo_yelp`) and sets `DEMO_YELP_SAMPLE_DIR`. `POST /api/search` calls `rt.agent.run_turn` and omits `chat_request` so `catalog.load_for_turn` reads `data/chat_requests/yelp-demo__default/chat_request_analytics_v2.json`. Suggest, the header count, and the business page page `find` on `User` and keep `biz:` rows. Search does not scan those rows. `set_prereq` bucket is `yelp-demo`, scope `_default`. Do not copy `demo_beer_sample`. Do not clone `demo_travel_sample`. Bare `sample=yelp` stays the multi-agent handoff.
+- **Yelp demo UI:** `start_project(sample=demo_yelp)` → `use_sample(sample=demo_yelp)` **clones** the LocalAI template [`demo_yelp`](https://github.com/koten-ai/demo_yelp) when missing (utterances `yelp-demo` / `demo_yelp`) and sets `DEMO_YELP_SAMPLE_DIR`. When `parent_dir` is set, the clone is created in that directory. That checkout is the app: run it, and do not write a replacement or copy the beer sample. `set_prereq` bucket is `yelp-demo`, scope `_default`. Do not clone `demo_travel_sample`. Bare `sample=yelp` stays the multi-agent handoff.
 - **API-only:** user asks for an API/REST app → `start_project(sample=api)` → `scaffold_app(app_kind=api, coding_language=python)` (FastAPI `POST /turn` on `kotenai-zeus-client`). Other languages not scaffolded yet.
 - Credentials from chat → process env / gitignored `.env`; `set_prereq` presence flags only. `has_llm_key=true` does not count as the key. Pass the user’s Zeus URL into `set_prereq(zeus_url=…)`. Do not paste the secret into `llm.api_key_env`.
 - Integrating into an arbitrary existing repo is **out of scope**.
@@ -166,13 +166,13 @@ Live `tools/list` is the call contract. Default surface is **14 tools** (`ZEUS_D
 | Tool | Job |
 | --- | --- |
 | `doctor` | Health. `detail=health\|env\|compat\|cache\|all` (env/compat/cache fold lint-toolset checks) |
-| `start_project` | Init checklist; `sample=travel` (UI default), `sample=beer` (catalog UI, `run_turn`), `sample=demo_yelp` (yelp-demo app, search is `run_turn`), or `sample=api` |
+| `start_project` | Init checklist; `sample=travel` (UI default), `sample=beer` (catalog UI, `run_turn`), `sample=demo_yelp` (clone `demo_yelp`), or `sample=api` |
 | `next_step` | Current item plus recommended tools and resource links |
 | `set_prereq` | Store non-secret prereqs (presence flags only; `has_llm_key` is not the key) |
 | `readiness_check` | Live gates: healthz / readyz / version, auth, bootstrap. Marks **1.2** done only when the URL is set and, on a `run_turn` path, the process has an LLM key |
 | `explain_scope` | Live public `:8080` `chat_request.json` summary: entity types, display fields, text-search fields, FK fields, and list/detail/search verbs. A failed stamp leaves entity types empty. `fetch_chat_request` stays template only |
 | `scaffold_app` | CLI or FastAPI (`app_kind=cli\|api`) ZeusRuntime app; python only |
-| `use_sample` | Travel UI clone, beer catalog UI (`run_turn`, `chat_request` omitted), `sample=catalog` from `explain_scope`, or yelp-demo app (`sample=demo_yelp`, search is `run_turn` with `chat_request` omitted, sets `DEMO_YELP_SAMPLE_DIR`) |
+| `use_sample` | Travel UI clone, beer catalog UI (`run_turn`, `chat_request` omitted), `sample=catalog` from `explain_scope`, or yelp demo clone (`sample=demo_yelp`, sets `DEMO_YELP_SAMPLE_DIR`) |
 | `bind_contract` | Copy a stamped `contract.hash` only; refuses empty / local compute |
 | `recommend_surface` | Intent → Client surface + do-not list |
 | `smoke_test_zeus` | No LLM: readiness plus a read-only describe |

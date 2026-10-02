@@ -1,7 +1,7 @@
-"""demo_yelp sample path.
+"""LocalAI yelp-demo template: locate or shallow-clone koten-ai/demo_yelp.
 
-use_sample writes the yelp-demo app (search is rt.agent.run_turn). Clone helpers
-remain for a manual checkout and are not the created app.
+Same coach shape as travel (find, else clone, set an env var). The git checkout
+is the app. This module does not write a BFF and does not rewrite Docker packaging.
 """
 
 from __future__ import annotations
@@ -33,6 +33,16 @@ YELP_DEMO_ALIASES = frozenset(
         "yelpdemo",
     }
 )
+
+_QUICK_START = "cd frontend && npm install && npm run dev"
+# The git checkout is the app. A beer-shaped BFF is a different product.
+_DO_NOT_REPLACE = [
+    "Do not scaffold_app",
+    "Do not copy demo_beer_sample",
+    "Do not write a new FastAPI or static app",
+    "The demo_yelp git checkout is the app; run that repository",
+]
+
 
 def is_yelp_demo_sample(name: str) -> bool:
     """True for the yelp UI template. False for bare yelp / multi."""
@@ -85,17 +95,28 @@ def load_yelp_sample_dir(cfg: HelperConfig | None = None) -> Path | None:
         return None
 
 
-def recorded_yelp_sample_dir(cfg: HelperConfig | None = None) -> Path | None:
-    """Directory named by DEMO_YELP_SAMPLE_DIR or yelp_sample.json, if it exists.
+def _template_dir(path: Path | None) -> Path | None:
+    """Return path when it is a LocalAI demo_yelp checkout."""
+    if path is None:
+        return None
+    resolved = path.expanduser().resolve()
+    if resolved.is_dir() and validate_yelp_layout(resolved).get("ok"):
+        return resolved
+    return None
 
+
+def recorded_yelp_sample_dir(cfg: HelperConfig | None = None) -> Path | None:
+    """LocalAI checkout named by DEMO_YELP_SAMPLE_DIR or yelp_sample.json.
+
+    A generated app, or any directory without the template layout, does not count.
     A sibling checkout that use_sample has not recorded does not count.
     """
     env = os.environ.get(ENV_YELP_DIR, "").strip()
     if env:
-        found = Path(env).expanduser()
-        if found.is_dir():
-            return found.resolve()
-    return load_yelp_sample_dir(cfg)
+        found = _template_dir(Path(env))
+        if found is not None:
+            return found
+    return _template_dir(load_yelp_sample_dir(cfg))
 
 
 def _candidate_yelp_dirs(here: Path) -> list[Path]:
@@ -132,16 +153,17 @@ def _find_yelp_dir(explicit: str = "", cfg: HelperConfig | None = None) -> Path 
         return found if found.is_dir() else None
     env = os.environ.get(ENV_YELP_DIR, "").strip()
     if env:
-        found = Path(env).expanduser().resolve()
-        if found.is_dir():
+        found = _template_dir(Path(env))
+        if found is not None:
             return found
-    persisted = load_yelp_sample_dir(cfg)
-    if persisted is not None:
-        return persisted
+    found = _template_dir(load_yelp_sample_dir(cfg))
+    if found is not None:
+        return found
     here = Path(__file__).resolve()
     for candidate in _candidate_yelp_dirs(here):
-        if candidate.is_dir():
-            return candidate
+        found = _template_dir(candidate)
+        if found is not None:
+            return found
     return None
 
 
@@ -278,6 +300,41 @@ def validate_yelp_layout(root: Path) -> dict[str, Any]:
     }
 
 
+def _ready_next_action(env_path: str) -> str:
+    return (
+        f"The app is the LocalAI template ({YELP_REPO}) at {env_path}. "
+        f"Run it: {_QUICK_START} (http://localhost:5173). "
+        "Search POSTs /api/search. That handler loads the live "
+        f"chat_request.json for {YELP_BUCKET}/{YELP_SCOPE} mode analytics and "
+        "sends that document as the session body. "
+        "This repository is the template. "
+        "Do not scaffold_app, do not copy demo_beer_sample, and do not write a new app. "
+        f"{ENV_YELP_DIR}={env_path}. "
+        f"Bucket {YELP_BUCKET}, scope {YELP_SCOPE}."
+    )
+
+
+def _unbound(
+    *,
+    dir_name: str,
+    clone_info: dict[str, Any] | None,
+    next_action: str,
+) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "local_dir": None,
+        "cloned": False,
+        "project_name": dir_name,
+        "clone": clone_info,
+        "layout": None,
+        "env": {ENV_YELP_DIR: None},
+        "next_action": next_action,
+        "repo": YELP_REPO,
+        "private": True,
+        "do_not": list(_DO_NOT_REPLACE),
+    }
+
+
 def ensure_yelp_sample(
     cfg: HelperConfig,
     *,
@@ -286,17 +343,113 @@ def ensure_yelp_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
 ) -> dict[str, Any]:
-    """Write the yelp-demo app and set DEMO_YELP_SAMPLE_DIR.
+    """Locate the LocalAI demo_yelp template or clone it; set DEMO_YELP_SAMPLE_DIR.
 
-    Search is rt.agent.run_turn with chat_request omitted. A git checkout at the
-    destination is left unchanged.
+    - If sample_dir points at an existing directory, use it (no clone).
+    - If parent_dir is set and sample_dir is not, clone into
+      parent_dir/project_name. A checkout outside that directory is not used.
+    - Otherwise, if no local sample is found and clone_if_missing, shallow-clone
+      into the Helper repo parent / demo_yelp.
+    - On success, sets process env DEMO_YELP_SAMPLE_DIR and persists state.
+      The checkout is the app.
     """
-    from zeus_dev_helper_mcp.yelp_app import ensure_yelp_app
+    dir_name = sanitize_yelp_dir_name(project_name)
+    clone_info: dict[str, Any] | None = None
+    # parent_dir is the caller's workspace. A sibling checkout outside it is
+    # not the app they asked to create.
+    pin_parent = bool(parent_dir.strip()) and not sample_dir.strip()
+    if pin_parent:
+        found = None
+        dest = _resolve_clone_dest(project_name=project_name, parent_dir=parent_dir)
+        if dest.is_dir():
+            found = dest
+        elif clone_if_missing:
+            clone_info = clone_yelp_sample(dest=dest)
+            if clone_info.get("ok"):
+                found = dest
+            else:
+                sibling = _find_yelp_dir("", cfg=cfg)
+                extra = ""
+                if sibling is not None and sibling.resolve() != dest.resolve():
+                    extra = (
+                        f" An existing checkout is at {sibling}. "
+                        "Pass sample_dir to use that checkout. Do not write a new app."
+                    )
+                return _unbound(
+                    dir_name=dir_name,
+                    clone_info=clone_info,
+                    next_action=(
+                        clone_info.get("next_action")
+                        or f"Clone manually and set {ENV_YELP_DIR}"
+                    )
+                    + extra,
+                )
+        if found is None:
+            return _unbound(
+                dir_name=dir_name,
+                clone_info=clone_info,
+                next_action=(
+                    f"No demo_yelp under {parent_dir}; enable clone_if_missing "
+                    f"or set {ENV_YELP_DIR} / sample_dir. Do not write a new app."
+                ),
+            )
+    else:
+        found = _find_yelp_dir(sample_dir, cfg=cfg)
+        if found is None and clone_if_missing:
+            dest = _resolve_clone_dest(
+                sample_dir=sample_dir,
+                project_name=project_name,
+                parent_dir=parent_dir,
+            )
+            if dest.is_dir():
+                found = dest
+            else:
+                clone_info = clone_yelp_sample(dest=dest)
+                if clone_info.get("ok"):
+                    found = dest
+                else:
+                    return _unbound(
+                        dir_name=dir_name,
+                        clone_info=clone_info,
+                        next_action=clone_info.get("next_action")
+                        or f"Clone manually and set {ENV_YELP_DIR}",
+                    )
+        if found is None:
+            return _unbound(
+                dir_name=dir_name,
+                clone_info=clone_info,
+                next_action=(
+                    f"No local demo_yelp; enable clone_if_missing or set {ENV_YELP_DIR} / sample_dir"
+                ),
+            )
 
-    return ensure_yelp_app(
-        cfg,
-        sample_dir=sample_dir,
-        project_name=project_name,
-        parent_dir=parent_dir,
-        clone_if_missing=clone_if_missing,
-    )
+    layout = validate_yelp_layout(found)
+    if not layout.get("ok"):
+        return _unbound(
+            dir_name=dir_name,
+            clone_info=clone_info,
+            next_action=(
+                f"{found} is not the LocalAI template ({YELP_REPO}). "
+                "Need README.md and frontend/package.json or pyproject.toml. "
+                "Do not overwrite it and do not write a new app."
+            ),
+        )
+    from zeus_dev_helper_mcp.yelp_search import apply_yelp_live_search
+
+    search = apply_yelp_live_search(found)
+    env_path = set_demo_yelp_sample_dir_env(found)
+    save_yelp_sample_dir(cfg, found)
+    return {
+        "ok": True,
+        "local_dir": str(found),
+        "cloned": bool(clone_info and clone_info.get("cloned")),
+        "project_name": found.name,
+        "clone": clone_info,
+        "layout": layout,
+        "search": search,
+        "env": {ENV_YELP_DIR: env_path},
+        "repo": YELP_REPO,
+        "private": True,
+        "do_not": list(_DO_NOT_REPLACE),
+        "next_action": _ready_next_action(env_path),
+    }

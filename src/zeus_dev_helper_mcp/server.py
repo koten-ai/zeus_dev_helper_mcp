@@ -163,13 +163,14 @@ INSTRUCTIONS = (
     "Beer / website: start_project(sample=beer) → use_sample(sample=beer) writes "
     "demo_beer_sample (same run_turn search as travel; do not clone demo_travel_sample). "
     "Yelp demo: utterances yelp-demo / demo_yelp use start_project(sample=demo_yelp) → "
-    "use_sample(sample=demo_yelp), which writes the yelp-demo app and sets DEMO_YELP_SAMPLE_DIR. "
-    "POST /api/search calls rt.agent.run_turn and omits chat_request so catalog.load_for_turn "
-    "reads data/chat_requests/yelp-demo__default/chat_request_analytics_v2.json. "
-    "Search does not scan User biz: rows and does not build a pipeline. "
-    "Suggest, the header count, and the business page page find on User and keep biz: rows. "
-    "A Beer mention or the words SCOPE BRIEF in the pack are not a reason to skip the turn. "
-    "set_prereq bucket yelp-demo scope _default. Do not copy demo_beer_sample. "
+    "use_sample(sample=demo_yelp), which clones the LocalAI template "
+    "https://github.com/koten-ai/demo_yelp when "
+    "missing and sets DEMO_YELP_SAMPLE_DIR. set_prereq bucket yelp-demo scope _default. "
+    "When parent_dir is set, the clone is created in that directory. "
+    "That git checkout is the app: run it (cd frontend && npm install && npm run dev). "
+    "Search POSTs /api/search and sends the live chat_request.json for "
+    "yelp-demo/_default mode analytics as the session body. "
+    "Do not scaffold a replacement and do not copy demo_beer_sample. "
     "Do not clone demo_travel_sample on that path. Bare sample=yelp stays the multi-agent handoff. "
     "API-only: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python) "
     "(FastAPI POST /turn). Other coding languages are not scaffolded yet. "
@@ -376,7 +377,7 @@ def start_project(
     sample:
       - travel (default) — UI path via demo_travel_sample / use_sample
       - beer — beer-sample catalog UI; search is run_turn + MINI-SCHEMA (use_sample sample=beer)
-      - demo_yelp — yelp-demo app; use_sample writes it (aliases yelp-demo, demo-yelp). Search is run_turn with chat_request omitted.
+      - demo_yelp — yelp-demo UI; use_sample clones the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp)
       - api — API-only FastAPI scaffold (scaffold_app app_kind=api)
       - yelp / multi — gated until single-agent smokes green unless force_multi.
         Not the yelp demo. Utterances yelp-demo / demo_yelp use sample=demo_yelp.
@@ -518,12 +519,11 @@ def _start_project_body(
         out["app_kind"] = "ui"
         out["note"] = (
             "Yelp demo UI: after prereqs/readiness, use_sample(sample=demo_yelp) "
-            "writes the app and sets DEMO_YELP_SAMPLE_DIR. "
-            "POST /api/search calls rt.agent.run_turn and omits chat_request so "
-            "catalog.load_for_turn reads "
-            "data/chat_requests/yelp-demo__default/chat_request_analytics_v2.json. "
-            "Suggest, the header count, and the business page page find on User "
-            "and keep biz: rows. Do not copy demo_beer_sample. "
+            "locates or clones the LocalAI template "
+            "https://github.com/koten-ai/demo_yelp and sets DEMO_YELP_SAMPLE_DIR. "
+            "When parent_dir is set, the clone is created in that directory. "
+            "That git checkout is the app. Run it. "
+            "Do not scaffold a replacement and do not copy demo_beer_sample. "
             "set_prereq bucket yelp-demo scope _default. "
             "Do not clone demo_travel_sample. Do not pass sample=yelp "
             "(that name is the multi-agent handoff)."
@@ -929,12 +929,12 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
 ) -> dict[str, Any]:
-    """UI sample: travel clone, beer catalog UI, live-stamp page, or yelp-demo app.
+    """UI sample: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     sample=beer — write demo_beer_sample catalog UI. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
     sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
-    sample=demo_yelp — write the yelp-demo app (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. POST /api/search calls rt.agent.run_turn and omits chat_request so catalog.load_for_turn reads data/chat_requests/yelp-demo__default/chat_request_analytics_v2.json. Suggest, the header count, and the business page page find on User and keep biz: rows. Do not copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
+    sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: run it. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample / demo_yelp).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     When no Zeus URL is stored, the MCP call asks before writing or cloning.
