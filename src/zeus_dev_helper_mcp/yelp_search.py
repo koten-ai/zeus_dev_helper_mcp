@@ -301,6 +301,15 @@ def apply_yelp_live_search(root: Path) -> dict[str, Any]:
             continue
         _write(path, updated)
         patched.append(rel.as_posix())
+    from zeus_dev_helper_mcp.yelp_pages import apply_yelp_pages
+
+    pages = apply_yelp_pages(root)
+    for rel in pages["patched"]:
+        if rel not in patched:
+            patched.append(rel)
+    for rel in pages["missing"]:
+        if rel not in missing:
+            missing.append(rel)
     search_text = _read(root / _SEARCH_PY) or ""
     client_text = _read(root / _CLIENT_TS) or ""
     live = (
@@ -310,6 +319,9 @@ def apply_yelp_live_search(root: Path) -> dict[str, Any]:
     )
     return {
         "live_chat_request": live,
+        "business_page": pages["business_page"],
+        "review_text": pages["review_text"],
+        "search_cards": pages["search_cards"],
         "patched": patched,
         "missing": missing,
         "scope": "yelp-demo/_default",

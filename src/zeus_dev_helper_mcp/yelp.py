@@ -300,18 +300,31 @@ def validate_yelp_layout(root: Path) -> dict[str, Any]:
     }
 
 
-def _ready_next_action(env_path: str) -> str:
-    return (
+def _ready_next_action(env_path: str, images: dict[str, Any] | None = None) -> str:
+    text = (
         f"The app is the LocalAI template ({YELP_REPO}) at {env_path}. "
         f"Run it: {_QUICK_START} (http://localhost:5173). "
         "Search POSTs /api/search. That handler loads the live "
         f"chat_request.json for {YELP_BUCKET}/{YELP_SCOPE} mode analytics and "
         "sends that document as the session body. "
+        "The business page GETs /api/business/{id} for an id that is not in the "
+        "bundled catalog. Review text is the source document, not the rev: doc key. "
         "This repository is the template. "
         "Do not scaffold_app, do not copy demo_beer_sample, and do not write a new app. "
         f"{ENV_YELP_DIR}={env_path}. "
         f"Bucket {YELP_BUCKET}, scope {YELP_SCOPE}."
     )
+    if not images or images.get("skipped"):
+        return text
+    files = int(images.get("files") or 0)
+    failed = int(images.get("failed") or 0)
+    text += (
+        f" Business photos: {files} file(s) under frontend/public/business-images/<id>/ "
+        "(no biz: prefix, no API key)."
+    )
+    if failed:
+        text += f" {failed} photo download(s) failed."
+    return text
 
 
 def _unbound(
@@ -434,9 +447,11 @@ def ensure_yelp_sample(
                 "Do not overwrite it and do not write a new app."
             ),
         )
+    from zeus_dev_helper_mcp.yelp_images import apply_yelp_business_images
     from zeus_dev_helper_mcp.yelp_search import apply_yelp_live_search
 
     search = apply_yelp_live_search(found)
+    images = apply_yelp_business_images(found)
     env_path = set_demo_yelp_sample_dir_env(found)
     save_yelp_sample_dir(cfg, found)
     return {
@@ -447,9 +462,10 @@ def ensure_yelp_sample(
         "clone": clone_info,
         "layout": layout,
         "search": search,
+        "images": images,
         "env": {ENV_YELP_DIR: env_path},
         "repo": YELP_REPO,
         "private": True,
         "do_not": list(_DO_NOT_REPLACE),
-        "next_action": _ready_next_action(env_path),
+        "next_action": _ready_next_action(env_path, images),
     }

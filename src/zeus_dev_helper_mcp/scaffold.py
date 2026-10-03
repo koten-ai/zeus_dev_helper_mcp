@@ -392,6 +392,8 @@ def use_sample(
             "cloned": ensured.get("cloned"),
             "project_name": ensured.get("project_name"),
             "layout": ensured.get("layout"),
+            "search": ensured.get("search"),
+            "images": ensured.get("images"),
             "env": ensured.get("env"),
             "error": (ensured.get("clone") or {}).get("error") if not ensured.get("ok") else None,
             "next_action": ensured.get("next_action")

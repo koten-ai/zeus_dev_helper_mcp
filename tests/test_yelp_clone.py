@@ -494,6 +494,172 @@ def test_use_sample_wires_live_chat_request_search(tmp_path: Path, monkeypatch) 
     assert "chat_request.json" in out["next_action"]
 
 
+def test_use_sample_wires_business_page_and_review_text(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "demo_yelp"
+    _write_layout(root)
+    client = root / "frontend" / "src" / "api"
+    client.mkdir(parents=True)
+    (client / "client.ts").write_text(
+        "export async function fetchBusiness(businessId: string) {\n"
+        "  await delay(180);\n"
+        "  const business = findBusiness(businessId);\n"
+        "  if (!business) throw new Error(\"Business not found\");\n"
+        "  return { business };\n"
+        "}\n"
+        "\n"
+        "export async function fetchReviews(businessId: string, limit = 20): Promise<ReviewsResponse> {\n"
+        "  const empty: ReviewsResponse = {\n"
+        "    business_id: businessId,\n"
+        "    reviews: [],\n"
+        "    count: 0,\n"
+        "    source: \"sample\",\n"
+        "  };\n"
+        "  try {\n"
+        "    await delay(160);\n"
+        "    const business = findBusiness(businessId);\n"
+        "    if (!business) return { ...empty, source: \"empty\" };\n"
+        "    const reviews = reviewsFor(business).slice(0, Math.max(1, Math.min(limit, 50)));\n"
+        "    return {\n"
+        "      business_id: business.business_id || businessId,\n"
+        "      reviews,\n"
+        "      count: reviews.length,\n"
+        "      source: \"sample\",\n"
+        "      error: null,\n"
+        "    };\n"
+        "  } catch (e) {\n"
+        "    return {\n"
+        "      ...empty,\n"
+        "      source: \"error\",\n"
+        "      error: e instanceof Error ? e.message : String(e),\n"
+        "    };\n"
+        "  }\n"
+        "}\n"
+        "\n"
+        "export async function fetchInsight(businessId: string): Promise<InsightResponse> {\n"
+        "  await delay(280);\n"
+        "  const business = findBusiness(businessId);\n"
+        "  if (!business) {\n"
+        "    return {\n"
+        "      business_id: businessId,\n"
+        "      summary: \"\",\n"
+        "      the_good: [],\n"
+        "      the_bad: [],\n"
+        "      best_for: [],\n"
+        "      reviews: [],\n"
+        "      error: \"Business not found\",\n"
+        "    };\n"
+        "  }\n"
+        "  return insightFor(business);\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    guide = root / "src" / "local_guide"
+    guide.mkdir(parents=True)
+    (guide / "detail.py").write_text(
+        "MAX_REVIEW_LIMIT = 50\n"
+        "def _user_lookup_keys(user_ids: list[str]) -> list[str]:\n"
+        "    return []\n"
+        "def _review_row_to_ui(row):\n"
+        "    text = _str_field(row.get(\"text\") or row.get(\"description\"))\n"
+        "    author = \"x\"\n"
+        "    # Opaque Yelp ids are not display names when User join missed.\n"
+        "    if not display_name and _looks_like_yelp_opaque_id(author):\n"
+        "        author = \"Reviewer\"\n"
+        "    return {\"text\": text, \"author\": author}\n"
+        "async def fetch_business_reviews(\n"
+        "):\n"
+        "    cb = CouchbaseQueryConfig.from_mapping(\n"
+        "        cb_raw,\n"
+        "        zeus_url=zeus_url,\n"
+        "        allow_host_default=False,\n"
+        "    )\n"
+        "    rows = await n1ql_hydrate_keys(\n"
+        "                cb,\n"
+        "                bucket,\n"
+        "                scope,\n"
+        "                collection,\n"
+        "                doc_keys[:lim],\n"
+        "                fields=_REVIEW_N1QL_FIELDS,\n"
+        "            )\n",
+        encoding="utf-8",
+    )
+    (guide / "results_parser.py").write_text(
+        "def _normalize_row(row: Any) -> dict[str, str] | None:\n"
+        "    if not isinstance(row, dict):\n"
+        "        return None\n"
+        "\n"
+        "    # Skip pure review rows for card list (unless they carry a business name)\n"
+        "    et = str(row.get(\"entity_type\") or \"\").lower()\n"
+        "    return {}\n"
+        "\n"
+        "def _collect_arrays(obj: Any, found: list) -> None:\n"
+        "    if isinstance(obj, list):\n"
+        "        for item in obj:\n"
+        "            if isinstance(item, dict):\n"
+        "                found.append(item)\n"
+        "        return\n"
+        "    if not isinstance(obj, dict):\n"
+        "        return\n"
+        "    for key in (\"rows\", \"items\", \"results\", \"data\", \"businesses\", \"matches\", \"nodes\"):\n"
+        "        val = obj.get(key)\n"
+        "        if isinstance(val, list):\n"
+        "            for item in val:\n"
+        "                if isinstance(item, dict):\n"
+        "                    found.append(item)\n"
+        "    for key in (\"return\", \"output\"):\n"
+        "        val = obj.get(key)\n"
+        "        if isinstance(val, dict):\n"
+        "            _collect_arrays(val, found)\n"
+        "        elif isinstance(val, list):\n"
+        "            _collect_arrays(val, found)\n"
+        "    steps = obj.get(\"steps\")\n"
+        "    if isinstance(steps, dict):\n"
+        "        for step_val in steps.values():\n"
+        "            if isinstance(step_val, dict):\n"
+        "                _collect_arrays(step_val, found)\n",
+        encoding="utf-8",
+    )
+    (guide / "answer_parser.py").write_text(
+        '_NUMBERED_ITEM = re.compile(r"^\\d+\\.\\s+\\*\\*(.+?)\\*\\*\\s*$", re.MULTILINE)\n'
+        "def _parse_numbered_items(body: str):\n"
+        "    for index, match in enumerate(matches):\n"
+        "        start = match.end()\n"
+        '        parsed = _parse_item_block(match.group(1) + "\\n" + body[start:end])\n',
+        encoding="utf-8",
+    )
+    monkeypatch.delenv(ENV_YELP_DIR, raising=False)
+    monkeypatch.setattr("zeus_dev_helper_mcp.yelp.clone_yelp_sample", lambda **kwargs: {"ok": False})
+    cfg = _cfg(tmp_path)
+    out = ensure_yelp_sample(cfg, sample_dir=str(root))
+    report = out["search"]
+    assert report["business_page"] is True
+    assert report["review_text"] is True
+    assert report["search_cards"] is True
+    assert "frontend/src/api/client.ts" in report["patched"]
+    assert "src/local_guide/detail.py" in report["patched"]
+    assert "src/local_guide/results_parser.py" in report["patched"]
+    assert "src/local_guide/answer_parser.py" in report["patched"]
+    ui = (client / "client.ts").read_text(encoding="utf-8")
+    assert "/api/business/" in ui
+    assert "function isLiveBusiness" in ui
+    detail = (guide / "detail.py").read_text(encoding="utf-8")
+    assert "_looks_like_source_key" in detail
+    assert "_N1QL_TIMEOUT_S = 15.0" in detail
+    assert "timeout_s=_N1QL_TIMEOUT_S" in detail
+    assert "def _query_on_zeus_host" in detail
+    assert "rev:yelp:" in detail
+    results = (guide / "results_parser.py").read_text(encoding="utf-8")
+    assert "_prefer_nested_node" in results
+    assert '"result"' in results
+    answer = (guide / "answer_parser.py").read_text(encoding="utf-8")
+    assert "match.group(2)" in answer
+    again = ensure_yelp_sample(cfg, sample_dir=str(root))
+    assert again["search"]["patched"] == []
+    assert again["search"]["business_page"] is True
+    assert again["search"]["review_text"] is True
+    assert again["search"]["search_cards"] is True
+
+
 def test_start_project_bare_yelp_still_blocked(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
     from zeus_dev_helper_mcp.server import start_project
