@@ -162,6 +162,18 @@ INSTRUCTIONS = (
     "and sets DEMO_TRAVEL_SAMPLE_DIR (optional project_name for the clone directory). "
     "Beer / website: start_project(sample=beer) → use_sample(sample=beer) writes "
     "demo_beer_sample (same run_turn search as travel; do not clone demo_travel_sample). "
+    "Yelp demo: utterances yelp-demo / demo_yelp use start_project(sample=demo_yelp) → "
+    "use_sample(sample=demo_yelp), which clones the LocalAI template "
+    "https://github.com/koten-ai/demo_yelp when "
+    "missing and sets DEMO_YELP_SAMPLE_DIR. set_prereq bucket yelp-demo scope _default. "
+    "When parent_dir is set, the clone is created in that directory. "
+    "That git checkout is the app: run it (cd frontend && npm install && npm run dev). "
+    "Search POSTs /api/search and sends the live chat_request.json for "
+    "yelp-demo/_default mode analytics as the session body. "
+    "use_sample also downloads the public business photo set into "
+    "frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). "
+    "Do not scaffold a replacement and do not copy demo_beer_sample. "
+    "Do not clone demo_travel_sample on that path. Bare sample=yelp stays the multi-agent handoff. "
     "API-only: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python) "
     "(FastAPI POST /turn). Other coding languages are not scaffolded yet. "
     "Never pass username/password/token into MCP tools — env + set_prereq presence flags only. "
@@ -367,8 +379,10 @@ def start_project(
     sample:
       - travel (default) — UI path via demo_travel_sample / use_sample
       - beer — beer-sample catalog UI; search is run_turn + MINI-SCHEMA (use_sample sample=beer)
+      - demo_yelp — yelp-demo UI; use_sample clones the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp)
       - api — API-only FastAPI scaffold (scaffold_app app_kind=api)
-      - yelp / multi — gated until single-agent smokes green unless force_multi
+      - yelp / multi — gated until single-agent smokes green unless force_multi.
+        Not the yelp demo. Utterances yelp-demo / demo_yelp use sample=demo_yelp.
 
     Multi-agent goals (goal=multi or sample=yelp) are gated until single-agent
     smokes are green, unless force_multi=true (ZDH-11).
@@ -398,10 +412,14 @@ def _start_project_body(
         sample = "travel"
     from zeus_dev_helper_mcp.beer import is_beer_sample, prereqs_prefer_beer_direct
     from zeus_dev_helper_mcp.prereqs import load_prereqs
+    from zeus_dev_helper_mcp.yelp import is_yelp_demo_sample
 
     if is_beer_sample(sample_l):
         sample_l = "beer"
         sample = "beer"
+    if is_yelp_demo_sample(sample_l):
+        sample_l = "demo_yelp"
+        sample = "demo_yelp"
     if sample_l in ("rest", "api_only", "api-only"):
         sample_l = "api"
         sample = "api"
@@ -439,7 +457,7 @@ def _start_project_body(
     from zeus_dev_helper_mcp.checklist import save_checklist
 
     save_checklist(cfg, data)
-    if sample_l in ("beer", "travel", "api"):
+    if sample_l in ("beer", "travel", "api", "demo_yelp"):
         try:
             set_item_status(cfg, "0.1", "done", evidence=f"sample={sample}")
         except Exception:  # noqa: BLE001, S110
@@ -497,6 +515,23 @@ def _start_project_body(
                 + out["note"]
             )
             out["rerouted_from"] = "travel"
+        out["recommended_tools"] = list(nxt.get("recommended_tools") or [])
+    elif sample_l == "demo_yelp":
+        out["track"] = "ui"
+        out["app_kind"] = "ui"
+        out["note"] = (
+            "Yelp demo UI: after prereqs/readiness, use_sample(sample=demo_yelp) "
+            "locates or clones the LocalAI template "
+            "https://github.com/koten-ai/demo_yelp and sets DEMO_YELP_SAMPLE_DIR. "
+            "When parent_dir is set, the clone is created in that directory. "
+            "That git checkout is the app. Run it. "
+            "use_sample downloads the public business photos into "
+            "frontend/public/business-images/<id>/ (no biz: prefix, no API key). "
+            "Do not scaffold a replacement and do not copy demo_beer_sample. "
+            "set_prereq bucket yelp-demo scope _default. "
+            "Do not clone demo_travel_sample. Do not pass sample=yelp "
+            "(that name is the multi-agent handoff)."
+        )
         out["recommended_tools"] = list(nxt.get("recommended_tools") or [])
     elif wants_multi:
         out["track"] = "multi-agent"
@@ -898,12 +933,13 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
 ) -> dict[str, Any]:
-    """UI sample: travel clone, beer catalog UI, or a page from the live stamp.
+    """UI sample: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     sample=beer — write demo_beer_sample catalog UI. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
     sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
-    project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample).
+    sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: run it. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
+    project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample / demo_yelp).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     When no Zeus URL is stored, the MCP call asks before writing or cloning.
     Do not pass a password.

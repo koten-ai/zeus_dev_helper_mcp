@@ -226,6 +226,26 @@ TOPICS: dict[str, dict[str, str]] = {
         ),
         "doc": "zeus-client/using-zeus-client.md",
     },
+    "demo_yelp": {
+        "summary": (
+            "demo_yelp is the LocalAI yelp-demo UI template from https://github.com/koten-ai/demo_yelp. "
+            "use_sample(sample=demo_yelp) locates or shallow-clones that repository and sets "
+            "DEMO_YELP_SAMPLE_DIR. When parent_dir is set, the clone is created there. "
+            "That checkout is the app. Run cd frontend && npm install && npm run dev. "
+            "Search POSTs /api/search and sends the live chat request for yelp-demo/_default "
+            "as the session body. Search cards unwrap a hybrid node hit and a nested pipeline row. "
+            "The business page GETs /api/business/{id} when the id is not in the bundled catalog. "
+            "Review text is the source document, not a rev: doc key. "
+            "use_sample also downloads the public business photo set into "
+            "frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). "
+            "Do not scaffold a replacement and do not copy demo_beer_sample. "
+            "Zeus bucket is yelp-demo, scope _default. "
+            "Do not pass sample=yelp — that name is the multi-agent handoff. "
+            "Do not clone demo_travel_sample on this path."
+        ),
+        "doc": "zeus-client/using-zeus-client.md",
+        "external": "https://github.com/koten-ai/demo_yelp",
+    },
     "typeahead": {
         "summary": (
             "As-you-type suggest is rt.data.search with Trace-Class direct.interactive. "
@@ -311,6 +331,8 @@ def explain_topic(cfg: HelperConfig, topic: str) -> dict:
         "beer_direct": "demo_beer_sample",
         "demo_beer": "demo_beer_sample",
         "beer_sample_ui": "demo_beer_sample",
+        "yelp_demo": "demo_yelp",
+        "yelpdemo": "demo_yelp",
         "suggest": "typeahead",
         "autocomplete": "typeahead",
         "dag": "pipeline",

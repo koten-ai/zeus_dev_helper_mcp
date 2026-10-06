@@ -131,7 +131,7 @@ Store non-secret prereqs for readiness. Does not store password or token values.
 
 ### `validate_env`
 
-Validate Helper env + stored prereqs shape (presence only — no secret values). A missing `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is an error (`llm_key_missing`) when the path calls `run_turn` (travel, beer, API). Beer still errors when `has_llm_key=false`. A stored `has_llm_key=true` does not count. A non-beer Direct opt-out warns instead of failing.
+Validate Helper env + stored prereqs shape (presence only — no secret values). A missing `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is an error (`llm_key_missing`) when the path calls `run_turn` (travel, beer, API, yelp demo). Beer still errors when `has_llm_key=false`. A stored `has_llm_key=true` does not count. A non-beer Direct opt-out warns instead of failing.
 
 1. Validate my Helper environment. Flag Hub `:9091`, missing `ZEUS_URL`, missing LLM key, and catalog template problems.
 2. Is env ready for `readiness_check`? Check presence of Zeus URL, bucket/scope, the process LLM key, and catalog templates without printing secrets.
@@ -240,6 +240,9 @@ Locate or clone public `demo_travel_sample` (UI default). Sets `DEMO_TRAVEL_SAMP
 2. Clone the travel sample as directory `my_first_zeus_ui` under my workspace (`project_name=my_first_zeus_ui`).
 3. I already have the sample at `/path/to/demo_travel_sample`. Run `use_sample` with that `sample_dir` (no re-clone).
 4. Can I switch the sample to Yelp/multi now? Use `use_sample` and show the single-agent gate if it blocks.
+5. Create a Zeus app using yelp-demo.
+
+**Expected tool sequence:** `set_prereq(bucket=yelp-demo, scope=_default)` → `start_project(sample=demo_yelp)` → `use_sample(sample=demo_yelp)`. Clones the LocalAI template https://github.com/koten-ai/demo_yelp when the directory is missing and sets `DEMO_YELP_SAMPLE_DIR`. When `parent_dir` is set, the clone is created in that directory. That git checkout is the app: run `cd frontend && npm install && npm run dev`. `use_sample` also downloads the public business photo set into `frontend/public/business-images/<id>/{1,2,3}.png` (no `biz:` prefix, no API key) and wires the pages: search POSTs `/api/search` with the live chat request for `yelp-demo` / `_default` as the session body, search cards unwrap a hybrid node hit and a nested pipeline row, and the business page GETs `/api/business/{id}` when the id is not in the bundled catalog. Review text is the source document, not a `rev:` doc key. Do not scaffold a replacement and do not copy `demo_beer_sample`. Do not pass `sample=yelp` (multi-agent gate) and do not clone `demo_travel_sample`.
 
 ### `travel_golden_path`
 
