@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.6
 
 ### Fixed
 - **[ZDM-18](https://kotenai.atlassian.net/browse/ZDM-18)** `diagnose_error` takes a symptom, optional `req_id`, hop name, HTTP status, and the top-level keys of the hop result. It does not take a document body, and it does not echo a password, session id, or document body. A hop bucket other than the prereq bucket on a basic login failure is `auth_default_bucket` before generic `auth_failed`. A search hop whose item keys are `node` and `score`, and whose node key is `doc_key`, is `fts_doc_key_only` and the next action does not say to parse `doc_key` into cards. New classes `find_offset_ignored`, `total_null_rendered_as_zero`, `hop_name_parsed_as_card`, `auth_default_bucket`, and `list_cached_short_page` each name one generated file and one change. After `website_green` fails, `next_step` recommends `diagnose_error` and no scaffold tool.
