@@ -130,6 +130,50 @@ def _basic_auth(cfg: HelperConfig) -> tuple[str, str] | None:
     return None
 
 
+_AUTH_REASONS = (
+    "bad_credential",
+    "unknown_user",
+    "user_not_found",
+    "account_locked",
+)
+
+
+def _auth_reason(body: Any) -> str | None:
+    """A public login reason from the 401 JSON. Never the raw body."""
+    if not isinstance(body, dict):
+        return None
+    parts: list[str] = []
+    for key in ("reason", "code", "error", "failure", "message"):
+        value = body.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip().lower())
+    blob = " ".join(parts)
+    if not blob:
+        return None
+    for reason in _AUTH_REASONS:
+        if reason in blob:
+            return reason
+    return None
+
+
+def _login_failure_text(bucket: str, scope: str, reason: str | None) -> tuple[str, str]:
+    where = f"POST /v1/{bucket}/{scope}/auth/session → HTTP 401"
+    if reason:
+        detail = f"{where}. Zeus said {reason}."
+        action = (
+            f"Login failed for bucket {bucket} scope {scope}: {reason}. "
+            "Do not try another password."
+        )
+        return detail, action
+    detail = f"{where}. The body did not say bad_credential or an unknown user."
+    action = (
+        f"Login failed for bucket {bucket} scope {scope} with HTTP 401. "
+        "The response did not say whether the password was wrong or the user is unknown. "
+        "Do not try another password."
+    )
+    return detail, action
+
+
 def mint_scope_session(
     cfg: HelperConfig,
     client: httpx.Client | None = None,
@@ -160,8 +204,9 @@ def mint_scope_session(
             "auth_mode=basic and ZEUS_USERNAME or ZEUS_PASSWORD is empty in this process"
         )
         public["next_action"] = (
-            "Set ZEUS_USERNAME and ZEUS_PASSWORD in this process. "
-            "A stored has_password flag is not a password. "
+            "Write ZEUS_USERNAME and ZEUS_PASSWORD to a mode-600 env file and "
+            "call load_process_login with that path. Do not pass the password "
+            "as a tool argument. set_prereq stores presence flags only. "
             "A describe 200 is not a login."
         )
         return public
@@ -209,12 +254,17 @@ def mint_scope_session(
         if status in (200, 201):
             public["ok"] = True
         elif status == 401:
+            reason_body: Any = {}
+            try:
+                reason_body = response.json()
+            except Exception:  # noqa: BLE001
+                reason_body = {}
+            detail, action = _login_failure_text(bucket, scope, _auth_reason(reason_body))
             public["failure_class"] = "auth_failed"
             public["stopped"] = True
-            public["next_action"] = (
-                "Fix username/password or scope_credentials for this bucket/scope. "
-                "A describe 200 is not a login."
-            )
+            public["detail"] = detail
+            public["auth_reason"] = _auth_reason(reason_body)
+            public["next_action"] = action + " A describe 200 is not a login."
         else:
             public["next_action"] = (
                 "Inspect Zeus auth docs; credentials may still work for other paths. "

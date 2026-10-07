@@ -16,9 +16,10 @@ from zeus_dev_helper_mcp.mcp_compat import ToolError
 ENVELOPE_KEYS = ("ok", "failure_class", "next_action", "recommended_tools", "docs")
 
 # Tools whose unsuccessful result is an execution failure the model should correct.
+# readiness_check is a report. A red gate returns ok false. It is not a
+# transport failure (ZDM-23).
 EXECUTION_FAIL_TOOLS = frozenset(
     {
-        "readiness_check",
         "bind_contract",
         "list_catalog_modes",
         "fetch_chat_request",
@@ -56,7 +57,7 @@ def is_execution_failure(tool_name: str, payload: dict[str, Any]) -> bool:
         return True
     if payload.get("error") and payload.get("ok") is not True:
         return True
-    return tool_name == "readiness_check" and payload.get("overall") == "fail"
+    return False
 
 
 def raise_tool_error(payload: dict[str, Any]) -> None:

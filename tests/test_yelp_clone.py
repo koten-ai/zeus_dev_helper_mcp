@@ -307,12 +307,14 @@ def test_next_step_unbound_yelp_after_green_checklist(
 
     _write_layout(root)
     nxt = enriched_next_step(cfg)
-    assert nxt.get("recommended_tools") == []
+    assert nxt.get("recommended_tools") == ["website_green"]
     note = nxt.get("note") or ""
     assert str(root.resolve()) in note
     assert "LocalAI" in note
     assert "demo_beer_sample" in note
     assert "template" in note
+    assert "python -m local_guide" in note
+    assert "npm run dev" in note
 
 
 def test_generated_app_is_not_the_localai_template(tmp_path: Path, monkeypatch) -> None:
@@ -483,6 +485,7 @@ def test_use_sample_wires_live_chat_request_search(tmp_path: Path, monkeypatch) 
     body = (search / "search.py").read_text(encoding="utf-8")
     assert "fetch_search_chat_request" in body
     assert "chat_req_override=chat_request" in body
+    assert "login failed" not in body
     ui = (client / "client.ts").read_text(encoding="utf-8")
     assert 'fetch("/api/search"' in ui
     assert "fetchBusiness" in ui

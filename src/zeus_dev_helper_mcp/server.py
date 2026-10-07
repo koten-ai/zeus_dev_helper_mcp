@@ -87,6 +87,9 @@ from zeus_dev_helper_mcp.mcp_compat import (
 )
 from zeus_dev_helper_mcp.motion import recommend_motion as recommend_motion_impl
 from zeus_dev_helper_mcp.prereqs import load_prereqs, public_prereqs, save_prereqs
+from zeus_dev_helper_mcp.process_login import (
+    load_process_login as load_process_login_impl,
+)
 from zeus_dev_helper_mcp.prompts import register_prompts
 from zeus_dev_helper_mcp.readiness import run_readiness_check
 from zeus_dev_helper_mcp.resources import register_resources
@@ -167,7 +170,9 @@ INSTRUCTIONS = (
     "https://github.com/koten-ai/demo_yelp when "
     "missing and sets DEMO_YELP_SAMPLE_DIR. set_prereq bucket yelp-demo scope _default. "
     "When parent_dir is set, the clone is created in that directory. "
-    "That git checkout is the app: run it (cd frontend && npm install && npm run dev). "
+    "That git checkout is the app: pip install -e . && python -m local_guide "
+    "(API http://127.0.0.1:5000) and cd frontend && npm install && npm run dev "
+    "(SPA http://localhost:5173, proxies /api to port 5000). "
     "Search POSTs /api/search and sends the live chat_request.json for "
     "yelp-demo/_default mode analytics as the session body. "
     "use_sample also downloads the public business photo set into "
@@ -177,6 +182,8 @@ INSTRUCTIONS = (
     "API-only: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python) "
     "(FastAPI POST /turn). Other coding languages are not scaffolded yet. "
     "Never pass username/password/token into MCP tools — env + set_prereq presence flags only. "
+    "When auth is basic, write ZEUS_USERNAME and ZEUS_PASSWORD to a mode-600 env file "
+    "and call load_process_login with that path. The password is not a tool argument. "
     "Knowledge is resources under zeus-helper:// (checklist, glossary, verbs, policies, catalog modes). "
     "Walkthroughs are prompts: first_green, smoke_question, support_pack. "
     "After 5.1+5.2 green: data-plane and multi-agent are handoffs only."
@@ -791,6 +798,17 @@ def _set_prereq_body(
     }
 
 
+def load_process_login(env_file: str) -> dict[str, Any]:
+    """Load Zeus login from a mode-600 env file into this process.
+
+    Write ZEUS_USERNAME and ZEUS_PASSWORD to a file outside the repo or
+    gitignored, chmod 600, then pass that path. The password is not an
+    argument. set_prereq stores presence flags only. The result lists
+    loaded names and never values. Then readiness_check.
+    """
+    return load_process_login_impl(env_file)
+
+
 def readiness_check(update_checklist: bool = True) -> dict[str, Any]:
     """Live Zeus platform gates: healthz/readyz/version, auth, bootstrap, chat_request.
 
@@ -938,7 +956,7 @@ def use_sample(
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     sample=beer — write demo_beer_sample catalog UI. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
     sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
-    sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: run it. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
+    sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: pip install -e . && python -m local_guide on http://127.0.0.1:5000, and cd frontend && npm install && npm run dev on http://localhost:5173 (the SPA proxies /api to port 5000). Writes gitignored mode-600 config.json from this process. llm.api_key_env stays the name LLM_API_KEY. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. A 401 stays red. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample / demo_yelp).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     When no Zeus URL is stored, the MCP call asks before writing or cloning.

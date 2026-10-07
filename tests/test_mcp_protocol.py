@@ -201,13 +201,24 @@ def test_bind_contract_execution_failure_is_error() -> None:
         assert isinstance(err, ToolError)
 
 
-def test_readiness_check_missing_url_is_error(tmp_path, monkeypatch) -> None:
+def test_readiness_check_missing_url_is_a_report(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.delenv("ZEUS_URL", raising=False)
     server = create_mcp_server(["core"])
-    with pytest.raises(Exception) as ei:
-        _run(server.call_tool("readiness_check", {"update_checklist": False}))
-    assert "overall" in str(ei.value) or "ZEUS_URL" in str(ei.value)
+    result = _run(server.call_tool("readiness_check", {"update_checklist": False}))
+    structured = getattr(result, "structured_content", None) or getattr(
+        result, "structuredContent", None
+    )
+    if structured is None and hasattr(result, "model_dump"):
+        dumped = result.model_dump(by_alias=True)
+        structured = dumped.get("structuredContent") or dumped.get("structured_content")
+    assert isinstance(structured, dict)
+    assert structured["ok"] is False
+    assert structured.get("overall") == "fail" or structured.get("failure_class")
+    assert getattr(result, "is_error", False) is False
+    captured = capsys.readouterr()
+    assert "zeus_dev_helper.tool.failed" not in captured.err
+    assert "readiness_check" not in EXECUTION_FAIL_TOOLS
 
 
 def test_envelope_keys_on_doctor() -> None:

@@ -13,7 +13,13 @@ import pytest
 
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.smoke import smoke_test_zeus
-from zeus_dev_helper_mcp.website_green import card_display_name, website_green
+from zeus_dev_helper_mcp.website_green import (
+    _health,
+    card_display_name,
+    install_app,
+    start_app,
+    website_green,
+)
 
 
 class _AppHandler(BaseHTTPRequestHandler):
@@ -514,3 +520,159 @@ def test_smoke_test_zeus_still_owns_describe() -> None:
     page = inspect.getsource(website_green)
     assert "describe" in text
     assert "smoke_test_agent(" not in page
+
+
+def _yelp_tree(tmp_path: Path) -> Path:
+    root = tmp_path / "demo_yelp"
+    root.mkdir()
+    (root / "README.md").write_text("# yelp\n", encoding="utf-8")
+    frontend = root / "frontend"
+    frontend.mkdir()
+    (frontend / "package.json").write_text("{}\n", encoding="utf-8")
+    guide = root / "src" / "local_guide"
+    guide.mkdir(parents=True)
+    (guide / "__main__.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+    (root / "pyproject.toml").write_text(
+        '[project]\nname = "local-guide"\n'
+        'dependencies = ["kotenai-zeus-client @ file:../zeus_client_python"]\n',
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_yelp_health_uses_api_health(monkeypatch: pytest.MonkeyPatch) -> None:
+    def get_json(url: str) -> tuple[int, dict[str, object], str]:
+        assert url.endswith("/api/health")
+        return 200, {"ok": True}, ""
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._get_json", get_json)
+    assert _health("http://127.0.0.1:5000", True) == "up"
+
+
+def test_beer_health_still_uses_healthz(monkeypatch: pytest.MonkeyPatch) -> None:
+    def get_json(url: str) -> tuple[int, dict[str, object], str]:
+        assert url.endswith("/healthz")
+        return 200, {"status": "ok"}, ""
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._get_json", get_json)
+    assert _health("http://127.0.0.1:8090") == "up"
+
+
+def test_yelp_start_is_local_guide(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _yelp_tree(tmp_path)
+    monkeypatch.setenv("ZEUS_PASSWORD", "local-secret")
+    seen: dict[str, object] = {}
+
+    def fake_popen(cmd, **kwargs):
+        seen["cmd"] = list(cmd)
+        seen["port"] = kwargs["env"]["PORT"]
+        seen["cwd"] = kwargs["cwd"]
+        proc = type("Proc", (), {"pid": 9})()
+        return proc
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.subprocess.Popen", fake_popen)
+    out = start_app(root, 5000)
+    assert out["ok"] is True
+    assert out["pid"] == 9
+    assert seen["cmd"][-2:] == ["-m", "local_guide"]
+    assert "uvicorn" not in seen["cmd"]
+    assert seen["port"] == "5000"
+    assert seen["cwd"] == root
+    assert "local-secret" not in json.dumps(out)
+
+
+def test_yelp_install_uses_editable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _yelp_tree(tmp_path)
+    seen: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = list(cmd)
+        seen["cwd"] = kwargs["cwd"]
+        proc = type("Proc", (), {"returncode": 0})()
+        return proc
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.subprocess.run", fake_run)
+    out = install_app(root)
+    assert out["ok"] is True
+    assert out["installed"] is True
+    assert seen["cmd"][-3:] == ["install", "-e", "."]
+    assert seen["cwd"] == root
+
+
+def test_yelp_green_checks_health_and_skips_the_beer_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _yelp_tree(tmp_path)
+    state = {"down": True}
+
+    def health(base: str, yelp: bool = False) -> str:
+        assert yelp is True
+        assert base.endswith(":5000")
+        return "down" if state["down"] else "up"
+
+    def install(path: Path) -> dict[str, object]:
+        assert path == root
+        return {"ok": True, "installed": True}
+
+    def start(path: Path, port: int) -> dict[str, object]:
+        assert path == root
+        assert port == 5000
+        state["down"] = False
+        return {"ok": True, "started": True, "pid": 4}
+
+    def probed(*_args: object, **_kwargs: object) -> tuple[int, dict[str, object], str]:
+        raise AssertionError("catalog probe on a yelp checkout")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._health", health)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.install_app", install)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.start_app", start)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._get_json", probed)
+    out = website_green(_cfg(tmp_path), target_dir=str(root))
+    assert out["ok"] is True
+    assert out["search_skipped"] is True
+    assert "/api/health" in out["next_action"]
+    assert "npm run dev" in out["next_action"]
+
+
+def test_yelp_401_does_not_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _yelp_tree(tmp_path)
+
+    def mint(cfg: HelperConfig, client: object = None) -> dict[str, object]:
+        return {
+            "ok": False,
+            "failure_class": "auth_failed",
+            "stopped": True,
+            "next_action": "Do not try another password. A describe 200 is not a login.",
+        }
+
+    def start(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise AssertionError("started after a 401")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.readiness.mint_scope_session", mint)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.start_app", start)
+    out = website_green(_cfg(tmp_path, auth="basic"), target_dir=str(root))
+    assert out["ok"] is False
+    assert out["failure_class"] == "auth_failed"
+    assert "Do not try another password." in out["next_action"]
+
+
+def test_recorded_yelp_dir_is_the_green_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("DEMO_BEER_SAMPLE_DIR", raising=False)
+    monkeypatch.delenv("DEMO_YELP_SAMPLE_DIR", raising=False)
+    root = _yelp_tree(tmp_path)
+    from zeus_dev_helper_mcp.yelp import save_yelp_sample_dir
+
+    cfg = _cfg(tmp_path)
+    save_yelp_sample_dir(cfg, root)
+
+    def health(base: str, yelp: bool = False) -> str:
+        assert yelp is True
+        assert base.endswith(":5000")
+        return "up"
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._health", health)
+    out = website_green(cfg, target_dir="")
+    assert out["ok"] is True
+    assert out["url"] == "http://127.0.0.1:5000"

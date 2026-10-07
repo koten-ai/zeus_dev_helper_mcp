@@ -296,10 +296,57 @@ def test_session_401_stops_and_hides_session_id(tmp_path: Path, monkeypatch: pyt
     assert auth["failure_class"] == "auth_failed"
     assert auth["evidence"]["has_session_id"] is False
     assert auth["evidence"]["bucket"] == "beer-sample"
+    assert auth["evidence"]["scope"] == "_default"
+    assert out["primary_failure_class"] == "auth_failed"
+    assert "Do not try another password." in blob
+    assert "beer-sample" in blob
+    assert "_default" in blob
+    assert "did not say" in blob
     bootstrap = next(gate for gate in out["gates"] if gate["id"] == "bootstrap_scope")
     assert bootstrap["status"] == "skip"
     assert not any("bootstrap" in url or "chat_request" in url for _method, url in _Client.calls)
     assert any(url.endswith("/auth/session") for _method, url in _Client.calls)
+
+
+def test_unauthenticated_body_does_not_invent_bad_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_secrets(monkeypatch)
+    monkeypatch.setenv("ZEUS_USERNAME", USER)
+    monkeypatch.setenv("ZEUS_PASSWORD", PASSWORD)
+    _patch_readiness(monkeypatch)
+    _Client.post_status = 401
+    _Client.post_body = {"error": "unauthenticated", "session_id": SESSION_ID}
+    out = run_readiness_check(_ready_cfg(tmp_path), update_checklist=False)
+    blob = json.dumps(out)
+    auth = next(gate for gate in out["gates"] if gate["id"] == "auth")
+    assert auth["failure_class"] == "auth_failed"
+    assert out["primary_failure_class"] == "auth_failed"
+    assert "did not say" in auth["detail"]
+    assert "Zeus said bad_credential" not in blob
+    assert "Do not try another password." in blob
+    assert SESSION_ID not in blob
+    assert PASSWORD not in blob
+
+
+def test_bad_credential_reason_is_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_secrets(monkeypatch)
+    monkeypatch.setenv("ZEUS_USERNAME", USER)
+    monkeypatch.setenv("ZEUS_PASSWORD", PASSWORD)
+    _patch_readiness(monkeypatch)
+    _Client.post_status = 401
+    _Client.post_body = {"reason": "bad_credential", "session_id": SESSION_ID}
+    out = run_readiness_check(_ready_cfg(tmp_path), update_checklist=False)
+    blob = json.dumps(out)
+    auth = next(gate for gate in out["gates"] if gate["id"] == "auth")
+    assert "Zeus said bad_credential." in auth["detail"]
+    assert "Do not try another password." in auth["next_action"]
+    assert "beer-sample" in auth["next_action"]
+    assert "_default" in auth["next_action"]
+    assert SESSION_ID not in blob
+    assert PASSWORD not in blob
 
 
 def test_describe_200_is_not_a_login(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
