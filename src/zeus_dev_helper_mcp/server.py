@@ -170,6 +170,8 @@ INSTRUCTIONS = (
     "That git checkout is the app: run it (cd frontend && npm install && npm run dev). "
     "Search POSTs /api/search and sends the live chat_request.json for "
     "yelp-demo/_default mode analytics as the session body. "
+    "Search cards get latitude and longitude from biz:yelp:<id> when the "
+    "project step omits them, including a cached business page. "
     "use_sample also downloads the public business photo set into "
     "frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). "
     "Do not scaffold a replacement and do not copy demo_beer_sample. "
@@ -938,7 +940,7 @@ def use_sample(
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     sample=beer — write demo_beer_sample catalog UI. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
     sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
-    sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: run it. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
+    sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: run it. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. Search cards get latitude and longitude from biz:yelp:<id> when the project step omits them, including a cached business page. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample / demo_yelp).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     When no Zeus URL is stored, the MCP call asks before writing or cloning.

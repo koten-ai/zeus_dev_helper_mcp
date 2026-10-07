@@ -126,6 +126,72 @@ def _patched_search(tmp_path: Path) -> dict:
     return _load(path)
 
 
+def _coordinate_sources() -> tuple[str, str]:
+    search = """
+LOCAL_PROMPT_PREFIX = (
+    "- After FTS/hybrid, project using @step.ids / node_ids returned by that step — "
+    "do not batch_get raw source keys like biz:… alone if get returns missing.\\n"
+    "- pipeline confidence must be a STRING: high|med|low (never an object).\\n"
+)
+
+
+def synthesize_answer_from_results(query: str, results: list[dict]) -> str:
+    return query
+
+
+async def run_search() -> None:
+        results = []
+        CHATS[chat_id]["last_results"] = results
+"""
+    detail = """
+async def get_business(business_id: str, chat_id: str | None = None) -> dict:
+    cached = find_cached_business(business_id)
+    if cached:
+        apply_local_images(cached)
+        return {
+            "business": cached,
+            "chat_id": None,
+            "source": "cache",
+            "ai_process_result": False,
+        }
+"""
+    return search, detail
+
+
+def test_sample_creation_fills_search_coordinates(tmp_path: Path) -> None:
+    root = tmp_path / "demo_yelp"
+    search = root / "src" / "local_guide" / "search.py"
+    detail = root / "src" / "local_guide" / "detail.py"
+    search.parent.mkdir(parents=True)
+    search_src, detail_src = _coordinate_sources()
+    search.write_text(search_src, encoding="utf-8")
+    detail.write_text(detail_src, encoding="utf-8")
+
+    report = apply_yelp_live_search(root)
+    body = search.read_text(encoding="utf-8")
+    detail_body = detail.read_text(encoding="utf-8")
+    assert "src/local_guide/search.py" in report["patched"]
+    assert "src/local_guide/detail.py" in report["patched"]
+    assert report["coordinates"] is True
+    assert "Every Business project fields list must include" in body
+    assert "def fill_missing_coordinates" in body
+    assert 'return f"biz:yelp:{bare}"' in body
+    assert "await fill_missing_coordinates(results)" in body
+    assert "await fill_missing_coordinates([cached])" in detail_body
+    assert apply_yelp_live_search(root)["patched"] == []
+
+    namespace = _load(search)
+    assert namespace["yelp_business_doc_key"]("abc") == "biz:yelp:abc"
+    assert namespace["yelp_business_doc_key"]("biz:yelp:abc") == "biz:yelp:abc"
+    cards = [{"name": "Pagano's Steaks", "business_id": "abc"}]
+    namespace["apply_coordinate_rows"](
+        cards,
+        [{"doc_key": "biz:yelp:abc", "latitude": 40.07, "longitude": -75.15}],
+    )
+    assert cards[0]["latitude"] == "40.07"
+    assert cards[0]["longitude"] == "-75.15"
+
+
 def test_apply_live_search_reports_missing_files(tmp_path: Path) -> None:
     report = apply_yelp_live_search(tmp_path)
     assert report["patched"] == []
