@@ -248,6 +248,184 @@ _VITE_PROXY = """    port: 5173,
     },
 """
 
+# Search project lists omit latitude/longitude, so the map has nothing to plot.
+# The source document key is biz:yelp:<id>.
+_PROMPT_BEFORE_COORDS = (
+    '    "- After FTS/hybrid, project using @step.ids / node_ids returned by that step — "\n'
+    '    "do not batch_get raw source keys like biz:… alone if get returns missing.\\n"\n'
+    '    "- pipeline confidence must be a STRING: high|med|low (never an object).\\n"\n'
+)
+_PROMPT_WITH_COORDS = (
+    '    "- After FTS/hybrid, project using @step.ids / node_ids returned by that step — "\n'
+    '    "do not batch_get raw source keys like biz:… alone if get returns missing.\\n"\n'
+    '    "- Every Business project fields list must include \\"latitude\\" and \\"longitude\\" "\n'
+    '    "together with name, stars, review_count, categories, address, city, and state. "\n'
+    '    "Search cards plot those coordinates.\\n"\n'
+    '    "- pipeline confidence must be a STRING: high|med|low (never an object).\\n"\n'
+)
+
+_COORD_HELPERS = '''def yelp_business_doc_key(business_id: str) -> str:
+    """Couchbase key for a Yelp business source doc: ``biz:yelp:<id>``."""
+    bid = (business_id or "").strip()
+    if not bid or bid.startswith("file:") or bid.startswith("n_"):
+        return ""
+    if bid.startswith("biz:yelp:"):
+        bare = bid[len("biz:yelp:") :].strip()
+    elif bid.startswith("biz:"):
+        bare = bid[4:].strip()
+    else:
+        bare = bid
+    if not bare or bare.startswith("file:") or bare.startswith("n_"):
+        return ""
+    return f"biz:yelp:{bare}"
+
+
+def _coordinate_text(val: object) -> str:
+    if val is None or isinstance(val, (dict, list, bool)):
+        return ""
+    text = str(val).strip()
+    if not text or text.lower() in {"null", "none", "nan"}:
+        return ""
+    return text
+
+
+def _card_needs_coordinates(card: dict) -> bool:
+    return not _coordinate_text(card.get("latitude")) or not _coordinate_text(
+        card.get("longitude")
+    )
+
+
+def apply_coordinate_rows(cards: list[dict], rows: list[dict]) -> None:
+    """Copy latitude/longitude onto cards that omitted them. Match on source key."""
+    by_key: dict[str, dict] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for raw in (row.get("business_id"), row.get("doc_key"), row.get("id")):
+            key = yelp_business_doc_key(str(raw or ""))
+            if key:
+                by_key[key] = row
+    for card in cards:
+        if not isinstance(card, dict) or not _card_needs_coordinates(card):
+            continue
+        row = by_key.get(yelp_business_doc_key(str(card.get("business_id") or "")))
+        if not row:
+            continue
+        if not _coordinate_text(card.get("latitude")):
+            lat = _coordinate_text(row.get("latitude"))
+            if lat:
+                card["latitude"] = lat
+        if not _coordinate_text(card.get("longitude")):
+            lon = _coordinate_text(row.get("longitude"))
+            if lon:
+                card["longitude"] = lon
+
+
+async def fill_missing_coordinates(cards: list[dict] | None) -> list[dict]:
+    """Add latitude and longitude from Yelp source docs when a card omitted them.
+
+    Search project lists often leave coordinates out. The source document key
+    is ``biz:yelp:<id>``; one ``USE KEYS`` read fills every missing card.
+    """
+    if not cards:
+        return []
+    pending_keys: list[str] = []
+    seen: set[str] = set()
+    for card in cards:
+        if not isinstance(card, dict) or not _card_needs_coordinates(card):
+            continue
+        key = yelp_business_doc_key(str(card.get("business_id") or ""))
+        if key and key not in seen:
+            seen.add(key)
+            pending_keys.append(key)
+    if not pending_keys:
+        return cards
+
+    try:
+        cfg = await load_config()
+    except Exception as e:
+        logger.warning("coordinate fill skipped; config: %s", e)
+        return cards
+
+    cb_raw = cfg.get("couchbase") if isinstance(cfg.get("couchbase"), dict) else None
+    if not cb_raw:
+        return cards
+
+    from zeus_client import CouchbaseQueryConfig
+    from zeus_client.zeus.suggest import n1ql_hydrate_keys
+
+    zcfg = resolve_zeus_config(cfg)
+    zeus_url = str(zcfg.get("url") or "")
+    sample = cfg.get("default_sample", "yelp-demo")
+    triple = (cfg.get("samples") or {}).get(sample) or {}
+    bucket = str(triple.get("bucket") or sample or "")
+    scope = str(triple.get("scope") or "_default")
+    collection = str(triple.get("collection") or "_default")
+    if not bucket:
+        return cards
+    try:
+        cb = CouchbaseQueryConfig.from_mapping(
+            cb_raw,
+            zeus_url=zeus_url,
+            allow_host_default=False,
+        )
+    except Exception as e:
+        logger.warning("coordinate fill skipped; couchbase config: %s", e)
+        return cards
+    if cb is None:
+        return cards
+    try:
+        rows = await n1ql_hydrate_keys(
+            cb,
+            bucket,
+            scope,
+            collection,
+            pending_keys,
+            fields=("business_id", "latitude", "longitude"),
+            # mDNS to the Zeus query port often exceeds a few seconds.
+            timeout_s=15.0,
+        )
+    except Exception as e:
+        logger.warning("coordinate fill failed: %s", e)
+        return cards
+    apply_coordinate_rows(cards, rows)
+    return cards
+
+
+'''
+
+_LAST_RESULTS = '        CHATS[chat_id]["last_results"] = results\n'
+_LAST_RESULTS_WITH_COORDS = (
+    "        results = await fill_missing_coordinates(results)\n" + _LAST_RESULTS
+)
+
+_DETAIL_PY = Path("src/local_guide/detail.py")
+_OLD_DETAIL_CACHE = """    cached = find_cached_business(business_id)
+    if cached:
+        apply_local_images(cached)
+        return {
+            "business": cached,
+            "chat_id": None,
+            "source": "cache",
+            "ai_process_result": False,
+        }
+"""
+_NEW_DETAIL_CACHE = """    cached = find_cached_business(business_id)
+    if cached:
+        # Search cards often omit coordinates. Fill them before the detail map
+        # reuses this cached card.
+        from local_guide.search import fill_missing_coordinates
+
+        await fill_missing_coordinates([cached])
+        apply_local_images(cached)
+        return {
+            "business": cached,
+            "chat_id": None,
+            "source": "cache",
+            "ai_process_result": False,
+        }
+"""
+
 
 def _read(path: Path) -> str | None:
     if not path.is_file():
@@ -315,6 +493,40 @@ def _patch_client_ts(text: str) -> str | None:
     return updated
 
 
+def _patch_search_coordinates(text: str) -> str | None:
+    """Fill latitude and longitude on search cards when the project step omits them."""
+    original = text
+    if "Every Business project fields list must include" not in text and _PROMPT_BEFORE_COORDS in text:
+        text = text.replace(_PROMPT_BEFORE_COORDS, _PROMPT_WITH_COORDS, 1)
+    if (
+        "def fill_missing_coordinates" not in text
+        and "def synthesize_answer_from_results(" in text
+    ):
+        text = text.replace(
+            "def synthesize_answer_from_results(",
+            _COORD_HELPERS + "def synthesize_answer_from_results(",
+            1,
+        )
+    if (
+        "def fill_missing_coordinates" in text
+        and "await fill_missing_coordinates(results)" not in text
+        and _LAST_RESULTS in text
+    ):
+        text = text.replace(_LAST_RESULTS, _LAST_RESULTS_WITH_COORDS, 1)
+    if text == original:
+        return None
+    return text
+
+
+def _patch_detail_coordinates(text: str) -> str | None:
+    """Fill coordinates when the business page replays a search card from cache."""
+    if "await fill_missing_coordinates([cached])" in text:
+        return None
+    if _OLD_DETAIL_CACHE not in text:
+        return None
+    return text.replace(_OLD_DETAIL_CACHE, _NEW_DETAIL_CACHE, 1)
+
+
 def _patch_vite(text: str) -> str | None:
     if "127.0.0.1:5000" in text and '"/api"' in text:
         return None
@@ -334,20 +546,26 @@ def apply_yelp_live_search(root: Path) -> dict[str, Any]:
     missing: list[str] = []
     jobs = (
         (_SEARCH_PY, _patch_search_py),
+        (_SEARCH_PY, _patch_search_coordinates),
         (_CLIENT_TS, _patch_client_ts),
         (_VITE, _patch_vite),
+        (_DETAIL_PY, _patch_detail_coordinates),
     )
     for rel, patch in jobs:
         path = root / rel
         text = _read(path)
         if text is None:
-            missing.append(rel.as_posix())
+            rel_name = rel.as_posix()
+            if rel_name not in missing:
+                missing.append(rel_name)
             continue
         updated = patch(text)
         if updated is None or updated == text:
             continue
         _write(path, updated)
-        patched.append(rel.as_posix())
+        rel_name = rel.as_posix()
+        if rel_name not in patched:
+            patched.append(rel_name)
     from zeus_dev_helper_mcp.yelp_pages import apply_yelp_pages
 
     pages = apply_yelp_pages(root)
@@ -359,13 +577,20 @@ def apply_yelp_live_search(root: Path) -> dict[str, Any]:
             missing.append(rel)
     search_text = _read(root / _SEARCH_PY) or ""
     client_text = _read(root / _CLIENT_TS) or ""
+    detail_text = _read(root / _DETAIL_PY) or ""
     live = (
         "chat_req_override=chat_request" in search_text
         and "def fetch_search_chat_request" in search_text
         and 'fetch("/api/search"' in client_text
     )
+    coordinates = (
+        "def fill_missing_coordinates" in search_text
+        and "await fill_missing_coordinates(results)" in search_text
+        and "await fill_missing_coordinates([cached])" in detail_text
+    )
     return {
         "live_chat_request": live,
+        "coordinates": coordinates,
         "business_page": pages["business_page"],
         "review_text": pages["review_text"],
         "search_cards": pages["search_cards"],

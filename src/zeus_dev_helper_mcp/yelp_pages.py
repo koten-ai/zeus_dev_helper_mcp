@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 _CLIENT = Path("frontend/src/api/client.ts")
+_CORPUS = Path("src/local_guide/corpus.py")
 _DETAIL = Path("src/local_guide/detail.py")
 _RESULTS = Path("src/local_guide/results_parser.py")
 _ANSWER = Path("src/local_guide/answer_parser.py")
@@ -397,12 +398,170 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+_OLD_HEALTH = """export async function fetchHealth(): Promise<HealthResponse> {
+  return {
+    ok: true,
+    app_version: "0.1.0",
+    business_count: BUSINESSES.length,
+    corpus_label: "businesses",
+    corpus_source: "sample",
+  };
+}
+"""
+
+_NEW_HEALTH = """export async function fetchHealth(): Promise<HealthResponse> {
+  try {
+    const res = await fetch("/api/health");
+    const data = (await res.json().catch(() => ({}))) as HealthResponse;
+    if (!res.ok) throw new Error("health failed");
+    const count = data.business_count;
+    return {
+      ok: data.ok !== false,
+      app_version: typeof data.app_version === "string" ? data.app_version : undefined,
+      business_count: typeof count === "number" ? count : null,
+      corpus_label: data.corpus_label || "businesses",
+      corpus_source: data.corpus_source || "none",
+    };
+  } catch {
+    return {
+      ok: false,
+      business_count: null,
+      corpus_label: "businesses",
+      corpus_source: "none",
+    };
+  }
+}
+"""
+
+_OLD_CORPUS_LIVE = """    sample = _default_sample(cfg)
+    bucket = str(sample.get("bucket") or "yelp-demo")
+    scope = str(sample.get("scope") or "_default")
+    collection = str(sample.get("collection") or "_default")
+    zeus_url = str((cfg.get("zeus") or {}).get("url") or "") or None
+    live = await fetch_collection_count(
+        bucket,
+        scope,
+        collection,
+        admin_url=admin_base_url(zeus_url),
+    )
+    payload = {
+        "business_count": live,
+        "corpus_label": label,
+        "corpus_source": "zeus_admin" if live is not None else "none",
+    }
+"""
+
+_NEW_CORPUS_LIVE = """    live = await fetch_business_count(cfg)
+    source = "n1ql"
+    if live is None:
+        sample = _default_sample(cfg)
+        bucket = str(sample.get("bucket") or "yelp-demo")
+        scope = str(sample.get("scope") or "_default")
+        collection = str(sample.get("collection") or "_default")
+        zeus_url = str((cfg.get("zeus") or {}).get("url") or "") or None
+        live = await fetch_collection_count(
+            bucket,
+            scope,
+            collection,
+            admin_url=admin_base_url(zeus_url),
+        )
+        source = "zeus_admin" if live is not None else "none"
+    payload = {
+        "business_count": live,
+        "corpus_label": label,
+        "corpus_source": source,
+    }
+"""
+
+
 def _patch_client(text: str) -> str | None:
-    if "function isLiveBusiness" in text and "/api/business/" in text:
+    updated = text
+    if not ("function isLiveBusiness" in updated and "/api/business/" in updated):
+        if _OLD_CLIENT in updated:
+            updated = updated.replace(_OLD_CLIENT, _NEW_CLIENT, 1)
+    if _OLD_HEALTH in updated:
+        updated = updated.replace(_OLD_HEALTH, _NEW_HEALTH, 1)
+    if updated == text:
         return None
-    if _OLD_CLIENT not in text:
+    return updated
+
+
+def _patch_corpus(text: str) -> str | None:
+    """Count ``type = "Business"`` documents instead of the 100-row catalog."""
+    if "async def fetch_business_count(" in text:
         return None
-    return text.replace(_OLD_CLIENT, _NEW_CLIENT, 1)
+    if _OLD_CORPUS_LIVE not in text or "async def fetch_collection_count(" not in text:
+        return None
+    updated = text.replace(_OLD_CORPUS_LIVE, _NEW_CORPUS_LIVE, 1)
+    helper = '''def _query_ident(value: str) -> str | None:
+    text = (value or "").strip()
+    if text and _IDENT.fullmatch(text):
+        return text
+    return None
+
+
+async def fetch_business_count(cfg: dict[str, Any]) -> int | None:
+    """Count Business documents in the default sample collection.
+
+    Review, user, tip, and check-in documents share that collection. The header
+    asks for businesses, so the predicate is ``type = "Business"``.
+    """
+    from zeus_client.zeus.suggest import CouchbaseQueryConfig
+
+    sample = _default_sample(cfg)
+    bucket = _query_ident(str(sample.get("bucket") or "yelp-demo"))
+    scope = _query_ident(str(sample.get("scope") or "_default"))
+    collection = _query_ident(str(sample.get("collection") or "_default"))
+    if not bucket or not scope or not collection:
+        return None
+    zeus_url = str((cfg.get("zeus") or {}).get("url") or "")
+    cb_raw = cfg.get("couchbase") if isinstance(cfg.get("couchbase"), dict) else None
+    cb = CouchbaseQueryConfig.from_mapping(
+        cb_raw,
+        zeus_url=zeus_url,
+        allow_host_default=bool(zeus_url),
+    )
+    if cb is None:
+        return None
+    statement = (
+        "SELECT RAW COUNT(*) "
+        f"FROM `{bucket}`.`{scope}`.`{collection}` "
+        'WHERE type = "Business"'
+    )
+    url = f"{cb.query_url.rstrip('/')}/query/service"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            res = await client.post(
+                url,
+                data={"statement": statement},
+                auth=(cb.username, cb.password),
+            )
+        if res.status_code != 200:
+            return None
+        body = res.json()
+        if isinstance(body, dict) and body.get("errors"):
+            return None
+        results = body.get("results") if isinstance(body, dict) else None
+        if isinstance(results, list) and results and results[0] is not None:
+            return int(results[0])
+    except Exception:
+        return None
+    return None
+
+
+'''
+    updated = updated.replace("async def fetch_collection_count(", helper + "async def fetch_collection_count(", 1)
+    if "import re\n" not in updated:
+        updated = updated.replace("import os\n", "import os\nimport re\n", 1)
+    if "_IDENT = re.compile" not in updated:
+        updated = updated.replace(
+            "_CACHE_TTL_S = 300.0\n",
+            '_CACHE_TTL_S = 300.0\n_IDENT = re.compile(r"^[A-Za-z0-9_\\-]+$")\n',
+            1,
+        )
+    if updated == text:
+        return None
+    return updated
 
 
 def _patch_results(text: str) -> str | None:
@@ -497,6 +656,13 @@ def apply_yelp_pages(root: Path) -> dict[str, Any]:
             continue
         _write(path, updated)
         patched.append(rel.as_posix())
+    corpus_path = root / _CORPUS
+    corpus_text = _read(corpus_path)
+    if corpus_text is not None:
+        updated = _patch_corpus(corpus_text)
+        if updated is not None and updated != corpus_text:
+            _write(corpus_path, updated)
+            patched.append(_CORPUS.as_posix())
     client = _read(root / _CLIENT) or ""
     detail = _read(root / _DETAIL) or ""
     results = _read(root / _RESULTS) or ""

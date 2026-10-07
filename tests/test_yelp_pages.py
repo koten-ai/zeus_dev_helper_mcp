@@ -12,7 +12,12 @@ from pathlib import Path
 
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.explain import explain_topic
-from zeus_dev_helper_mcp.yelp_pages import _OLD_CLIENT, apply_yelp_pages
+from zeus_dev_helper_mcp.yelp_pages import (
+    _OLD_CLIENT,
+    _OLD_CORPUS_LIVE,
+    _OLD_HEALTH,
+    apply_yelp_pages,
+)
 
 RESULTS_PY = """from typing import Any
 
@@ -173,6 +178,37 @@ def test_apply_pages_reports_missing_files(tmp_path: Path) -> None:
     assert report["business_page"] is False
     assert report["review_text"] is False
     assert report["search_cards"] is False
+
+
+def test_apply_pages_replaces_catalog_health_count(tmp_path: Path) -> None:
+    root = tmp_path / "demo_yelp"
+    client = root / "frontend" / "src" / "api"
+    client.mkdir(parents=True)
+    (client / "client.ts").write_text(
+        "function isLiveBusiness() { return true; }\n" + _OLD_HEALTH,
+        encoding="utf-8",
+    )
+    guide = root / "src" / "local_guide"
+    guide.mkdir(parents=True)
+    (guide / "corpus.py").write_text(
+        "import os\nimport time\n_CACHE_TTL_S = 300.0\n\n"
+        "async def fetch_collection_count(bucket, scope, collection, *, admin_url=None):\n"
+        "    return None\n\n"
+        "async def resolve_search_corpus(*, force=False):\n"
+        "    cfg = {}\n"
+        + _OLD_CORPUS_LIVE,
+        encoding="utf-8",
+    )
+    report = apply_yelp_pages(root)
+    text = (client / "client.ts").read_text(encoding="utf-8")
+    corpus = (guide / "corpus.py").read_text(encoding="utf-8")
+    assert "frontend/src/api/client.ts" in report["patched"]
+    assert "src/local_guide/corpus.py" in report["patched"]
+    assert "/api/health" in text
+    assert "BUSINESSES.length" not in text
+    assert "async def fetch_business_count(" in corpus
+    assert 'WHERE type = "Business"' in corpus
+    assert apply_yelp_pages(root)["patched"] == []
 
 
 def test_apply_pages_leaves_unrecognized_files(tmp_path: Path) -> None:
