@@ -30,6 +30,7 @@ _ROWS: tuple[tuple[str, str, bool, bool, bool, bool], ...] = (
     ("mark_blocked", SUPPORT, False, False, True, False),
     ("validate_env", LINT, True, False, True, False),
     ("set_prereq", CORE, False, False, True, False),
+    ("load_process_login", CORE, False, False, True, False),
     ("readiness_check", CORE, False, False, True, True),
     ("list_catalog_modes", CATALOG, True, False, True, False),
     ("fetch_chat_request", CATALOG, True, False, True, False),

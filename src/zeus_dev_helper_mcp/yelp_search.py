@@ -15,7 +15,27 @@ _SEARCH_PY = Path("src/local_guide/search.py")
 _CLIENT_TS = Path("frontend/src/api/client.ts")
 _VITE = Path("frontend/vite.config.ts")
 
-_HELPERS = '''def _chat_request_text(doc: dict) -> str:
+_HELPERS = '''def _llm_key_from_env(provider: dict) -> str:
+    """Read the LLM key from the env name. Do not copy the key into config.json."""
+    import os
+
+    env_name = str(provider.get("api_key_env") or "LLM_API_KEY").strip() or "LLM_API_KEY"
+    found = (os.environ.get(env_name) or "").strip()
+    if found:
+        return found
+    for name in ("LLM_API_KEY", "XAI_API_KEY", "OPENAI_API_KEY"):
+        if name == env_name:
+            continue
+        found = (os.environ.get(name) or "").strip()
+        if found:
+            return found
+    raw = str(provider.get("api_key") or "").strip()
+    if raw and raw != env_name:
+        return raw
+    return ""
+
+
+def _chat_request_text(doc: dict) -> str:
     messages = doc.get("messages") if isinstance(doc.get("messages"), list) else []
     if messages and isinstance(messages[0], dict):
         return str(messages[0].get("content") or "")
@@ -105,60 +125,60 @@ _OLD_CALL = """        settings = ClientSettings(ai_process_result=bool(ai_proce
 
 _NEW_CALL = """        settings = ClientSettings(ai_process_result=bool(ai_process_result))
         chat_request = await fetch_search_chat_request(zeus_url, mode, bucket, scope)
-        turn_zcfg = zcfg
+        answer, trace, new_turns, session_meta, structured = await _run_search_agent(
+            zeus_url=zeus_url,
+            zcfg=zcfg,
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            api_version=api_version,
+            mode=mode,
+            bucket=bucket,
+            scope=scope,
+            collection=collection,
+            message=message,
+            prior_turns=prior_turns,
+            provider_id=provider_id,
+            chat_id=chat_id,
+            prior_sid=prior_sid,
+            prior_round=prior_round,
+            settings=settings,
+            base_id=base_id,
+            base_catalog_dirs=base_catalog_dirs,
+            chat_request=chat_request,
+        )
+"""
+
+# 0.7.6 inserted this retry. A 401 must stay red (ZDM-23).
+_AUTH_NONE_RETRY = '''        turn_zcfg = zcfg
         try:
             answer, trace, new_turns, session_meta, structured = await _run_search_agent(
                 zeus_url=zeus_url,
-                zcfg=turn_zcfg,
-                base_url=base_url,
-                api_key=api_key,
-                model=model,
-                api_version=api_version,
-                mode=mode,
-                bucket=bucket,
-                scope=scope,
-                collection=collection,
-                message=message,
-                prior_turns=prior_turns,
-                provider_id=provider_id,
-                chat_id=chat_id,
-                prior_sid=prior_sid,
-                prior_round=prior_round,
-                settings=settings,
-                base_id=base_id,
-                base_catalog_dirs=base_catalog_dirs,
-                chat_request=chat_request,
-            )
-        except RuntimeError as exc:
-            # Stale Basic credentials 401 before the session body is posted.
-            # This engine accepts the turn without that login. Retry once so
-            # the live chat request is still the session body.
-            if "login failed" not in str(exc).lower():
-                raise
-            public = dict(zcfg)
-            public["auth_mode"] = "none"
-            answer, trace, new_turns, session_meta, structured = await _run_search_agent(
-                zeus_url=zeus_url,
-                zcfg=public,
-                base_url=base_url,
-                api_key=api_key,
-                model=model,
-                api_version=api_version,
-                mode=mode,
-                bucket=bucket,
-                scope=scope,
-                collection=collection,
-                message=message,
-                prior_turns=prior_turns,
-                provider_id=provider_id,
-                chat_id=chat_id,
-                prior_sid=prior_sid,
-                prior_round=prior_round,
-                settings=settings,
-                base_id=base_id,
-                base_catalog_dirs=base_catalog_dirs,
-                chat_request=chat_request,
-            )
+                zcfg=turn_zcfg,'''
+
+_AUTH_NONE_ASSIGN = 'public["auth_mode"] = "none"'
+
+_OLD_LLM_KEY = '    api_key = provider.get("api_key") or ""'
+_NEW_LLM_KEY = "    api_key = _llm_key_from_env(provider)"
+
+_OLD_HEALTH = """export async function fetchHealth(): Promise<HealthResponse> {
+  return {
+    ok: true,
+    app_version: "0.1.0",
+    business_count: BUSINESSES.length,
+    corpus_label: "businesses",
+    corpus_source: "sample",
+  };
+}
+"""
+
+_NEW_HEALTH = """export async function fetchHealth(): Promise<HealthResponse> {
+  const res = await fetch("/api/health");
+  if (!res.ok) {
+    throw new Error(`health failed (${res.status})`);
+  }
+  return (await res.json()) as HealthResponse;
+}
 """
 
 _OLD_UI_SEARCH = """export async function search(
@@ -418,32 +438,59 @@ def _write(path: Path, text: str) -> None:
 
 
 def _patch_search_py(text: str) -> str | None:
-    if "chat_req_override=chat_request" in text and "def fetch_search_chat_request" in text:
+    updated = text
+    if _AUTH_NONE_ASSIGN in updated and "login failed" in updated:
+        start = updated.find(_AUTH_NONE_RETRY)
+        marker = '\n\n        CHATS[chat_id]["turns"] = new_turns'
+        end = updated.find(marker, max(start, 0))
+        if start >= 0 and end > start:
+            # Settings and the fetch line already sit above the retry.
+            kept = (
+                "        settings = ClientSettings(ai_process_result=bool(ai_process_result))\n"
+                "        chat_request = await fetch_search_chat_request(zeus_url, mode, bucket, scope)\n"
+            )
+            if kept in updated[:start] or "chat_request = await fetch_search_chat_request" in updated[:start]:
+                call = _NEW_CALL.removeprefix(kept)
+            else:
+                call = _NEW_CALL
+            updated = updated[:start] + call + updated[end:]
+    elif "chat_req_override=chat_request" not in updated or "def fetch_search_chat_request" not in updated:
+        if _OLD_CALL in updated and "async def run_search(" in updated:
+            draft = updated
+            if "def fetch_search_chat_request" not in draft:
+                draft = draft.replace(
+                    "async def run_search(", _HELPERS + "async def run_search(", 1
+                )
+            start = draft.find(_OLD_CALL)
+            end = draft.find('\n\n        CHATS[chat_id]["turns"] = new_turns', start)
+            if start >= 0 and end > start:
+                updated = draft[:start] + _NEW_CALL + draft[end:]
+    if _OLD_LLM_KEY in updated and "def _llm_key_from_env" not in updated:
+        updated = updated.replace(
+            "async def run_search(",
+            _HELPERS + "async def run_search(",
+            1,
+        )
+        updated = updated.replace(_OLD_LLM_KEY, _NEW_LLM_KEY, 1)
+    elif _OLD_LLM_KEY in updated:
+        updated = updated.replace(_OLD_LLM_KEY, _NEW_LLM_KEY, 1)
+    if updated == text:
         return None
-    if _OLD_CALL not in text or "async def run_search(" not in text:
-        return None
-    if "def fetch_search_chat_request" not in text:
-        text = text.replace("async def run_search(", _HELPERS + "async def run_search(", 1)
-    if _OLD_CALL not in text:
-        return None
-    # Drop the direct run_agent call. The following turns assignment stays.
-    start = text.find(_OLD_CALL)
-    end = text.find("\n\n        CHATS[chat_id][\"turns\"] = new_turns", start)
-    if end < 0:
-        return None
-    return text[:start] + _NEW_CALL + text[end:]
+    return updated
 
 
 def _patch_client_ts(text: str) -> str | None:
-    if 'fetch("/api/search"' in text:
+    updated = text
+    if 'fetch("/api/search"' not in updated:
+        start = updated.find(_OLD_UI_SEARCH)
+        end = updated.find("\nexport async function fetchBusiness(", start if start >= 0 else 0)
+        if start >= 0 and end > start:
+            updated = updated[:start] + _NEW_UI_SEARCH + updated[end + 1 :]
+    if _OLD_HEALTH in updated:
+        updated = updated.replace(_OLD_HEALTH, _NEW_HEALTH, 1)
+    if updated == text:
         return None
-    start = text.find(_OLD_UI_SEARCH)
-    if start < 0:
-        return None
-    end = text.find("\nexport async function fetchBusiness(", start)
-    if end < 0:
-        return None
-    return text[:start] + _NEW_UI_SEARCH + text[end + 1 :]
+    return updated
 
 
 def _patch_search_coordinates(text: str) -> str | None:

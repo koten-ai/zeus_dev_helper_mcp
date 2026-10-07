@@ -34,7 +34,12 @@ YELP_DEMO_ALIASES = frozenset(
     }
 )
 
-_QUICK_START = "cd frontend && npm install && npm run dev"
+_QUICK_START = (
+    "pip install -e . && python -m local_guide"
+    "  # API http://127.0.0.1:5000; "
+    "cd frontend && npm install && npm run dev"
+    "  # SPA http://localhost:5173, proxies /api to port 5000"
+)
 # The git checkout is the app. A beer-shaped BFF is a different product.
 _DO_NOT_REPLACE = [
     "Do not scaffold_app",
@@ -447,15 +452,19 @@ def ensure_yelp_sample(
                 "Do not overwrite it and do not write a new app."
             ),
         )
+    from zeus_dev_helper_mcp.yelp_config import pin_yelp_client, write_yelp_config
     from zeus_dev_helper_mcp.yelp_images import apply_yelp_business_images
     from zeus_dev_helper_mcp.yelp_search import apply_yelp_live_search
 
     search = apply_yelp_live_search(found)
     images = apply_yelp_business_images(found)
+    client_pin = pin_yelp_client(found)
+    app_config = write_yelp_config(cfg, found)
     env_path = set_demo_yelp_sample_dir_env(found)
     save_yelp_sample_dir(cfg, found)
+    config_blocked = app_config.get("failure_class") == "login_not_in_process"
     return {
-        "ok": True,
+        "ok": not config_blocked,
         "local_dir": str(found),
         "cloned": bool(clone_info and clone_info.get("cloned")),
         "project_name": found.name,
@@ -463,9 +472,16 @@ def ensure_yelp_sample(
         "layout": layout,
         "search": search,
         "images": images,
+        "client": client_pin,
+        "app_config": {key: value for key, value in app_config.items() if key != "next_action"},
+        "failure_class": app_config.get("failure_class"),
         "env": {ENV_YELP_DIR: env_path},
         "repo": YELP_REPO,
         "private": True,
         "do_not": list(_DO_NOT_REPLACE),
-        "next_action": _ready_next_action(env_path, images),
+        "next_action": (
+            str(app_config.get("next_action"))
+            if config_blocked
+            else _ready_next_action(env_path, images)
+        ),
     }

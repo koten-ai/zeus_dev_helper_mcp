@@ -175,7 +175,7 @@ def test_wrap_tool_execution_failure_logs_stub_module_then_raises(
     isolated_state: None,
 ) -> None:
     fn = _compile_tool(
-        "readiness_check",
+        "smoke_test_zeus",
         "return {'ok': False, 'failure_class': 'network_timeout'}",
         readiness.__file__,
     )
@@ -194,7 +194,7 @@ def test_wrap_tool_execution_failure_logs_stub_module_then_raises(
     assert "source.line=" in line
     assert "source.line=0" not in line
     assert "error.type=network_timeout" in line
-    assert "tool=readiness_check" in line
+    assert "tool=smoke_test_zeus" in line
     assert "result=error" in line
     assert "error.code" not in line
     assert "/home/" not in line

@@ -92,7 +92,11 @@ def _yelp_use_sample_hint() -> dict[str, str]:
             "Use the LocalAI template: clone https://github.com/koten-ai/demo_yelp. "
             "When parent_dir is set, create the clone there instead of binding "
             "a checkout outside that directory. "
-            "The checkout is the app: run it. Search POSTs /api/search and sends "
+            "The checkout is the app. Run both processes: "
+            "pip install -e . && python -m local_guide (API http://127.0.0.1:5000) and "
+            "cd frontend && npm install && npm run dev "
+            "(SPA http://localhost:5173, proxies /api to port 5000). "
+            "Search POSTs /api/search and sends "
             "the live chat_request.json for yelp-demo/_default mode analytics "
             "as the session body. Search cards get latitude and longitude from "
             "the source document biz:yelp:<id> when the project step omits them. "
@@ -109,6 +113,14 @@ def _yelp_use_sample_hint() -> dict[str, str]:
     }
 
 
+_LOGIN_NOTE = (
+    "ZEUS_USERNAME and ZEUS_PASSWORD are not in this process. "
+    "Write them to a mode-600 env file and call load_process_login with that path. "
+    "Do not pass the password as a tool argument. "
+    "set_prereq stores presence flags only. Then readiness_check."
+)
+
+
 def _stored_zeus_url(cfg: HelperConfig) -> str:
     try:
         from zeus_dev_helper_mcp.prereqs import load_prereqs
@@ -117,6 +129,30 @@ def _stored_zeus_url(cfg: HelperConfig) -> str:
     except Exception:  # noqa: BLE001
         prefs = {}
     return str((prefs or {}).get("zeus_url") or "").strip()
+
+
+def _process_login_missing(cfg: HelperConfig) -> bool:
+    """Basic auth with a stored URL, and no username or password in this process."""
+    if not _stored_zeus_url(cfg):
+        return False
+    try:
+        from zeus_dev_helper_mcp.prereqs import load_prereqs
+
+        prefs = load_prereqs(cfg) or {}
+    except Exception:  # noqa: BLE001
+        prefs = {}
+    mode = str(prefs.get("auth_mode") or cfg.zeus_auth_mode or "none").strip().lower()
+    if mode != "basic":
+        return False
+    from zeus_dev_helper_mcp.app_env import process_password, process_username
+
+    return not process_username() or not process_password()
+
+
+def _recommend_login(base: dict[str, Any]) -> dict[str, Any]:
+    base["recommended_tools"] = _keep_enabled(["load_process_login"])
+    base["note"] = _LOGIN_NOTE
+    return base
 
 
 def _checklist_sample(cfg: HelperConfig) -> str:
@@ -192,9 +228,11 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             "clones https://github.com/koten-ai/demo_yelp and sets DEMO_YELP_SAMPLE_DIR."
         )
         base["recommended_tools"] = _keep_enabled(["use_sample"])
+        if _process_login_missing(cfg):
+            return _recommend_login(base)
         return base
     if sample == "demo_yelp" and item_id not in ("0.1", "0.2") and not _yelp_sample_unbound(cfg):
-        from zeus_dev_helper_mcp.yelp import recorded_yelp_sample_dir
+        from zeus_dev_helper_mcp.yelp import _QUICK_START, recorded_yelp_sample_dir
 
         recorded = recorded_yelp_sample_dir(cfg)
         base["app_track"] = "ui"
@@ -202,11 +240,14 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         base["note"] = (
             f"The app is the LocalAI template at {recorded} "
             "(https://github.com/koten-ai/demo_yelp). "
-            "Run that repository (cd frontend && npm install && npm run dev, "
-            "http://localhost:5173). It is the template. "
+            f"Run both processes: {_QUICK_START}. "
+            "website_green starts python -m local_guide and checks GET /api/health. "
+            "It is the template. "
             "Do not scaffold_app, do not copy demo_beer_sample, and do not write a new app."
         )
-        base["recommended_tools"] = []
+        if _process_login_missing(cfg):
+            return _recommend_login(base)
+        base["recommended_tools"] = _keep_enabled(["website_green"])
         return base
     if sample == "api" and item_id in ("0.2", "3.1"):
         # API track: scaffold FastAPI, not travel UI sample
@@ -374,6 +415,9 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
                 if t not in base["recommended_tools"]:
                     base["recommended_tools"].append(t)
             base["recommended_tools"] = _keep_enabled(list(base["recommended_tools"]))
+    if _process_login_missing(cfg):
+        base["recommended_tools"] = _keep_enabled(["load_process_login"])
+        base["note"] = _LOGIN_NOTE
     base["result_shapes"] = dict(RESULT_SHAPES)
     return base
 

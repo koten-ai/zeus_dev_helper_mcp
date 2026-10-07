@@ -2,7 +2,7 @@
 
 The clone test checks that search.py, client.ts, and vite.config.ts change.
 These tests run the patched search helper: the scope document has to carry the
-scope brief, and a stale login is retried once with that same document.
+scope brief, and a login failure stays a failure.
 """
 
 from __future__ import annotations
@@ -120,7 +120,8 @@ def _patched_search(tmp_path: Path) -> dict:
     assert report["live_chat_request"] is False
     body = path.read_text(encoding="utf-8")
     assert body.count("def fetch_search_chat_request") == 1
-    assert "login failed" in body
+    assert "login failed" not in body
+    assert 'auth_mode"] = "none"' not in body
     assert apply_yelp_live_search(root)["patched"] == []
     assert path.read_text(encoding="utf-8").count("def fetch_search_chat_request") == 1
     return _load(path)
@@ -305,7 +306,7 @@ def test_fetch_search_chat_request_requires_the_scope_document(
         raise AssertionError("expected ValueError")
 
 
-def test_run_search_retries_a_stale_login_with_the_same_chat_request(
+def test_run_search_does_not_retry_a_login_failure(
     tmp_path: Path, monkeypatch
 ) -> None:
     namespace = _patched_search(tmp_path)
@@ -314,24 +315,19 @@ def test_run_search_retries_a_stale_login_with_the_same_chat_request(
 
     async def run_agent(*args, **kwargs):
         calls.append((args, kwargs))
-        if len(calls) == 1:
-            raise RuntimeError("LOGIN FAILED: 401")
-        return ("ok", {"trace": 1}, ["turn"], {"sid": "s"}, {"a": 1})
+        raise RuntimeError("LOGIN FAILED: 401")
 
     _bind(namespace, run_agent)
-    answer, _trace, meta, structured = asyncio.run(namespace["run_search"]("tacos"))
-    assert answer == "ok"
-    assert meta == {"sid": "s"}
-    assert structured == {"a": 1}
-    assert namespace["CHATS"]["c1"]["turns"] == ["turn"]
-    assert len(calls) == 2
+    try:
+        asyncio.run(namespace["run_search"]("tacos"))
+    except RuntimeError as exc:
+        assert "LOGIN FAILED" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+    assert len(calls) == 1
     assert calls[0][0][1]["auth_mode"] == "basic"
-    assert calls[1][0][1]["auth_mode"] == "none"
-    assert calls[0][0][1] is not calls[1][0][1]
     assert namespace["zcfg"]["auth_mode"] == "basic"
     assert calls[0][1]["chat_req_override"] is _DOC
-    assert calls[1][1]["chat_req_override"] is _DOC
-    assert calls[0][0][6:9] == ("analytics", "yelp-demo", "_default")
 
 
 def test_run_search_does_not_retry_other_runtime_errors(
@@ -353,3 +349,71 @@ def test_run_search_does_not_retry_other_runtime_errors(
     else:
         raise AssertionError("expected RuntimeError")
     assert len(calls) == 1
+
+
+def test_auth_none_retry_is_stripped(tmp_path: Path) -> None:
+    root = tmp_path / "demo_yelp"
+    path = root / "src" / "local_guide" / "search.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "async def run_search(query: str):\n"
+        "        settings = ClientSettings(ai_process_result=bool(ai_process_result))\n"
+        "        chat_request = await fetch_search_chat_request(zeus_url, mode, bucket, scope)\n"
+        "        turn_zcfg = zcfg\n"
+        "        try:\n"
+        "            answer, trace, new_turns, session_meta, structured = await _run_search_agent(\n"
+        "                zeus_url=zeus_url,\n"
+        "                zcfg=turn_zcfg,\n"
+        "                chat_request=chat_request,\n"
+        "            )\n"
+        "        except RuntimeError as exc:\n"
+        '            if "login failed" not in str(exc).lower():\n'
+        "                raise\n"
+        "            public = dict(zcfg)\n"
+        '            public["auth_mode"] = "none"\n'
+        "            answer, trace, new_turns, session_meta, structured = await _run_search_agent(\n"
+        "                zeus_url=zeus_url,\n"
+        "                zcfg=public,\n"
+        "                chat_request=chat_request,\n"
+        "            )\n"
+        "\n"
+        '        CHATS[chat_id]["turns"] = new_turns\n',
+        encoding="utf-8",
+    )
+    report = apply_yelp_live_search(root)
+    assert "src/local_guide/search.py" in report["patched"]
+    body = path.read_text(encoding="utf-8")
+    assert "login failed" not in body
+    assert 'auth_mode"] = "none"' not in body
+    assert body.count("zcfg=zcfg") == 1
+    assert body.count("fetch_search_chat_request(zeus_url, mode, bucket, scope)") == 1
+    assert body.count("settings = ClientSettings") == 1
+    assert apply_yelp_live_search(root)["patched"] == []
+
+
+def test_fetch_health_reads_api_health(tmp_path: Path) -> None:
+    root = tmp_path / "demo_yelp"
+    client = root / "frontend" / "src" / "api"
+    client.mkdir(parents=True)
+    (client / "client.ts").write_text(
+        'const res = await fetch("/api/search", { method: "POST" });\n'
+        "export async function fetchBusiness(businessId: string) {\n"
+        "  return { business: null };\n"
+        "}\n"
+        "export async function fetchHealth(): Promise<HealthResponse> {\n"
+        "  return {\n"
+        "    ok: true,\n"
+        '    app_version: "0.1.0",\n'
+        "    business_count: BUSINESSES.length,\n"
+        '    corpus_label: "businesses",\n'
+        '    corpus_source: "sample",\n'
+        "  };\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    report = apply_yelp_live_search(root)
+    assert "frontend/src/api/client.ts" in report["patched"]
+    body = (client / "client.ts").read_text(encoding="utf-8")
+    assert 'fetch("/api/health")' in body
+    assert "BUSINESSES.length" not in body
+    assert apply_yelp_live_search(root)["patched"] == []

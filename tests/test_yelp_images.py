@@ -305,7 +305,9 @@ def test_download_falls_back_when_the_biz_object_is_missing(
     ]
 
 
-def test_http_error_other_than_404_stops(tmp_path: Path, monkeypatch) -> None:
+def test_http_error_other_than_404_stops(
+    tmp_path: Path, monkeypatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     root = tmp_path / "demo_yelp"
     _layout(root)
     _write_catalog(
@@ -326,8 +328,40 @@ def test_http_error_other_than_404_stops(tmp_path: Path, monkeypatch) -> None:
     assert report["ok"] is False
     assert report["failed"] == 1
     assert report["errors"] == ["ABC123/1.png:http_500"]
-    assert len(seen) == 1
+    assert len(seen) == 3
     assert not (root / "frontend/public/business-images/ABC123/1.png").exists()
+    assert "yelp photos 1/1 failed=1" in capsys.readouterr().err
+
+
+def test_403_and_connection_errors_are_retried(
+    tmp_path: Path, monkeypatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "demo_yelp"
+    _layout(root)
+    _write_catalog(
+        root,
+        [{"business_id": "biz:ABC123", "image": "/business-images/biz:ABC123/1.png"}],
+    )
+    seen: list[str] = []
+
+    def fake_urlopen(req, timeout=0):
+        url = getattr(req, "full_url", str(req))
+        seen.append(url)
+        if len(seen) == 1:
+            raise _http_error(url, 403)
+        if len(seen) == 2:
+            raise ConnectionError("dropped")
+        return _Body(PNG)
+
+    monkeypatch.setattr(
+        "zeus_dev_helper_mcp.yelp_images.urllib.request.urlopen", fake_urlopen
+    )
+    report = apply_yelp_business_images(root)
+    assert report["ok"] is True
+    assert report["downloaded"] == 1
+    assert len(seen) == 3
+    assert (root / "frontend/public/business-images/ABC123/1.png").is_file()
+    assert "yelp photos 1/1 failed=0" in capsys.readouterr().err
 
 
 def test_bad_bytes_and_fetch_errors_are_counted(tmp_path: Path, monkeypatch) -> None:

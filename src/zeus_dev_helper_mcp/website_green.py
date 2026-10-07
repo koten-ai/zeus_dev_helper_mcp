@@ -9,6 +9,7 @@ entry is ``fts_doc_key_only``.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -22,10 +23,59 @@ from zeus_dev_helper_mcp.config import HelperConfig, llm_key_in_process_env
 POLL_TRIES = 20
 POLL_PAUSE = 0.25
 _PAGE = 24
+_YELP_PORT = 5000
+
+
+def _is_yelp_app(root: Path) -> bool:
+    """LocalAI yelp-demo entry is ``python -m local_guide``, not ``uvicorn main:app``."""
+    return (root / "src" / "local_guide" / "__main__.py").is_file()
+
+
+def _install_editable(root: Path) -> dict[str, Any]:
+    """``pip install -e .`` so the template's v1 client import resolves."""
+    if not (root / "pyproject.toml").is_file():
+        return {"ok": True, "installed": False}
+    python = root / ".venv" / "bin" / "python"
+    exe = str(python) if python.is_file() else sys.executable
+    try:
+        proc = subprocess.run(
+            [exe, "-m", "pip", "install", "-e", "."],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {
+            "ok": False,
+            "installed": False,
+            "failure_class": "install_failed",
+            "next_action": (
+                "pip install -e . did not finish. The checkout pins "
+                "kotenai-zeus-client from git tag 0.3.1-alpha and needs git "
+                "access to github.com/koten-ai/zeus_client_python. "
+                "Then call website_green again."
+            ),
+        }
+    if proc.returncode != 0:
+        return {
+            "ok": False,
+            "installed": False,
+            "failure_class": "install_failed",
+            "next_action": (
+                "pip install -e . failed. The checkout pins kotenai-zeus-client "
+                "from git tag 0.3.1-alpha. That install needs git access to "
+                "github.com/koten-ai/zeus_client_python. Then call website_green again."
+            ),
+        }
+    return {"ok": True, "installed": True}
 
 
 def install_app(root: Path) -> dict[str, Any]:
-    """Install ``requirements.txt`` when the app has one. Stdout stays out of the result."""
+    """Install the app. Yelp uses ``pip install -e .``. Stdout stays out of the result."""
+    if _is_yelp_app(root):
+        return _install_editable(root)
     req = root / "requirements.txt"
     if not req.is_file():
         return {"ok": True, "installed": False}
@@ -58,22 +108,31 @@ def install_app(root: Path) -> dict[str, Any]:
 
 
 def start_app(root: Path, port: int) -> dict[str, Any]:
-    """Start ``uvicorn main:app`` on the app port. Leaves the process running."""
+    """Start the app. Yelp is ``python -m local_guide``. Beer is ``uvicorn main:app``."""
     python = root / ".venv" / "bin" / "python"
     exe = str(python) if python.is_file() else sys.executable
+    yelp = _is_yelp_app(root)
+    child_env = None
+    if yelp:
+        cmd = [exe, "-m", "local_guide"]
+        child_env = os.environ.copy()
+        child_env["PORT"] = str(port)
+    else:
+        cmd = [
+            exe,
+            "-m",
+            "uvicorn",
+            "main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ]
     try:
         proc = subprocess.Popen(
-            [
-                exe,
-                "-m",
-                "uvicorn",
-                "main:app",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(port),
-            ],
+            cmd,
             cwd=root,
+            env=child_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
@@ -182,6 +241,8 @@ def _named_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _listen_port(root: Path) -> int:
+    if _is_yelp_app(root):
+        return _YELP_PORT
     from zeus_dev_helper_mcp.beer import beer_listen_port
 
     for name in (".env", ".env.example"):
@@ -234,6 +295,11 @@ def _resolve_root(cfg: HelperConfig, target_dir: str) -> Path | None:
     recorded = load_recorded_beer_dir(cfg)
     if recorded is not None and recorded.is_dir():
         return recorded
+    from zeus_dev_helper_mcp.yelp import recorded_yelp_sample_dir
+
+    yelp = recorded_yelp_sample_dir(cfg)
+    if yelp is not None and yelp.is_dir():
+        return yelp
     return None
 
 
@@ -268,19 +334,29 @@ def _remember(ids: list[str], header: str, body: dict[str, Any]) -> None:
             ids.append(item.strip())
 
 
-def _health(base: str) -> str:
-    code, body, _header = _get_json(base + "/healthz")
+def _health(base: str, yelp: bool = False) -> str:
+    path = "/api/health" if yelp else "/healthz"
+    code, body, _header = _get_json(base + path)
     if code == 0:
         return "down"
-    if code == 200 and str(body.get("status") or "") == "ok":
+    if yelp and code == 200 and body.get("ok") is True:
+        return "up"
+    if not yelp and code == 200 and str(body.get("status") or "") == "ok":
         return "up"
     return "busy"
 
 
-def _poll_health(base: str) -> str:
+def _probe_health(base: str, *, yelp: bool) -> str:
+    """One-arg ``_health`` for the beer path so existing test doubles stay valid."""
+    if yelp:
+        return _health(base, True)
+    return _health(base)
+
+
+def _poll_health(base: str, *, yelp: bool = False) -> str:
     state = "down"
     for attempt in range(POLL_TRIES):
-        state = _health(base)
+        state = _probe_health(base, yelp=yelp)
         if state != "down":
             return state
         if attempt + 1 < POLL_TRIES:
@@ -494,9 +570,11 @@ def _run_website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
             failure_class="sample_dir_missing",
             next_action="use_sample writes the catalog, then website_green checks the page.",
         )
+    yelp = _is_yelp_app(root)
     port = _listen_port(root)
     base = f"http://127.0.0.1:{port}"
-    state = _health(base)
+    probe = "/api/health" if yelp else "/healthz"
+    state = _probe_health(base, yelp=yelp)
     if state == "busy":
         return _result(
             failure_class="port_in_use",
@@ -521,13 +599,29 @@ def _run_website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
                 url=base,
                 next_action=str(started.get("next_action") or ""),
             )
-        state = _poll_health(base)
+        state = _poll_health(base, yelp=yelp)
     if state != "up":
         failure = "port_in_use" if state == "busy" else "health_timeout"
         return _result(
             failure_class=failure,
             url=base,
-            next_action=f"{base}/healthz did not answer for this app.",
+            next_action=f"{base}{probe} did not answer for this app.",
+        )
+    if yelp:
+        return _result(
+            ok=True,
+            url=base,
+            list_count=0,
+            search_skipped=True,
+            pour_enabled=False,
+            next_action=(
+                f"Yelp API health is up at {base}/api/health. "
+                "Start the SPA with cd frontend && npm install && npm run dev "
+                "(http://localhost:5173). It proxies /api to this process. "
+                "Search is POST /api/search and needs an LLM key. "
+                "Do not call smoke_test_agent."
+            ),
+            recommended_tools=[],
         )
 
     ids: list[str] = []

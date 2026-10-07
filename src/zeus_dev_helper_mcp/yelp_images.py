@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -121,10 +122,35 @@ def _looks_like_image(data: bytes) -> bool:
     return len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP"
 
 
+_RETRYABLE_HTTP = frozenset({403, 408, 429, 500, 502, 503, 504})
+_FETCH_ATTEMPTS = 3
+
+
 def _fetch(url: str) -> bytes:
+    """GET one photo. Retry a dropped connection, 403, or a 5xx. A 404 is not retried."""
     req = urllib.request.Request(url, headers={"User-Agent": "zeus-dev-helper-yelp-images/1.0"})
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        return resp.read()
+    last: Exception | None = None
+    for attempt in range(_FETCH_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code not in _RETRYABLE_HTTP or attempt + 1 == _FETCH_ATTEMPTS:
+                raise
+            last = exc
+        except Exception as exc:  # noqa: BLE001
+            if attempt + 1 == _FETCH_ATTEMPTS:
+                raise
+            last = exc
+    if last is not None:
+        raise last
+    raise RuntimeError("photo fetch failed")
+
+
+def _emit_photo_progress(done: int, total: int, failed: int) -> None:
+    """One stderr line so a long download does not look hung. stdout stays MCP."""
+    sys.stderr.write(f"yelp photos {done}/{total} failed={failed}\n")
+    sys.stderr.flush()
 
 
 def _remote_urls(origin: str, rel: str) -> list[str]:
@@ -256,15 +282,20 @@ def apply_yelp_business_images(root: Path) -> dict[str, Any]:
     report["source"] = origin
     workers = int(os.environ.get("YELP_IMAGE_FETCH_WORKERS") or "8")
     errors: list[str] = []
+    done = 0
+    total = len(rels)
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         futures = [pool.submit(_download_one, rel, origin, images_root) for rel in rels]
         for fut in as_completed(futures):
+            done += 1
             try:
                 rel, status = fut.result()
             except Exception as exc:  # noqa: BLE001
                 report["failed"] += 1
                 if len(errors) < 8:
                     errors.append(type(exc).__name__)
+                if done == total or done % 25 == 0:
+                    _emit_photo_progress(done, total, int(report["failed"]))
                 continue
             if status == "ok":
                 report["downloaded"] += 1
@@ -274,6 +305,8 @@ def apply_yelp_business_images(root: Path) -> dict[str, Any]:
                 report["failed"] += 1
                 if len(errors) < 8:
                     errors.append(f"{rel}:{status}")
+            if done == total or done % 25 == 0:
+                _emit_photo_progress(done, total, int(report["failed"]))
     report["errors"] = errors
     report["files"] = report["downloaded"] + report["already_present"]
     report["businesses"] = len({rel.partition("/")[0] for rel in rels})

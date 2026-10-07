@@ -247,6 +247,9 @@ def test_beer_sequence_next_step_is_not_explain(tmp_path: Path, monkeypatch) -> 
     """2026-09-28 sequence: doctor is out of band; set_prereq, start_project, next_step."""
     monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.delenv("ZEUS_DEV_HELPER_TOOLSETS", raising=False)
+    monkeypatch.delenv("ZEUS_USERNAME", raising=False)
+    monkeypatch.delenv("ZEUS_USER", raising=False)
+    monkeypatch.delenv("ZEUS_PASSWORD", raising=False)
     from zeus_dev_helper_mcp.config import reload_config
     from zeus_dev_helper_mcp.prereqs import save_prereqs
     from zeus_dev_helper_mcp.server import start_project
@@ -272,7 +275,10 @@ def test_beer_sequence_next_step_is_not_explain(tmp_path: Path, monkeypatch) -> 
     assert tools[0] != "explain"
     assert "explain" not in tools
     assert "recommend_motion" not in tools
-    assert tools == ["readiness_check", "use_sample"]
+    assert tools == ["load_process_login"]
+    note = nxt.get("note") or ""
+    assert "mode-600" in note
+    assert "password" in note
 
 
 def test_walkthrough_beer_skips_agent_smoke_primary(tmp_path: Path, monkeypatch) -> None:

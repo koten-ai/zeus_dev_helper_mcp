@@ -394,7 +394,10 @@ def use_sample(
             "layout": ensured.get("layout"),
             "search": ensured.get("search"),
             "images": ensured.get("images"),
+            "client": ensured.get("client"),
+            "app_config": ensured.get("app_config"),
             "env": ensured.get("env"),
+            "failure_class": ensured.get("failure_class"),
             "error": (ensured.get("clone") or {}).get("error") if not ensured.get("ok") else None,
             "next_action": ensured.get("next_action")
             or "Clone demo_yelp and set DEMO_YELP_SAMPLE_DIR",
