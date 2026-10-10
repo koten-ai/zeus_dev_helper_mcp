@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.7.7
 
 ### Fixed
 - **[ZDM-23](https://kotenai.atlassian.net/browse/ZDM-23)** `load_process_login` reads a mode-600 env file into this process. The password is not a tool argument. `set_prereq` stays presence flags only. `readiness_check` returns `ok: false` with `primary_failure_class` when the gate is red (`login_not_in_process`, `auth_failed`). That result is not logged as `zeus_dev_helper.tool.failed`. A 401 names `bad_credential`, `unknown_user`, `user_not_found`, or `account_locked` when the JSON says so. A body that only says `unauthenticated` does not invent `bad_credential`. The result names the bucket and scope and says not to try another password. `use_sample(sample=demo_yelp)` writes a gitignored mode-600 `config.json` (Zeus URL, bucket, scope, username, password from this process). `llm_provider.api_key_env` stays `LLM_API_KEY`. The API key is not copied. `scope_contracts` hashes are copied from `config.example.json` when that file has them. `enable_durable_sessions` is false. The pyproject pin is `kotenai-zeus-client` git tag `0.3.1-alpha` instead of `file:../zeus_client_python`. The helper no longer retries search with `auth_mode=none` after a 401. The header badge reads `GET /api/health`. Photo downloads retry a dropped connection, 403, or 5xx, report failures, and print progress on stderr. A photo failure does not fail the clone. `website_green` on a yelp checkout runs `pip install -e .` and `python -m local_guide` and checks `GET /api/health`. A 401 mint does not start the process. `next_step` recommends `load_process_login` when auth is basic and this process has no password, and `website_green` once the yelp layout is bound. Run both `python -m local_guide` on port 5000 and `cd frontend && npm install && npm run dev`.
+- `use_sample(sample=demo_yelp)` fills latitude and longitude from the source document `biz:yelp:<id>` when the search project step omits them, including a cached business page. `GET /api/health` counts documents with `type = "Business"`.
 
 ## 0.7.6
 
