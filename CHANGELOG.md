@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **[ZDM-24](https://kotenai.atlassian.net/browse/ZDM-24)** The first creation of beer-sample, travel-sample, or yelp-demo writes one Markdown file under `ZEUS_DEV_HELPER_STATE_DIR`: `beer-sample-build.md`, `travel-sample-build.md`, or `yelp-demo-build.md`. The file lists the coach tool calls that led to `use_sample`, in order, and ends with that `use_sample` result. Each section has the Helper version, a UTC timestamp, the tool name, and the non-secret JSON arguments. The result lines are `ok`, the path written or bound, `cloned`, `failure_class`, and the stamp hash prefix when a live stamp was read. An existing file is left unchanged. A later call, a no-op `use_sample`, `sample=api`, `scaffold_app`, and bare `sample=yelp` add nothing. Passwords, tokens, LLM keys, prompt bodies, and catalog documents stay out. `metrics.jsonl` and the stderr tool-failure line stay as they are.
+
 ## 0.7.7
 
 ### Fixed
