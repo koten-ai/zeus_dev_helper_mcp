@@ -68,12 +68,24 @@ Resources (not default tools): `zeus-helper://checklist` / `glossary/{topic}` / 
 | Tag | Meaning |
 | --- | --- |
 | `none` | No writes; no Zeus HTTP |
-| `state` | Checklist, prereqs, and/or metrics under `ZEUS_DEV_HELPER_STATE_DIR` (default `~/.config/zeus_dev_helper`) |
+| `state` | Checklist, prereqs, metrics, and the write-once sample creation logs under `ZEUS_DEV_HELPER_STATE_DIR` (default `~/.config/zeus_dev_helper`) |
 | `disk` | Writes under `target_dir` (never secret values) |
 | `live GET` | Public `:8080` GET (`/healthz`, `/readyz`, `/version`, `/v1/ai/bootstrap/…`) |
 | `live POST` | Public `:8080` read-only POST (`/v2/{bucket}/{scope}/describe` or one agent turn) |
 | `catalog` | Local `ZEUS_CHAT_REQUEST_DIR` (auto-clone public repo when unset) or GitHub Contents |
 | `LLM` | Needs LLM key + optional extra `kotenai-zeus-client` |
+
+## Sample creation log
+
+The first time `use_sample` writes or binds beer-sample, travel-sample, or yelp-demo, the Helper writes one Markdown file in `ZEUS_DEV_HELPER_STATE_DIR`:
+
+- `beer-sample-build.md` for `use_sample(sample=beer)`
+- `travel-sample-build.md` for `use_sample(sample=travel)`
+- `yelp-demo-build.md` for `use_sample(sample=demo_yelp)` and the aliases `yelp-demo`, `demo-yelp`, `yelp_demo`, and `yelpdemo`
+
+The file is the coach calls that led to that `use_sample`, in order, and the last section is the `use_sample` result. Each section has the Helper version, a UTC timestamp, the tool name, and the non-secret JSON arguments (`sample`, `parent_dir`, `project_name`, `target_dir`, `zeus_url`, `bucket`, `scope`, `auth_mode`, and the other non-secret arguments of that call). The result lines are `ok`, the path written or bound, `cloned`, `failure_class`, and the stamp hash prefix when that call read a live stamp. Replaying those arguments in order repeats the creation.
+
+An existing file is left unchanged. Calls after the sample exists (`smoke_test_zeus`, `smoke_test_agent`, `website_green`, `diagnose_error`, `bind_contract`, `verify_local_setup`, and later `next_step`) are not added. A second run, a no-op `use_sample`, `sample=api`, `scaffold_app`, and bare `sample=yelp` are not added. Passwords, tokens, LLM keys, prompt bodies, and catalog documents are not written. `metrics.jsonl` stays the name-only trail.
 
 ---
 

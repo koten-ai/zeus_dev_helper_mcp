@@ -93,6 +93,11 @@ from zeus_dev_helper_mcp.process_login import (
 from zeus_dev_helper_mcp.prompts import register_prompts
 from zeus_dev_helper_mcp.readiness import run_readiness_check
 from zeus_dev_helper_mcp.resources import register_resources
+from zeus_dev_helper_mcp.sample_log import (
+    bound_sample_dirs,
+    observe_sample_build,
+    public_arguments,
+)
 from zeus_dev_helper_mcp.scaffold import (
     scaffold_app as scaffold_app_impl,
 )
@@ -1284,6 +1289,12 @@ def _wrap_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
             record_metric(_cfg(), "tool_call", tool=fn.__name__)
         except Exception:  # noqa: BLE001, S110 — metrics must not break tools
             pass
+        bound_before = None
+        if fn.__name__ == "use_sample":
+            try:
+                bound_before = bound_sample_dirs(_cfg())
+            except Exception:  # noqa: BLE001 — a missing snapshot must not invent a bind
+                bound_before = None
         try:
             result = fn(*args, **kwargs)
         except Exception as exc:
@@ -1293,6 +1304,16 @@ def _wrap_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
         if not isinstance(result, dict):
             return result
         payload = as_envelope(result)
+        try:
+            observe_sample_build(
+                _cfg(),
+                fn.__name__,
+                public_arguments(fn, args, kwargs),
+                payload,
+                bound_before=bound_before,
+            )
+        except Exception:  # noqa: BLE001, S110 — the creation log must not break tools
+            pass
         if is_execution_failure(fn.__name__, payload):
             log_tool_failure(fn, payload)
             raise_tool_error(payload)
