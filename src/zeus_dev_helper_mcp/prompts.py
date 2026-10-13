@@ -52,6 +52,7 @@ SUPPORT_PACK = """Build a redacted first-green support pack.
 2. Read zeus-helper://policy/req-id. Never send composite hop ids (base:1). Never Rewind POST /v2/session/{id}/turn.
 3. If the support toolset is on, call support_pack_from_turn with debug JSON or last_smoke_agent.json. Detective links are URL templates only — do not scrape Hub.
 4. Evidence may include session_id / req_id / hop ids. Never include passwords, tokens, prompts, or full Zeus bodies.
+5. For a beer, travel, or yelp-demo gate failure, call sample_support_pack(sample=beer|travel|demo_yelp). That paste has no session ids. Session ids stay in support_pack_from_turn.
 """
 
 def register_prompts(mcp: Any) -> None:

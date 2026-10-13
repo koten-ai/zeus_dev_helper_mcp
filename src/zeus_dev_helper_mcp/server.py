@@ -98,6 +98,10 @@ from zeus_dev_helper_mcp.sample_log import (
     observe_sample_build,
     public_arguments,
 )
+from zeus_dev_helper_mcp.sample_support import observe_sample_support
+from zeus_dev_helper_mcp.sample_support import (
+    sample_support_pack as sample_support_pack_impl,
+)
 from zeus_dev_helper_mcp.scaffold import (
     scaffold_app as scaffold_app_impl,
 )
@@ -193,6 +197,9 @@ INSTRUCTIONS = (
     "and call load_process_login with that path. The password is not a tool argument. "
     "Knowledge is resources under zeus-helper:// (checklist, glossary, verbs, policies, catalog modes). "
     "Walkthroughs are prompts: first_green, smoke_question, support_pack. "
+    "sample_support_pack(sample=beer|travel|demo_yelp) pastes the support journal "
+    "for a red beer, travel, or yelp-demo gate. It writes nothing and calls no "
+    "Zeus API. Session ids stay in support_pack_from_turn. "
     "After 5.1+5.2 green: data-plane and multi-agent are handoffs only."
 )
 
@@ -1206,6 +1213,18 @@ def detective_links(req_id: str = "", chat_id: str = "", zeus_url: str = "") -> 
     return detective_links_impl(_cfg(), req_id=req_id, chat_id=chat_id, zeus_url=zeus_url)
 
 
+def sample_support_pack(sample: str = "") -> dict[str, Any]:
+    """Read-only paste for a beer, travel, or yelp-demo support request.
+
+    Writes nothing and calls no Zeus API. Returns one Markdown paste: sample
+    kind, bound directory, creation log, prereqs, open checklist rows in
+    phases 1–5, the last website_green class, local setup, recent tool names,
+    and the support-journal tail. Session ids stay in support_pack_from_turn.
+    sample=api and bare sample=yelp are refused.
+    """
+    return sample_support_pack_impl(_cfg(), sample)
+
+
 def support_pack_from_turn(
     debug_json: str = "",
     path: str = "",
@@ -1285,10 +1304,11 @@ def suggest_demo_prompts() -> dict[str, Any]:
 def _wrap_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
     @wraps(fn)
     def wrapped(*args: Any, **kwargs: Any) -> Any:
-        try:
-            record_metric(_cfg(), "tool_call", tool=fn.__name__)
-        except Exception:  # noqa: BLE001, S110 — metrics must not break tools
-            pass
+        if fn.__name__ != "sample_support_pack":
+            try:
+                record_metric(_cfg(), "tool_call", tool=fn.__name__)
+            except Exception:  # noqa: BLE001, S110 — metrics must not break tools
+                pass
         bound_before = None
         if fn.__name__ == "use_sample":
             try:
@@ -1300,6 +1320,7 @@ def _wrap_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
         except Exception as exc:
             # stdout is the MCP JSON-RPC stream; the family line goes to stderr.
             log_tool_exception(fn, exc)
+            _journal_sample_support(fn, args, kwargs, None, exc)
             raise
         if not isinstance(result, dict):
             return result
@@ -1314,12 +1335,33 @@ def _wrap_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
             )
         except Exception:  # noqa: BLE001, S110 — the creation log must not break tools
             pass
+        _journal_sample_support(fn, args, kwargs, payload, None)
         if is_execution_failure(fn.__name__, payload):
             log_tool_failure(fn, payload)
             raise_tool_error(payload)
         return payload
 
     return wrapped
+
+
+def _journal_sample_support(
+    fn: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    result: dict[str, Any] | None,
+    exc: BaseException | None,
+) -> None:
+    """Append the support journal before the tool error leaves this process."""
+    try:
+        observe_sample_support(
+            _cfg(),
+            fn.__name__,
+            public_arguments(fn, args, kwargs),
+            result,
+            exc=exc,
+        )
+    except Exception:  # noqa: BLE001 — the journal must not hide the tool result
+        return
 
 
 _MCP_OVERRIDES: dict[str, Any] = {}

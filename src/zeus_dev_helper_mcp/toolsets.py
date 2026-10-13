@@ -17,7 +17,7 @@ HANDOFF = "handoff"
 ALL = "all"
 
 NAMED_TOOLSETS = frozenset({CORE, CATALOG, LINT, TRAVEL, SUPPORT, HANDOFF})
-CORE_CAP = 15
+CORE_CAP = 16
 
 # name, toolsets (comma), read_only, destructive, idempotent, open_world
 _ROWS: tuple[tuple[str, str, bool, bool, bool, bool], ...] = (
@@ -46,6 +46,7 @@ _ROWS: tuple[tuple[str, str, bool, bool, bool, bool], ...] = (
     ("website_green", CORE, False, False, False, True),
     ("smoke_test_agent", CORE, False, False, False, True),
     ("diagnose_error", CORE, True, False, True, False),
+    ("sample_support_pack", CORE, True, False, True, False),
     ("recommend_surface", CORE, True, False, True, False),
     ("explain_verb", CATALOG, True, False, True, False),
     ("lint_verb_args", f"{CATALOG},{LINT}", True, False, True, False),
