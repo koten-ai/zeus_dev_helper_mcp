@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.8
 
 ### Added
 - **[ZDM-25](https://kotenai.atlassian.net/browse/ZDM-25)** Red gates for beer-sample, travel-sample, and yelp-demo append `beer-sample-support.md`, `travel-sample-support.md`, or `yelp-demo-support.md` under `ZEUS_DEV_HELPER_STATE_DIR`. `use_sample` appends when it finishes red or raises, including a create that never seals the creation log. `readiness_check`, `validate_env`, `load_process_login`, `verify_local_setup`, `smoke_test_zeus`, `smoke_test_agent`, and `website_green` append only after that creation log exists. Each section has the Helper version, a UTC timestamp, the tool name, `failure_class`, and one scrubbed message. The file keeps the newest 40 sections. `diagnose_error`, `sample=api`, `scaffold_app`, and bare `sample=yelp` add nothing. An append does not modify `*-build.md`. `sample_support_pack(sample=beer|travel|demo_yelp)` is a read-only core tool. It writes nothing and calls no Zeus API. The paste includes the bound directory, the creation log path or a line that it was never sealed, public prereqs, open checklist rows in phases 1–5, the last `website_green` class, whether `last_smoke_agent.json` exists, LLM key presence, yelp ports 5000 and 5173, recent tool names, and the journal tail. Passwords, tokens, LLM keys, prompt bodies, catalog documents, and session ids stay out. `metrics.jsonl` and the stderr tool-failure line stay as they are.
