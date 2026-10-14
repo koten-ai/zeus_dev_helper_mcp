@@ -17,7 +17,7 @@
 - Public API **:8080** only (never Hub **:9091** from app path)  
 - Never invent `contract_hash`  
 - Catalogs: live stamp preferred; `fetch_chat_request` is **template only**  
-- No secrets in tool results, checklist evidence, or the write-once sample creation logs (`beer-sample-build.md`, `travel-sample-build.md`, `yelp-demo-build.md`)  
+- No secrets in tool results, checklist evidence, the write-once sample creation logs (`beer-sample-build.md`, `travel-sample-build.md`, `yelp-demo-build.md`), or the support journals (`beer-sample-support.md`, `travel-sample-support.md`, `yelp-demo-support.md`)  
 
 ## Tools to use first
 

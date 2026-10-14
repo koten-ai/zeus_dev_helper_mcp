@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / "scripts" / "run-helper-mcp.sh"
 INSPECTOR_PKG = "@modelcontextprotocol/inspector@2.6.0"
-CORE_CAP = 15
+CORE_CAP = 16
 FORBIDDEN = frozenset(
     {
         "explain_hash_boundary",

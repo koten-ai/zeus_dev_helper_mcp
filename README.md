@@ -161,7 +161,7 @@ Read `zeus-helper://` resources for glossary, verbs, policies, and catalog modes
 
 ## Default tools (`core`)
 
-Live `tools/list` is the call contract. Default surface is **14 tools** (`ZEUS_DEV_HELPER_TOOLSETS=core`).
+Live `tools/list` is the call contract. Default surface is the **core** toolset (`ZEUS_DEV_HELPER_TOOLSETS=core`).
 
 | Tool | Job |
 | --- | --- |
@@ -179,6 +179,7 @@ Live `tools/list` is the call contract. Default surface is **14 tools** (`ZEUS_D
 | `website_green` | Install, start, and check the catalog page (named list card, page ids, search when Pour is on). A title-cased `doc_key` is not a search card. A describe 200 is not this check |
 | `smoke_test_agent` | One Client `run_turn`. Needs `[agent]` extra and `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` in this process |
 | `diagnose_error` | Map a symptom, hop name, and result keys to a failure class and one generated-file change |
+| `sample_support_pack` | Read-only paste for a beer, travel, or yelp-demo gate failure. Writes nothing and calls no Zeus API. Session ids stay in `support_pack_from_turn` |
 
 Opt-in toolsets (static, comma-separated): `catalog`, `lint`, `travel`, `support`, `handoff`. `all` enables every set. Full when/args/side-effects map: [`docs/TOOLS.md`](docs/TOOLS.md).
 
@@ -203,7 +204,7 @@ Secrets stay in the process environment. `set_prereq` stores presence flags only
 | `BUSINESS_IMAGES_BASE_URL` | Optional CDN prefix for the yelp photo download (no trailing slash). Default is the public `koten-yelp-demo-photos` Space. No API key |
 | `ZEUS_DEV_HELPER_SKIP_YELP_IMAGES` | Set to `1` to skip the yelp photo download during `use_sample(sample=demo_yelp)` |
 | `YELP_IMAGE_FETCH_WORKERS` | Parallel downloads for that photo set. Default `8` |
-| `ZEUS_DEV_HELPER_STATE_DIR` | Checklist, prereqs, local metrics, and the write-once sample creation logs (`beer-sample-build.md`, `travel-sample-build.md`, `yelp-demo-build.md`). Default `~/.config/zeus_dev_helper` |
+| `ZEUS_DEV_HELPER_STATE_DIR` | Checklist, prereqs, local metrics, the write-once sample creation logs (`beer-sample-build.md`, `travel-sample-build.md`, `yelp-demo-build.md`), and the support journals (`beer-sample-support.md`, `travel-sample-support.md`, `yelp-demo-support.md`). Default `~/.config/zeus_dev_helper` |
 | `ZEUS_DEV_HELPER_TOOLSETS` | Static toolsets: `core` (default), plus `catalog,lint,travel,support,handoff` or `all` |
 
 ## Boundaries

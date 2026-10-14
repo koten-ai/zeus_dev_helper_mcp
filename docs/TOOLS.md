@@ -2,7 +2,7 @@
 
 Coach map for the Developer Helper MCP: **when** to call each tool, **args that matter**, **side effects**, and **do-not**.
 
-Default `tools/list` is the **`core`** toolset (≤15). Extra tools are static opt-in via `ZEUS_DEV_HELPER_TOOLSETS` (`catalog`, `lint`, `travel`, `support`, `handoff`, or `all`). This file still documents the full catalog.
+Default `tools/list` is the **`core`** toolset (≤16). Extra tools are static opt-in via `ZEUS_DEV_HELPER_TOOLSETS` (`catalog`, `lint`, `travel`, `support`, `handoff`, or `all`). This file still documents the full catalog.
 
 Knowledge (glossary, verbs, checklist, policies, catalog modes) is MCP **resources** under `zeus-helper://`. Walkthroughs are MCP **prompts** (`first_green`, `smoke_question`, `support_pack`).
 
@@ -24,7 +24,7 @@ This is not Zeus public API documentation (`find` / `search` / `describe` live i
 - Public API **`:8080`** only. Never Hub **`:9091`** from the app path.
 - Never invent `contract_hash`. Never `compute_local` for production bind.
 - `fetch_chat_request` is **TEMPLATE ONLY**. Prefer a live Zeus stamp.
-- No secrets in tool results, checklist evidence, or support packs.
+- No secrets in tool results, checklist evidence, support packs, or sample support journals.
 - Semantic cache stays **off**. Direct / typeahead must not call `agent_memory`.
 - Verb tools explain, lint, and draft. They do **not** POST `find` / `search` / `get` / `pipeline`.
 - `suggest_hooks` returns snippets with `executed=false`. Helper is not a policy engine.
@@ -68,7 +68,7 @@ Resources (not default tools): `zeus-helper://checklist` / `glossary/{topic}` / 
 | Tag | Meaning |
 | --- | --- |
 | `none` | No writes; no Zeus HTTP |
-| `state` | Checklist, prereqs, metrics, and the write-once sample creation logs under `ZEUS_DEV_HELPER_STATE_DIR` (default `~/.config/zeus_dev_helper`) |
+| `state` | Checklist, prereqs, metrics, the write-once sample creation logs, and the support journals under `ZEUS_DEV_HELPER_STATE_DIR` (default `~/.config/zeus_dev_helper`) |
 | `disk` | Writes under `target_dir` (never secret values) |
 | `live GET` | Public `:8080` GET (`/healthz`, `/readyz`, `/version`, `/v1/ai/bootstrap/…`) |
 | `live POST` | Public `:8080` read-only POST (`/v2/{bucket}/{scope}/describe` or one agent turn) |
@@ -85,7 +85,19 @@ The first time `use_sample` writes or binds beer-sample, travel-sample, or yelp-
 
 The file is the coach calls that led to that `use_sample`, in order, and the last section is the `use_sample` result. Each section has the Helper version, a UTC timestamp, the tool name, and the non-secret JSON arguments (`sample`, `parent_dir`, `project_name`, `target_dir`, `zeus_url`, `bucket`, `scope`, `auth_mode`, and the other non-secret arguments of that call). The result lines are `ok`, the path written or bound, `cloned`, `failure_class`, and the stamp hash prefix when that call read a live stamp. Replaying those arguments in order repeats the creation.
 
-An existing file is left unchanged. Calls after the sample exists (`smoke_test_zeus`, `smoke_test_agent`, `website_green`, `diagnose_error`, `bind_contract`, `verify_local_setup`, and later `next_step`) are not added. A second run, a no-op `use_sample`, `sample=api`, `scaffold_app`, and bare `sample=yelp` are not added. Passwords, tokens, LLM keys, prompt bodies, and catalog documents are not written. `metrics.jsonl` stays the name-only trail.
+An existing file is left unchanged. Calls after the sample exists (`smoke_test_zeus`, `smoke_test_agent`, `website_green`, `diagnose_error`, `bind_contract`, `verify_local_setup`, and later `next_step`) are not added. A second run, a no-op `use_sample`, `sample=api`, `scaffold_app`, and bare `sample=yelp` are not added. Passwords, tokens, LLM keys, prompt bodies, and catalog documents are not written. `metrics.jsonl` stays the name-only trail. Red gates after creation go to the support journal below.
+
+## Sample support journal
+
+A red gate for beer-sample, travel-sample, or yelp-demo appends one section under `ZEUS_DEV_HELPER_STATE_DIR`:
+
+- `beer-sample-support.md` for `use_sample(sample=beer)`
+- `travel-sample-support.md` for `use_sample(sample=travel)`
+- `yelp-demo-support.md` for `use_sample(sample=demo_yelp)` and the aliases `yelp-demo`, `demo-yelp`, `yelp_demo`, and `yelpdemo`
+
+`use_sample` appends when it finishes red or raises, including a create that never seals the creation log. `readiness_check`, `validate_env`, `load_process_login`, `verify_local_setup`, `smoke_test_zeus`, `smoke_test_agent`, and `website_green` append only after that creation log is a regular file. Each section has the Helper version, a UTC timestamp, the tool name, `failure_class`, and one scrubbed message (the same redaction and 2048-character cap as the stderr failure line). The file keeps the newest 40 sections. `diagnose_error` is not appended. `sample=api`, `scaffold_app`, and bare `sample=yelp` are not appended. An append does not modify `*-build.md`. Passwords, tokens, LLM keys, prompt bodies, catalog documents, and session ids stay out. `metrics.jsonl` and the stderr `zeus_dev_helper.tool.failed` line stay as they are.
+
+`sample_support_pack(sample=beer|travel|demo_yelp)` is a read-only core tool. It writes nothing and calls no Zeus API. The Markdown paste has the sample kind, the bound directory and whether it is still on disk, the Helper version, the creation-log path or a line that the creation log was never sealed, the public origin, auth mode, bucket, scope, and presence flags from `prereqs.json`, checklist rows in phases 1–5 that are `blocked` or `todo` with their evidence, the last `website_green` class, whether `last_smoke_agent.json` exists, process LLM key presence, app `.env` key presence, `config.json` `llm.api_key_env` when it is still a variable name, yelp API port 5000 and frontend port 5173, the last tool names from `metrics.jsonl`, and the last 8 support-journal sections. Smoke session ids stay in `support_pack_from_turn`.
 
 ---
 
@@ -203,7 +215,8 @@ Verbs Helper can explain (not call): `explain`, `return`, `describe`, `analyze`,
 | `smoke_test_agent` | One Client `rt.agent.run_turn` | `question` (advice-shaped), `update_checklist=true` | `LLM` + Zeus HTTP, `state` (`last_smoke_agent.json` ids/hops only) | Checklist **5.2**. Needs `[agent]` extra (`kotenai-zeus-client>=2.3.0`). When that package imports, a missing `LLM_API_KEY` / `XAI_API_KEY` / `OPENAI_API_KEY` in this process returns `llm_key_missing`. A stored `has_llm_key` flag does not count. Returns `TurnResult` (`session_id` / `req_id`). If the client package is missing **and** `demo_travel_sample` documents Docker install (`DEMO_TRAVEL_SAMPLE_DIR` / persisted path), returns guide-only `install_path=docker` (`docker compose up --build`) instead of only pip; otherwise `install_path=pip`. |
 | `suggest_demo_prompts` | Advice-shaped starter questions | — | none | Before 5.2. Prefer NL over raw SQL. |
 | `describe_scope` | Live MINI-SCHEMA: entity types + field names | `bucket`, `scope` (else env) | `live POST` | Schema for lint / UI. **No document samples.** Cap applied. |
-| `diagnose_error` | Map a symptom, hop name, HTTP status, and top-level result keys to `failure_class` plus one generated-file change | `symptom`, `hop_name`, `hop_bucket`, `status`, `result_keys`, `item_keys`, `node_keys`, `message`, `error_code`, `error_class`, `req_id`, `chat_id`, `turn_id`, `zeus_url` | none (Detective **URLs only**) | On any red path, and after `website_green` fails (`next_step` recommends this tool and no scaffold tool). A search hop of `{node, score}` with node key `doc_key` is `fts_doc_key_only`. A basic login against a bucket other than the prereq is `auth_default_bucket`. Does not accept a document body and does not echo a password, session id, or document. Does not import `zeus_client` on the default extra. |
+| `diagnose_error` | Map a symptom, hop name, HTTP status, and top-level result keys to `failure_class` plus one generated-file change | `symptom`, `hop_name`, `hop_bucket`, `status`, `result_keys`, `item_keys`, `node_keys`, `message`, `error_code`, `error_class`, `req_id`, `chat_id`, `turn_id`, `zeus_url` | none (Detective **URLs only**) | On any red path, and after `website_green` fails (`next_step` recommends this tool and no scaffold tool). A search hop of `{node, score}` with node key `doc_key` is `fts_doc_key_only`. A basic login against a bucket other than the prereq is `auth_default_bucket`. Does not accept a document body and does not echo a password, session id, or document. Does not import `zeus_client` on the default extra. A diagnosis is not appended to the support journal. |
+| `sample_support_pack` | One Markdown paste of the beer, travel, or yelp-demo support journal and the local gate state | `sample=beer\|travel\|demo_yelp` | none | When a created sample is red and someone needs the error, the setup gate, and the other factors. Writes nothing and calls no Zeus API. Session ids stay in `support_pack_from_turn`. |
 
 **Do not:** paste secrets into `diagnose_error` bodies if you can redact first. Do not scrape Hub Detective. `describe_scope` must not be used to dump rows.
 
