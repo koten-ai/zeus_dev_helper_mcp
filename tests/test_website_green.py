@@ -581,6 +581,32 @@ def test_yelp_start_is_local_guide(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert "local-secret" not in json.dumps(out)
 
 
+def test_beer_start_is_python_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "demo_beer_sample"
+    (root / "static").mkdir(parents=True)
+    (root / "static" / "index.html").write_text("<html></html>\n", encoding="utf-8")
+    (root / "main.py").write_text(
+        "def main() -> None:\n    pass\n\n@app.get('/api/beers')\n",
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_popen(cmd, **kwargs):
+        seen["cmd"] = list(cmd)
+        seen["env"] = kwargs["env"]
+        seen["cwd"] = kwargs["cwd"]
+        return type("Proc", (), {"pid": 11})()
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.subprocess.Popen", fake_popen)
+    out = start_app(root, 8090)
+    assert out["ok"] is True
+    assert seen["cmd"][-1] == "main.py"
+    assert "uvicorn" not in seen["cmd"]
+    assert seen["env"]["HOST"] == "127.0.0.1"
+    assert seen["env"]["PORT"] == "8090"
+    assert seen["cwd"] == root
+
+
 def test_yelp_install_uses_editable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = _yelp_tree(tmp_path)
     seen: dict[str, object] = {}

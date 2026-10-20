@@ -31,6 +31,20 @@ def _is_yelp_app(root: Path) -> bool:
     return (root / "src" / "local_guide" / "__main__.py").is_file()
 
 
+def _is_beer_app(root: Path) -> bool:
+    """demo_beer_sample README starts the page with ``python main.py``."""
+    main = root / "main.py"
+    if not main.is_file() or not (root / "static" / "index.html").is_file():
+        return False
+    if _is_api_app(root):
+        return False
+    try:
+        source = main.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "/api/beers" in source and "def main" in source
+
+
 def _install_editable(root: Path) -> dict[str, Any]:
     """``pip install -e .`` so the template's v1 client import resolves."""
     if not (root / "pyproject.toml").is_file():
@@ -108,14 +122,20 @@ def install_app(root: Path) -> dict[str, Any]:
 
 
 def start_app(root: Path, port: int) -> dict[str, Any]:
-    """Start the app. Yelp is ``python -m local_guide``. Beer is ``uvicorn main:app``."""
+    """Start the app. Yelp is ``python -m local_guide``. Beer is ``python main.py``."""
     python = root / ".venv" / "bin" / "python"
     exe = str(python) if python.is_file() else sys.executable
     yelp = _is_yelp_app(root)
+    beer = _is_beer_app(root)
     child_env = None
     if yelp:
         cmd = [exe, "-m", "local_guide"]
         child_env = os.environ.copy()
+        child_env["PORT"] = str(port)
+    elif beer:
+        cmd = [exe, "main.py"]
+        child_env = os.environ.copy()
+        child_env["HOST"] = "127.0.0.1"
         child_env["PORT"] = str(port)
     else:
         cmd = [
@@ -568,7 +588,10 @@ def _run_website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
     if root is None:
         return _result(
             failure_class="sample_dir_missing",
-            next_action="use_sample writes the catalog, then website_green checks the page.",
+            next_action=(
+                "use_sample clones https://github.com/koten-ai/demo_beer_sample, "
+                "then website_green checks the page."
+            ),
         )
     yelp = _is_yelp_app(root)
     port = _listen_port(root)

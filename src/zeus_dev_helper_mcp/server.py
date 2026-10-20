@@ -172,8 +172,11 @@ INSTRUCTIONS = (
     "https://docs.koten.ai/zeus-client/using-zeus-client. "
     "Bootstrap default is UI: use_sample clones public demo_travel_sample when missing "
     "and sets DEMO_TRAVEL_SAMPLE_DIR (optional project_name for the clone directory). "
-    "Beer / website: start_project(sample=beer) → use_sample(sample=beer) writes "
-    "demo_beer_sample (same run_turn search as travel; do not clone demo_travel_sample). "
+    "Beer / website: start_project(sample=beer) → use_sample(sample=beer) shallow-clones "
+    "https://github.com/koten-ai/demo_beer_sample when missing and sets DEMO_BEER_SAMPLE_DIR. "
+    "That checkout is the app. Start it the way its README says: python3 -m venv .venv, "
+    "pip install -r requirements.txt, cp .env.example .env, set LLM_API_KEY, then python main.py "
+    "(binds 127.0.0.1:8090). Same run_turn search as travel; do not clone demo_travel_sample. "
     "Yelp demo: utterances yelp-demo / demo_yelp use start_project(sample=demo_yelp) → "
     "use_sample(sample=demo_yelp), which clones the LocalAI template "
     "https://github.com/koten-ai/demo_yelp when "
@@ -335,7 +338,8 @@ def _note_missing_sample_dir(payload: dict[str, Any]) -> dict[str, Any]:
     out["recommended_tools"] = ["use_sample"]
     out["next_action"] = (
         f"Recorded beer sample directory is missing: {missing}. "
-        "use_sample(sample=beer) writes the catalog UI."
+        "use_sample(sample=beer) clones https://github.com/koten-ai/demo_beer_sample "
+        "and starts with python main.py."
     )
     return out
 
@@ -525,8 +529,11 @@ def _start_project_body(
         out["app_kind"] = "ui"
         out["llm_required"] = False
         out["note"] = (
-            "Beer catalog UI: after prereqs/readiness, use_sample(sample=beer) writes "
-            "demo_beer_sample. Search is rt.agent.run_turn with chat_request omitted so "
+            "Beer catalog UI: after prereqs/readiness, use_sample(sample=beer) shallow-clones "
+            "https://github.com/koten-ai/demo_beer_sample when missing and sets "
+            "DEMO_BEER_SAMPLE_DIR. Start that checkout with python main.py after the README "
+            "venv, pip install -r requirements.txt, and cp .env.example .env steps. "
+            "Search is rt.agent.run_turn with chat_request omitted so "
             "catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA (same as travel). "
             "Put LLM_API_KEY in .env. The BFF does not build a pipeline body."
         )
@@ -968,7 +975,7 @@ def use_sample(
     """UI sample: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
-    sample=beer — write demo_beer_sample catalog UI. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
+    sample=beer — shallow-clone https://github.com/koten-ai/demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR. Start with python main.py (venv, pip install -r requirements.txt, cp .env.example .env, LLM_API_KEY). Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
     sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
     sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: pip install -e . && python -m local_guide on http://127.0.0.1:5000, and cd frontend && npm install && npm run dev on http://localhost:5173 (the SPA proxies /api to port 5000). Writes gitignored mode-600 config.json from this process. llm.api_key_env stays the name LLM_API_KEY. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. A 401 stays red. Search cards get latitude and longitude from biz:yelp:<id> when the project step omits them, including a cached business page. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample / demo_yelp).

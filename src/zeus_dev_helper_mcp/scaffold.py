@@ -237,7 +237,8 @@ def use_sample(
     """UI sample path: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
     travel: locate/clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
-    beer: write demo_beer_sample catalog UI (run_turn, chat_request omitted; LLM key required).
+    beer: shallow-clone public demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR.
+    Start that checkout with python main.py (README). Search is run_turn with chat_request omitted.
     catalog: write demo_catalog_sample from explain_scope. Beer bucket or Beer + Brewery
     still writes the beer catalog UI.
     demo_yelp: locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp; set DEMO_YELP_SAMPLE_DIR. Aliases include yelp-demo.
@@ -311,6 +312,8 @@ def use_sample(
             "llm_key": ensured.get("llm_key"),
             "local_dir": ensured.get("local_dir") or ensured.get("target_dir"),
             "written": ensured.get("written"),
+            "cloned": bool(ensured.get("cloned")),
+            "repo": ensured.get("repo") or "https://github.com/koten-ai/demo_beer_sample",
             "project_name": ensured.get("project_name"),
             "layout": ensured.get("layout"),
             "env": ensured.get("env"),
@@ -320,9 +323,9 @@ def use_sample(
             "error": ensured.get("error"),
             "next_action": ensured.get("next_action")
             or (
-                "Set ZEUS_URL and LLM_API_KEY in .env. "
+                "Set LLM_API_KEY in .env. "
                 "Leave config.json llm.api_key_env as LLM_API_KEY. "
-                "Run verify_local_setup before uvicorn. "
+                "Start with python main.py. "
                 "Search is rt.agent.run_turn with chat_request omitted."
             ),
             "checklist_hint": "Mark 3.1 done after the beer Direct UI is on disk",

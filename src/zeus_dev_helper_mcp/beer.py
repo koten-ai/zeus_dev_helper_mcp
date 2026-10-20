@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +19,14 @@ from zeus_dev_helper_mcp.checklist import set_item_status
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.docs_links import docs_url
 
+BEER_REPO = "https://github.com/koten-ai/demo_beer_sample"
+BEER_REPO_GIT = f"{BEER_REPO}.git"
 DEFAULT_BEER_DIR_NAME = "demo_beer_sample"
 ENV_BEER_DIR = "DEMO_BEER_SAMPLE_DIR"
+_BEER_QUICK_START = (
+    "python3 -m venv .venv && source .venv/bin/activate && "
+    "pip install -r requirements.txt && cp .env.example .env && python main.py"
+)
 _DIR_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 BEER_ALIASES = frozenset(
@@ -375,14 +382,22 @@ BEER_MARKERS = (
 
 SAMPLE_BEER = {
     "name": "demo_beer_sample",
+    "repo": BEER_REPO,
     "note": (
-        "beer-sample catalog UI. use_sample(sample=beer) writes a FastAPI BFF "
-        "+ static page. Search is rt.agent.run_turn with chat_request omitted "
-        "(catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA)."
+        "beer-sample catalog UI. use_sample(sample=beer) shallow-clones "
+        "https://github.com/koten-ai/demo_beer_sample when the directory is missing "
+        "and sets DEMO_BEER_SAMPLE_DIR. The checkout is the app. "
+        "Start it with python main.py, as that README describes. "
+        "Set LLM_API_KEY in .env. "
+        "config.json llm.api_key_env stays the name LLM_API_KEY. "
+        "Search is rt.agent.run_turn with chat_request omitted "
+        "(catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA). "
+        "Do not clone demo_travel_sample."
     ),
+    "clone": f"git clone --depth 1 {BEER_REPO_GIT}",
     "related": [
         docs_url("zeus-client/using-zeus-client.md"),
-        "https://github.com/koten-ai/zeus_dev_helper_mcp",
+        BEER_REPO,
     ],
 }
 
@@ -2299,14 +2314,7 @@ def write_beer_sample(
                             "project_name": root.name,
                             "layout": layout,
                             "env": {ENV_BEER_DIR: env_path},
-                            "next_action": (
-                                f"Existing beer catalog UI at {root}. "
-                                "Set ZEUS_URL and LLM_API_KEY in .env. "
-                                "Leave config.json llm.api_key_env as LLM_API_KEY. "
-                                "Run verify_local_setup before uvicorn. "
-                                "pip install -r requirements.txt; "
-                                f"uvicorn main:app --port ${{PORT:-8090}}"
-                            ),
+                            "next_action": _beer_start_action(root),
                         },
                     )
                 page_files = install_beer_page(root)
@@ -2375,14 +2383,11 @@ def write_beer_sample(
     except Exception:  # noqa: BLE001, S110
         pass
 
-    port = 8090
-    run_cmd = (
-        f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && "
-        "pip install -r requirements.txt && cp -n .env.example .env"
-    )
+    run_cmd = f"cd {root} && {_BEER_QUICK_START}"
     result = {
         "ok": True,
         "written": True,
+        "cloned": False,
         "upgraded": upgrading,
         "target_dir": str(root),
         "local_dir": str(root),
@@ -2392,20 +2397,154 @@ def write_beer_sample(
         "env_example": {"ok": True, "path": str(root / ".env.example")},
         "env": {ENV_BEER_DIR: env_path},
         "run": run_cmd,
+        "repo": BEER_REPO,
         "llm_required": True,
-        "next_action": (
-            "Put ZEUS_URL and LLM_API_KEY in .env. "
-            "Leave config.json llm.api_key_env as LLM_API_KEY. "
-            "Run verify_local_setup before uvicorn. "
-            "Search calls rt.agent.run_turn and omits chat_request so the client "
-            "merges SCOPE BRIEF + MINI-SCHEMA. "
-            f"Install deps and run uvicorn on PORT={port}."
-        ),
+        "next_action": _beer_start_action(root),
         "docs": {
             "using": docs_url("zeus-client/using-zeus-client.md"),
             "design": "docs/DESIGN-zdm-1-beer-first-green.md",
         },
     }
+    return _finish_beer_result(cfg, root, result)
+
+
+def _beer_start_action(root: Path) -> str:
+    """README start for https://github.com/koten-ai/demo_beer_sample."""
+    return (
+        f"The app is {BEER_REPO} at {root}. "
+        f"From that directory: {_BEER_QUICK_START}. "
+        "Set LLM_API_KEY in .env. This step is required. "
+        "Leave config.json llm.api_key_env as the name LLM_API_KEY. "
+        "python main.py binds 127.0.0.1 and port 8090 "
+        "(HOST and PORT change the bind). "
+        "Open http://127.0.0.1:8090/. "
+        "Search is rt.agent.run_turn with chat_request omitted. "
+        "Do not clone demo_travel_sample."
+    )
+
+
+def clone_beer_sample(
+    *,
+    dest: Path,
+    repo_url: str = BEER_REPO_GIT,
+    timeout_s: int = 120,
+) -> dict[str, Any]:
+    """Shallow-clone public demo_beer_sample into dest (dest must not exist yet)."""
+    dest = dest.expanduser().resolve()
+    if dest.exists():
+        return {
+            "ok": False,
+            "cloned": False,
+            "dest": str(dest),
+            "error": f"destination already exists: {dest}",
+            "next_action": (
+                "Pass an unused project_name / path, or set sample_dir to the existing clone"
+            ),
+        }
+    parent = dest.parent
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return {
+            "ok": False,
+            "cloned": False,
+            "dest": str(dest),
+            "error": f"cannot create parent {parent}: {exc}",
+            "next_action": "Choose a writable parent directory",
+        }
+
+    cmd = ["git", "clone", "--depth", "1", repo_url, str(dest)]
+    manual = f"git clone --depth 1 {BEER_REPO_GIT} and set {ENV_BEER_DIR}"
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            check=False,
+        )
+    except FileNotFoundError:
+        return {
+            "ok": False,
+            "cloned": False,
+            "dest": str(dest),
+            "error": "git not found on PATH",
+            "next_action": f"Install git, or {manual}",
+            "clone_cmd": " ".join(cmd),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "cloned": False,
+            "dest": str(dest),
+            "error": f"git clone timed out after {timeout_s}s",
+            "next_action": f"Retry use_sample or {manual}",
+            "clone_cmd": " ".join(cmd),
+        }
+
+    if proc.returncode != 0 or not dest.is_dir():
+        err = (proc.stderr or proc.stdout or "").strip()[:800]
+        return {
+            "ok": False,
+            "cloned": False,
+            "dest": str(dest),
+            "error": err or f"git clone failed (exit {proc.returncode})",
+            "next_action": f"Fix network/git access, or {manual}",
+            "clone_cmd": " ".join(cmd),
+        }
+
+    return {
+        "ok": True,
+        "cloned": True,
+        "dest": str(dest),
+        "repo": repo_url,
+        "clone_cmd": " ".join(cmd),
+    }
+
+
+def _finish_cloned_beer(
+    cfg: HelperConfig,
+    root: Path,
+    *,
+    cloned: bool,
+) -> dict[str, Any]:
+    """Bind a public demo_beer_sample checkout and describe the README start."""
+    env_path = set_demo_beer_sample_dir_env(root)
+    save_beer_sample_dir(cfg, root)
+    layout = validate_beer_layout(root)
+    present = looks_like_beer_sample(root)
+    try:
+        set_item_status(cfg, "0.2", "done", evidence=f"beer_layout={root}")
+        set_item_status(cfg, "3.1", "done", evidence=f"beer_dir={root}")
+    except Exception:  # noqa: BLE001, S110
+        pass
+    result = {
+        "ok": present,
+        "written": False,
+        "cloned": cloned,
+        "local_dir": str(root),
+        "target_dir": str(root),
+        "project_name": root.name,
+        "layout": layout,
+        "env": {ENV_BEER_DIR: env_path},
+        "run": f"cd {root} && {_BEER_QUICK_START}",
+        "repo": BEER_REPO,
+        "llm_required": True,
+        "next_action": _beer_start_action(root),
+        "docs": {
+            "using": docs_url("zeus-client/using-zeus-client.md"),
+            "repo": BEER_REPO,
+        },
+    }
+    if not present:
+        result["failure_class"] = "beer_layout"
+        result["error"] = f"clone at {root} is missing the beer sample layout"
+        result["next_action"] = (
+            "The clone is missing main.py, README.md, requirements.txt, "
+            "or static/index.html. Check the README in "
+            f"{BEER_REPO}."
+        )
+        return result
     return _finish_beer_result(cfg, root, result)
 
 
@@ -2476,6 +2615,45 @@ def ensure_beer_sample(
         relocated_from = str(dest)
         dest = sibling
         dir_name = dest.name
+
+    if dest.is_dir() and not _nonempty(dest):
+        try:
+            dest.rmdir()
+        except OSError:
+            pass
+    if not dest.exists():
+        from zeus_dev_helper_mcp.app_env import basic_login_blocked
+
+        blocked = basic_login_blocked(cfg)
+        if blocked is not None:
+            blocked["local_dir"] = str(dest)
+            blocked["cloned"] = False
+            blocked["repo"] = BEER_REPO
+            return blocked
+        clone_info = clone_beer_sample(dest=dest)
+        if not clone_info.get("ok"):
+            return {
+                "ok": False,
+                "cloned": False,
+                "written": False,
+                "failure_class": "clone_failed",
+                "local_dir": str(dest),
+                "project_name": dir_name,
+                "clone": clone_info,
+                "repo": BEER_REPO,
+                "error": clone_info.get("error"),
+                "next_action": clone_info.get("next_action")
+                or f"Clone {BEER_REPO} and set {ENV_BEER_DIR}",
+            }
+        result = _finish_cloned_beer(cfg, dest, cloned=True)
+        if relocated_from and result.get("ok"):
+            result["relocated_from"] = relocated_from
+            prior = str(result.get("next_action") or "").strip()
+            result["next_action"] = (
+                f"Default demo_beer_sample was a foreign tree at {relocated_from}. "
+                f"Cloned the catalog app to {dest}. {prior}"
+            ).strip()
+        return result
 
     result = write_beer_sample(
         cfg,
