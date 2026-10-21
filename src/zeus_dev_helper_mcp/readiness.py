@@ -185,6 +185,26 @@ def mint_scope_session(
     It never includes the session id, the password, or an API key.
     ``website_green`` calls this same helper.
     """
+    public, _session_id = _mint_scope_session(cfg, client)
+    return public
+
+
+def take_scope_session(
+    cfg: HelperConfig,
+    client: httpx.Client | None = None,
+) -> tuple[dict[str, Any], str | None]:
+    """Mint a scope session and return ``(public, session_id)``.
+
+    ``session_id`` is for the ``X-Zeus-Session`` header on the next call.
+    It is not a field on the public dict.
+    """
+    return _mint_scope_session(cfg, client)
+
+
+def _mint_scope_session(
+    cfg: HelperConfig,
+    client: httpx.Client | None = None,
+) -> tuple[dict[str, Any], str | None]:
     bucket = (cfg.default_bucket or "").strip()
     scope = (cfg.default_scope or "").strip()
     base = _base_url(cfg.zeus_url)
@@ -209,7 +229,7 @@ def mint_scope_session(
             "as a tool argument. set_prereq stores presence flags only. "
             "A describe 200 is not a login."
         )
-        return public
+        return public, None
     if not base or not bucket or not scope:
         public["failure_class"] = "login_not_in_process"
         public["stopped"] = True
@@ -219,7 +239,7 @@ def mint_scope_session(
             "Keep the password in the process environment. "
             "A describe 200 is not a login."
         )
-        return public
+        return public, None
 
     path = f"/v1/{bucket}/{scope}/auth/session"
     public["login_probe"] = f"POST {path}"
@@ -240,6 +260,7 @@ def mint_scope_session(
         )
         status = response.status_code
         has_sid = False
+        session_id: str | None = None
         if status in (200, 201):
             body: Any = {}
             try:
@@ -247,7 +268,10 @@ def mint_scope_session(
             except Exception:  # noqa: BLE001
                 body = {}
             if isinstance(body, dict):
-                has_sid = bool(body.get("session_id") or body.get("id"))
+                raw_sid = body.get("session_id") or body.get("id")
+                has_sid = bool(raw_sid)
+                if isinstance(raw_sid, str) and raw_sid.strip():
+                    session_id = raw_sid.strip()
         public["status"] = status
         public["has_session_id"] = has_sid
         public["detail"] = f"POST {path} → HTTP {status}"
@@ -270,12 +294,14 @@ def mint_scope_session(
                 "Inspect Zeus auth docs; credentials may still work for other paths. "
                 "A describe 200 is not a login."
             )
-        return public
+        if not public.get("ok"):
+            session_id = None
+        return public, session_id
     except httpx.RequestError as exc:
         public["failure_class"] = "network_timeout"
         public["detail"] = str(exc)
         public["next_action"] = "Check network / ZEUS_URL reachability"
-        return public
+        return public, None
     finally:
         if owns_client:
             client.close()

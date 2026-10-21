@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -16,6 +18,7 @@ from zeus_dev_helper_mcp.readiness import (
     bucket_probe_from_names,
     bucket_probe_report,
     run_readiness_check,
+    take_scope_session,
 )
 
 
@@ -87,6 +90,54 @@ def _auth(cfg: HelperConfig) -> tuple[str, str] | None:
 
 def _headers() -> dict[str, str]:
     return request_headers()
+
+
+_AUTH_STOPS = frozenset({"login_not_in_process", "auth_failed"})
+_SMOKE_SESSION_ENV = "ZEUS_SMOKE_SESSION"
+
+
+def _auth_mode(cfg: HelperConfig) -> str:
+    return (cfg.zeus_auth_mode or "none").strip().lower()
+
+
+def _readiness_auth_stop(ready: dict[str, Any]) -> str | None:
+    """A login failure must not continue into an anonymous describe."""
+    if ready.get("overall") != "fail":
+        return None
+    failure = ready.get("primary_failure_class")
+    if failure in _AUTH_STOPS:
+        return str(failure)
+    return None
+
+
+class _SmokeSessionStore:
+    """Holds one minted scope session for this smoke. Not the process environment."""
+
+    def __init__(self, session_id: str) -> None:
+        self._session_id = session_id
+
+    def get(self, name: str) -> str | None:
+        if name == _SMOKE_SESSION_ENV and self._session_id:
+            return self._session_id
+        if not name:
+            return None
+        val = os.environ.get(name)
+        if val is None or val == "":
+            return None
+        return val
+
+    def __repr__(self) -> str:
+        return "_SmokeSessionStore(session=set)"
+
+
+def _use_scope_session(zeus: dict[str, Any]) -> dict[str, Any]:
+    """Later calls send only X-Zeus-Session. Basic auth is not repeated."""
+    out = dict(zeus)
+    out["auth_mode"] = "session"
+    out["token_env"] = _SMOKE_SESSION_ENV
+    out.pop("password_env", None)
+    out.pop("username", None)
+    return out
 
 
 def _merge_probe_buckets(
@@ -163,17 +214,70 @@ def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict
             "steps": steps,
             "readiness": ready,
         }
+    stopped = _readiness_auth_stop(ready)
+    if stopped:
+        return {
+            "ok": False,
+            "failure_class": stopped,
+            "next_action": ready.get("next_action")
+            or "Fix the login before describe. A describe 200 is not a login.",
+            "bucket": bucket,
+            "scope": scope,
+            "collection": collection,
+            "authenticated_bucket": buckets.get("authenticated_bucket"),
+            "prereq_bucket": buckets.get("prereq_bucket"),
+            "request_buckets": buckets.get("request_buckets") or [],
+            "steps": steps,
+            "readiness": ready,
+        }
     body: dict[str, Any] = {}  # server defaults
     status = 0
     req_id = ""
-    err = None
     preview = ""
+    sid: str | None = None
+    client_headers = _headers()
+    if _auth_mode(cfg) == "basic":
+        client_headers.pop("Authorization", None)
     try:
-        with httpx.Client(timeout=httpx.Timeout(30.0, connect=5.0), headers=_headers()) as client:
-            r = client.post(url, json=body, auth=_auth(cfg))
+        with httpx.Client(timeout=httpx.Timeout(30.0, connect=5.0), headers=client_headers) as client:
+            auth = _auth(cfg)
+            headers = dict(client_headers)
+            if _auth_mode(cfg) == "basic":
+                minted, sid = take_scope_session(cfg, client)
+                steps.append(
+                    {
+                        "name": "auth_session",
+                        "ok": bool(minted.get("ok")),
+                        "status": minted.get("status"),
+                        "failure_class": minted.get("failure_class"),
+                        "has_session_id": bool(minted.get("has_session_id")),
+                    }
+                )
+                if not minted.get("ok") or not sid:
+                    failure = str(minted.get("failure_class") or "auth_failed")
+                    return {
+                        "ok": False,
+                        "failure_class": failure,
+                        "next_action": minted.get("next_action")
+                        or "The session mint failed. A describe 200 is not a login.",
+                        "bucket": bucket,
+                        "scope": scope,
+                        "collection": collection,
+                        "authenticated_bucket": buckets.get("authenticated_bucket"),
+                        "prereq_bucket": buckets.get("prereq_bucket"),
+                        "request_buckets": buckets.get("request_buckets") or [],
+                        "steps": steps,
+                        "readiness": ready,
+                    }
+                headers["X-Zeus-Session"] = sid
+                headers.pop("Authorization", None)
+                auth = None
+            r = client.post(url, json=body, auth=auth, headers=headers)
             status = r.status_code
             req_id = r.headers.get("X-Zeus-Req-Id") or r.headers.get("x-zeus-req-id") or ""
             preview = (r.text or "")[:400]
+            if sid and sid in preview:
+                preview = preview.replace(sid, "[REDACTED]")
             if status >= 400:
                 err = preview
     except httpx.RequestError as e:
@@ -305,6 +409,89 @@ def _agent_docs() -> dict[str, str]:
     }
 
 
+def client_floor_for_catalog(body: Any) -> str | None:
+    """Floor required by ``_lineage.base_id``, or None when the stamp has none."""
+    try:
+        from zeus_client.domain.catalog import lineage_base_id
+        from zeus_client.domain.floor import floor_required_for_base_id
+    except ImportError:
+        return None
+    base_id = lineage_base_id(body if isinstance(body, dict) else None)
+    if not base_id:
+        return None
+    floor = floor_required_for_base_id(base_id).strip()
+    return floor or None
+
+
+def stamped_catalog_floor(
+    *,
+    root: str | Path | None,
+    mode: str | None = None,
+    bucket: str | None = None,
+    scope: str | None = None,
+) -> str | None:
+    """Read the catalog ``smoke_test_agent`` will load and return its floor."""
+    if not root:
+        return None
+    try:
+        from zeus_client.domain.catalog import resolve_catalog_path
+    except ImportError:
+        return None
+    path = resolve_catalog_path(
+        mode=(mode or "analytics").strip() or "analytics",
+        bucket=(bucket or "").strip() or None,
+        scope=(scope or "").strip() or None,
+        user_dir=Path(root),
+    )
+    if path is None:
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return client_floor_for_catalog(raw)
+
+
+def apply_smoke_client_floor(mapping: dict[str, Any], cfg: HelperConfig) -> str | None:
+    """Set ``mapping['client_floor']`` from the on-disk stamp. Scaffold stays unset."""
+    target = mapping.get("target") if isinstance(mapping.get("target"), dict) else {}
+    settings = mapping.get("settings") if isinstance(mapping.get("settings"), dict) else {}
+    root = mapping.get("chat_requests_dir") or (
+        str(cfg.chat_request_dir) if cfg.chat_request_dir else None
+    )
+    floor = stamped_catalog_floor(
+        root=root,
+        mode=str(settings.get("mode") or cfg.default_mode or "analytics"),
+        bucket=str(target.get("bucket") or cfg.default_bucket or ""),
+        scope=str(target.get("scope") or cfg.default_scope or ""),
+    )
+    if floor:
+        mapping["client_floor"] = floor
+    return floor
+
+
+def pin_runtime_client_floor(rt: Any) -> str | None:
+    """Point ``rt.config.client_floor`` at the catalog now on disk.
+
+    ``RuntimeConfig`` is frozen. A stamp that arrives in ``catalog.sync`` is
+    visible only after the config object is replaced.
+    """
+    catalog = getattr(getattr(rt, "services", None), "catalog", None)
+    root = getattr(catalog, "root", None) or getattr(rt.config, "chat_requests_dir", None)
+    target = rt.config.target
+    settings = rt.config.settings
+    floor = stamped_catalog_floor(
+        root=root,
+        mode=getattr(settings, "mode", None) or "analytics",
+        bucket=getattr(target, "bucket", None),
+        scope=getattr(target, "scope", None),
+    )
+    if not floor or floor == rt.config.client_floor:
+        return floor
+    rt.config = replace(rt.config, client_floor=floor)
+    return floor
+
+
 def _docker_guidance_for_agent(cfg: HelperConfig) -> dict[str, Any] | None:
     """Guide-only: travel sample with Docker install docs → prefer compose guidance."""
     try:
@@ -420,10 +607,25 @@ def smoke_test_agent(
             "failure_class": "scope_not_enabled",
             "next_action": "Set ZEUS_BUCKET/ZEUS_SCOPE or client target in config.json",
         }
+    apply_smoke_client_floor(mapping, cfg)
+
+    secrets_override = None
+    if _auth_mode(cfg) == "basic":
+        minted, sid = take_scope_session(cfg)
+        if not minted.get("ok") or not sid:
+            return {
+                "ok": False,
+                "failure_class": str(minted.get("failure_class") or "auth_failed"),
+                "next_action": minted.get("next_action")
+                or "The session mint failed. A describe 200 is not a login.",
+                "docs": _agent_docs(),
+            }
+        mapping["zeus"] = _use_scope_session(mapping["zeus"])
+        secrets_override = _SmokeSessionStore(sid)
 
     async def _run() -> dict[str, Any]:
         rt_cfg = config_from_mapping(mapping)
-        secrets = EnvSecretStore()
+        secrets = secrets_override or EnvSecretStore()
         catalog = None
         chat_dir = rt_cfg.chat_requests_dir or (
             str(cfg.chat_request_dir) if cfg.chat_request_dir else None
@@ -445,6 +647,7 @@ def smoke_test_agent(
             synced = 0
             sync_err = None
             chat_request = None
+            pin_runtime_client_floor(rt)
             try:
                 loaded = await rt.catalog.load(mode=rt.config.settings.mode)
                 chat_request = dict(loaded.body)
@@ -452,6 +655,7 @@ def smoke_test_agent(
                 try:
                     sync_result = await rt.catalog.sync()
                     synced = len(getattr(sync_result, "synced", None) or [])
+                    pin_runtime_client_floor(rt)
                     loaded = await rt.catalog.load(mode=rt.config.settings.mode)
                     chat_request = dict(loaded.body)
                 except Exception as sync_exc:  # noqa: BLE001
