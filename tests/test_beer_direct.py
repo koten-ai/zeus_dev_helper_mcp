@@ -31,6 +31,9 @@ def test_use_sample_beer_writes_tree(tmp_path: Path) -> None:
     assert out["ok"] is True
     assert out.get("track") == "ui-direct"
     assert out.get("llm_required") is True
+    assert out.get("cloned") is True
+    assert "python main.py" in (out.get("next_action") or "")
+    assert "https://github.com/koten-ai/demo_beer_sample" in (out.get("next_action") or "")
     root = Path(out["local_dir"])
     assert root.name == "demo_beer_sample"
     assert (root / "main.py").is_file()

@@ -31,15 +31,45 @@ def _is_yelp_app(root: Path) -> bool:
     return (root / "src" / "local_guide" / "__main__.py").is_file()
 
 
-def _install_editable(root: Path) -> dict[str, Any]:
-    """``pip install -e .`` so the template's v1 client import resolves."""
-    if not (root / "pyproject.toml").is_file():
-        return {"ok": True, "installed": False}
+def _is_beer_app(root: Path) -> bool:
+    """demo_beer_sample README starts the page with ``python main.py``."""
+    main = root / "main.py"
+    if not main.is_file() or not (root / "static" / "index.html").is_file():
+        return False
+    if _is_api_app(root):
+        return False
+    try:
+        source = main.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return "/api/beers" in source and "def main" in source
+
+
+def _install_python(root: Path) -> tuple[str, str]:
+    """The interpreter ``pip`` will use. A sample ``.venv`` wins over Helper."""
     python = root / ".venv" / "bin" / "python"
-    exe = str(python) if python.is_file() else sys.executable
+    if python.is_file():
+        return str(python), ".venv"
+    return sys.executable, "the Helper interpreter"
+
+
+def _pip(
+    root: Path,
+    args: list[str],
+    *,
+    fail_timeout: str,
+    fail_exit: str,
+) -> dict[str, Any]:
+    """Run pip. Refuse an interpreter older than Python 3.11 before the install."""
+    from zeus_dev_helper_mcp.python_runtime import pip_block
+
+    exe, source = _install_python(root)
+    blocked = pip_block(exe, source=source)
+    if blocked is not None:
+        return blocked
     try:
         proc = subprocess.run(
-            [exe, "-m", "pip", "install", "-e", "."],
+            [exe, *args],
             cwd=root,
             capture_output=True,
             text=True,
@@ -51,25 +81,37 @@ def _install_editable(root: Path) -> dict[str, Any]:
             "ok": False,
             "installed": False,
             "failure_class": "install_failed",
-            "next_action": (
-                "pip install -e . did not finish. The checkout pins "
-                "kotenai-zeus-client from git tag 0.3.1-alpha and needs git "
-                "access to github.com/koten-ai/zeus_client_python. "
-                "Then call website_green again."
-            ),
+            "next_action": fail_timeout,
         }
     if proc.returncode != 0:
         return {
             "ok": False,
             "installed": False,
             "failure_class": "install_failed",
-            "next_action": (
-                "pip install -e . failed. The checkout pins kotenai-zeus-client "
-                "from git tag 0.3.1-alpha. That install needs git access to "
-                "github.com/koten-ai/zeus_client_python. Then call website_green again."
-            ),
+            "next_action": fail_exit,
         }
     return {"ok": True, "installed": True}
+
+
+def _install_editable(root: Path) -> dict[str, Any]:
+    """``pip install -e .`` so the template's v1 client import resolves."""
+    if not (root / "pyproject.toml").is_file():
+        return {"ok": True, "installed": False}
+    return _pip(
+        root,
+        ["-m", "pip", "install", "-e", "."],
+        fail_timeout=(
+            "pip install -e . did not finish. The checkout pins "
+            "kotenai-zeus-client from git tag 0.3.1-alpha and needs git "
+            "access to github.com/koten-ai/zeus_client_python. "
+            "Then call website_green again."
+        ),
+        fail_exit=(
+            "pip install -e . failed. The checkout pins kotenai-zeus-client "
+            "from git tag 0.3.1-alpha. That install needs git access to "
+            "github.com/koten-ai/zeus_client_python. Then call website_green again."
+        ),
+    )
 
 
 def install_app(root: Path) -> dict[str, Any]:
@@ -79,43 +121,29 @@ def install_app(root: Path) -> dict[str, Any]:
     req = root / "requirements.txt"
     if not req.is_file():
         return {"ok": True, "installed": False}
-    python = root / ".venv" / "bin" / "python"
-    exe = str(python) if python.is_file() else sys.executable
-    try:
-        proc = subprocess.run(
-            [exe, "-m", "pip", "install", "-r", str(req)],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            timeout=180,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return {
-            "ok": False,
-            "installed": False,
-            "failure_class": "install_failed",
-            "next_action": "Install the app requirements, then call website_green again.",
-        }
-    if proc.returncode != 0:
-        return {
-            "ok": False,
-            "installed": False,
-            "failure_class": "install_failed",
-            "next_action": "pip install failed. Fix the app requirements, then retry website_green.",
-        }
-    return {"ok": True, "installed": True}
+    return _pip(
+        root,
+        ["-m", "pip", "install", "-r", str(req)],
+        fail_timeout="Install the app requirements, then call website_green again.",
+        fail_exit="pip install failed. Fix the app requirements, then retry website_green.",
+    )
 
 
 def start_app(root: Path, port: int) -> dict[str, Any]:
-    """Start the app. Yelp is ``python -m local_guide``. Beer is ``uvicorn main:app``."""
+    """Start the app. Yelp is ``python -m local_guide``. Beer is ``python main.py``."""
     python = root / ".venv" / "bin" / "python"
     exe = str(python) if python.is_file() else sys.executable
     yelp = _is_yelp_app(root)
+    beer = _is_beer_app(root)
     child_env = None
     if yelp:
         cmd = [exe, "-m", "local_guide"]
         child_env = os.environ.copy()
+        child_env["PORT"] = str(port)
+    elif beer:
+        cmd = [exe, "main.py"]
+        child_env = os.environ.copy()
+        child_env["HOST"] = "127.0.0.1"
         child_env["PORT"] = str(port)
     else:
         cmd = [
@@ -568,7 +596,10 @@ def _run_website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
     if root is None:
         return _result(
             failure_class="sample_dir_missing",
-            next_action="use_sample writes the catalog, then website_green checks the page.",
+            next_action=(
+                "use_sample clones https://github.com/koten-ai/demo_beer_sample, "
+                "then website_green checks the page."
+            ),
         )
     yelp = _is_yelp_app(root)
     port = _listen_port(root)

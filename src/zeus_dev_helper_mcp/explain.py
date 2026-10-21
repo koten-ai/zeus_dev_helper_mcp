@@ -222,7 +222,10 @@ TOPICS: dict[str, dict[str, str]] = {
             "An LLM key is required even when has_llm_key=false: process env for checklist 1.2, "
             "app .env for checklist 3.2, and config.json llm.api_key_env left as that name. "
             "The BFF does not build a pipeline body. "
-            "use_sample(sample=beer) writes it. Do not clone demo_travel_sample for this bucket."
+            "use_sample(sample=beer) shallow-clones https://github.com/koten-ai/demo_beer_sample "
+            "when it is missing and sets DEMO_BEER_SAMPLE_DIR. "
+            "Start that checkout with python main.py. "
+            "Do not clone demo_travel_sample for this bucket."
         ),
         "doc": "zeus-client/using-zeus-client.md",
     },

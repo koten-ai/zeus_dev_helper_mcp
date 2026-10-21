@@ -208,7 +208,8 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         base["recommended_tools"] = _keep_enabled(["use_sample"])
         base["note"] = (
             "Recorded beer sample directory is not on disk. "
-            "use_sample(sample=beer) writes the catalog UI."
+            "use_sample(sample=beer) clones https://github.com/koten-ai/demo_beer_sample. "
+            "Start it with python main.py."
         )
         base["result_shapes"] = dict(RESULT_SHAPES)
         return base
@@ -262,7 +263,7 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         base["use_sample_args_hint"] = {
             "sample": "beer",
             "project_name": "demo_beer_sample",
-            "note": "Beer catalog UI. Search is rt.agent.run_turn with chat_request omitted (MINI-SCHEMA merge). Do not clone travel.",
+            "note": "Beer catalog UI. Clones https://github.com/koten-ai/demo_beer_sample. Start with python main.py. Search is rt.agent.run_turn with chat_request omitted (MINI-SCHEMA merge). Do not clone travel.",
         }
     elif sample == "beer" and item_id in ("5.1", "5.2", "6.1"):
         if _website_green_failed(cfg):
@@ -274,7 +275,7 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         else:
             tools = ["website_green"]
             base["note"] = (
-                "The catalog sample is written. website_green installs, starts, and "
+                "The catalog sample is the demo_beer_sample checkout. website_green installs, starts python main.py, and "
                 "checks the list page. smoke_test_agent is not this check. "
                 "A describe 200 is not this check."
             )
