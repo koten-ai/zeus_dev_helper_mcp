@@ -23,10 +23,14 @@ BEER_REPO = "https://github.com/koten-ai/demo_beer_sample"
 BEER_REPO_GIT = f"{BEER_REPO}.git"
 DEFAULT_BEER_DIR_NAME = "demo_beer_sample"
 ENV_BEER_DIR = "DEMO_BEER_SAMPLE_DIR"
-_BEER_QUICK_START = (
-    "python3 -m venv .venv && source .venv/bin/activate && "
-    "pip install -r requirements.txt && cp .env.example .env && python main.py"
-)
+def beer_quick_start() -> str:
+    """README start. The virtualenv interpreter is Python 3.11 or newer."""
+    from zeus_dev_helper_mcp.python_runtime import venv_setup_shell
+
+    return (
+        f"{venv_setup_shell()} && "
+        "pip install -r requirements.txt && cp .env.example .env && python main.py"
+    )
 _DIR_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 BEER_ALIASES = frozenset(
@@ -1691,8 +1695,10 @@ into `post_trace`.
 
 ## Setup
 
+Create the virtualenv with Python 3.11 or newer. `kotenai-zeus-client` does not install on Python 3.9.
+
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+{venv_line}
 pip install -r requirements.txt
 cp .env.example .env   # set ZEUS_URL and LLM_API_KEY
 ```
@@ -2006,11 +2012,17 @@ def write_beer_config(cfg: HelperConfig, target_dir: str | Path) -> dict[str, An
     return {"ok": True, "path": str(path)}
 
 
+def _readme_text(name: str) -> str:
+    from zeus_dev_helper_mcp.python_runtime import venv_setup_shell
+
+    return _README.format(project_name=name, venv_line=venv_setup_shell())
+
+
 def _pin_trace_bucket(cfg: HelperConfig, root: Path) -> None:
     """Keep an existing catalog tree off the default yelp-data session login."""
     write_beer_config(cfg, root)
     (root / "README.md").write_text(
-        _README.format(project_name=root.name),
+        _readme_text(root.name),
         encoding="utf-8",
     )
 
@@ -2058,7 +2070,7 @@ def _write_generated_tree(cfg: HelperConfig, root: Path, name: str) -> list[str]
     files: dict[str, str] = {
         "main.py": _MAIN_PY,
         "requirements.txt": _REQUIREMENTS,
-        "README.md": _README.format(project_name=name),
+        "README.md": _readme_text(name),
     }
     written: list[str] = []
     for rel, body in files.items():
@@ -2383,7 +2395,7 @@ def write_beer_sample(
     except Exception:  # noqa: BLE001, S110
         pass
 
-    run_cmd = f"cd {root} && {_BEER_QUICK_START}"
+    run_cmd = f"cd {root} && {beer_quick_start()}"
     result = {
         "ok": True,
         "written": True,
@@ -2410,9 +2422,12 @@ def write_beer_sample(
 
 def _beer_start_action(root: Path) -> str:
     """README start for https://github.com/koten-ai/demo_beer_sample."""
-    return (
+    from zeus_dev_helper_mcp.python_runtime import launch_note
+
+    note = launch_note()
+    start = (
         f"The app is {BEER_REPO} at {root}. "
-        f"From that directory: {_BEER_QUICK_START}. "
+        f"From that directory: {beer_quick_start()}. "
         "Set LLM_API_KEY in .env. This step is required. "
         "Leave config.json llm.api_key_env as the name LLM_API_KEY. "
         "python main.py binds 127.0.0.1 and port 8090 "
@@ -2421,6 +2436,9 @@ def _beer_start_action(root: Path) -> str:
         "Search is rt.agent.run_turn with chat_request omitted. "
         "Do not clone demo_travel_sample."
     )
+    if note:
+        return f"{note} {start}"
+    return start
 
 
 def clone_beer_sample(
@@ -2527,7 +2545,7 @@ def _finish_cloned_beer(
         "project_name": root.name,
         "layout": layout,
         "env": {ENV_BEER_DIR: env_path},
-        "run": f"cd {root} && {_BEER_QUICK_START}",
+        "run": f"cd {root} && {beer_quick_start()}",
         "repo": BEER_REPO,
         "llm_required": True,
         "next_action": _beer_start_action(root),

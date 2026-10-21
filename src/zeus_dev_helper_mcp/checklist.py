@@ -168,6 +168,13 @@ def next_step(cfg: HelperConfig) -> dict[str, Any]:
 def _hint_for(item_id: str, cfg: HelperConfig) -> str:
     hints = {
         "0.1": "Read using-zeus-client.md; stay single-agent until green.",
+        "1.1": (
+            "kotenai-zeus-client needs Python 3.11 or newer. "
+            "doctor and verify_local_setup check python3 on PATH, "
+            "or the app .venv interpreter when that file exists. "
+            "website_green does not run pip on an older interpreter. "
+            "Recreate the virtualenv with Python 3.11 or newer, then install again."
+        ),
         "1.2": (
             "Set ZEUS_URL with set_prereq. The form does not collect a password or an "
             "API key. LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY must be set in this "
