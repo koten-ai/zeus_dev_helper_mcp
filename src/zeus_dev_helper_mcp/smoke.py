@@ -10,6 +10,7 @@ import httpx
 
 from zeus_dev_helper_mcp.checklist import set_item_status
 from zeus_dev_helper_mcp.config import HelperConfig
+from zeus_dev_helper_mcp.diagnose import _NEXT as _DIAGNOSE_NEXT
 from zeus_dev_helper_mcp.docs_links import docs_url
 from zeus_dev_helper_mcp.readiness import (
     bucket_probe_from_names,
@@ -38,6 +39,36 @@ def request_headers() -> dict[str, str]:
     if token:
         h["Authorization"] = f"Bearer {token}"
     return h
+
+
+def _describe_failure_class(status: int, preview: str) -> str | None:
+    """Map a describe HTTP status to a coach class.
+
+    401 and 404 stay auth_failed and scope_not_enabled. A 429 whose
+    JSON ``error`` is session_force_closed is that class. Every other
+    HTTP error stays dispatch_failed.
+    """
+    if 200 <= status < 300:
+        return None
+    if status == 401:
+        return "auth_failed"
+    if status == 404:
+        return "scope_not_enabled"
+    if status == 429 and _error_field(preview) == "session_force_closed":
+        return "session_force_closed"
+    return "dispatch_failed"
+
+
+def _error_field(preview: str) -> str:
+    text = preview or ""
+    try:
+        body = json.loads(text)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    error = body.get("error")
+    return error.strip() if isinstance(error, str) else ""
 
 
 def describe_scope_url(cfg: HelperConfig) -> str | None:
@@ -177,17 +208,7 @@ def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict
             "status": status,
             "req_id": req_id or None,
             "body_preview": preview if not describe_ok else preview[:200],
-            "failure_class": (
-                None
-                if describe_ok
-                else (
-                    "auth_failed"
-                    if status == 401
-                    else "scope_not_enabled"
-                    if status == 404
-                    else "dispatch_failed"
-                )
-            ),
+            "failure_class": _describe_failure_class(status, preview),
         }
     )
 
@@ -202,9 +223,12 @@ def smoke_test_zeus(cfg: HelperConfig, *, update_checklist: bool = True) -> dict
     next_action = "Zeus smoke green — proceed to smoke_test_agent"
     if not describe_ok:
         failure = steps[-1].get("failure_class") or "dispatch_failed"
-        next_action = (
-            "Fix describe failure (auth/scope/enablement); see errors.md; hand ops req_id if present"
-        )
+        if failure == "session_force_closed":
+            next_action = _DIAGNOSE_NEXT["session_force_closed"]
+        else:
+            next_action = (
+                "Fix describe failure (auth/scope/enablement); see errors.md; hand ops req_id if present"
+            )
     elif ready.get("overall") == "fail":
         failure = ready.get("primary_failure_class")
         next_action = ready.get("next_action") or "Fix readiness gates then re-smoke"

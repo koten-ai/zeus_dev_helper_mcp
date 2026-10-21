@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **[ZDM-36](https://kotenai.atlassian.net/browse/ZDM-36)** `smoke_test_zeus` maps describe HTTP 429 whose JSON `error` is `session_force_closed` to `failure_class` `session_force_closed`. `next_action` is the diagnose text: stop probing, and do not keep spending the shared lab session. HTTP 401 stays `auth_failed` and HTTP 404 stays `scope_not_enabled`. Any other describe HTTP error stays `dispatch_failed`.
+
 ## 0.7.8
 
 ### Added
