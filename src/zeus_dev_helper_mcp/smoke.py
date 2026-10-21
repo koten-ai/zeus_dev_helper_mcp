@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -281,6 +283,89 @@ def _agent_docs() -> dict[str, str]:
     }
 
 
+def client_floor_for_catalog(body: Any) -> str | None:
+    """Floor required by ``_lineage.base_id``, or None when the stamp has none."""
+    try:
+        from zeus_client.domain.catalog import lineage_base_id
+        from zeus_client.domain.floor import floor_required_for_base_id
+    except ImportError:
+        return None
+    base_id = lineage_base_id(body if isinstance(body, dict) else None)
+    if not base_id:
+        return None
+    floor = floor_required_for_base_id(base_id).strip()
+    return floor or None
+
+
+def stamped_catalog_floor(
+    *,
+    root: str | Path | None,
+    mode: str | None = None,
+    bucket: str | None = None,
+    scope: str | None = None,
+) -> str | None:
+    """Read the catalog ``smoke_test_agent`` will load and return its floor."""
+    if not root:
+        return None
+    try:
+        from zeus_client.domain.catalog import resolve_catalog_path
+    except ImportError:
+        return None
+    path = resolve_catalog_path(
+        mode=(mode or "analytics").strip() or "analytics",
+        bucket=(bucket or "").strip() or None,
+        scope=(scope or "").strip() or None,
+        user_dir=Path(root),
+    )
+    if path is None:
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return client_floor_for_catalog(raw)
+
+
+def apply_smoke_client_floor(mapping: dict[str, Any], cfg: HelperConfig) -> str | None:
+    """Set ``mapping['client_floor']`` from the on-disk stamp. Scaffold stays unset."""
+    target = mapping.get("target") if isinstance(mapping.get("target"), dict) else {}
+    settings = mapping.get("settings") if isinstance(mapping.get("settings"), dict) else {}
+    root = mapping.get("chat_requests_dir") or (
+        str(cfg.chat_request_dir) if cfg.chat_request_dir else None
+    )
+    floor = stamped_catalog_floor(
+        root=root,
+        mode=str(settings.get("mode") or cfg.default_mode or "analytics"),
+        bucket=str(target.get("bucket") or cfg.default_bucket or ""),
+        scope=str(target.get("scope") or cfg.default_scope or ""),
+    )
+    if floor:
+        mapping["client_floor"] = floor
+    return floor
+
+
+def pin_runtime_client_floor(rt: Any) -> str | None:
+    """Point ``rt.config.client_floor`` at the catalog now on disk.
+
+    ``RuntimeConfig`` is frozen. A stamp that arrives in ``catalog.sync`` is
+    visible only after the config object is replaced.
+    """
+    catalog = getattr(getattr(rt, "services", None), "catalog", None)
+    root = getattr(catalog, "root", None) or getattr(rt.config, "chat_requests_dir", None)
+    target = rt.config.target
+    settings = rt.config.settings
+    floor = stamped_catalog_floor(
+        root=root,
+        mode=getattr(settings, "mode", None) or "analytics",
+        bucket=getattr(target, "bucket", None),
+        scope=getattr(target, "scope", None),
+    )
+    if not floor or floor == rt.config.client_floor:
+        return floor
+    rt.config = replace(rt.config, client_floor=floor)
+    return floor
+
+
 def _docker_guidance_for_agent(cfg: HelperConfig) -> dict[str, Any] | None:
     """Guide-only: travel sample with Docker install docs → prefer compose guidance."""
     try:
@@ -396,6 +481,7 @@ def smoke_test_agent(
             "failure_class": "scope_not_enabled",
             "next_action": "Set ZEUS_BUCKET/ZEUS_SCOPE or client target in config.json",
         }
+    apply_smoke_client_floor(mapping, cfg)
 
     async def _run() -> dict[str, Any]:
         rt_cfg = config_from_mapping(mapping)
@@ -421,6 +507,7 @@ def smoke_test_agent(
             synced = 0
             sync_err = None
             chat_request = None
+            pin_runtime_client_floor(rt)
             try:
                 loaded = await rt.catalog.load(mode=rt.config.settings.mode)
                 chat_request = dict(loaded.body)
@@ -428,6 +515,7 @@ def smoke_test_agent(
                 try:
                     sync_result = await rt.catalog.sync()
                     synced = len(getattr(sync_result, "synced", None) or [])
+                    pin_runtime_client_floor(rt)
                     loaded = await rt.catalog.load(mode=rt.config.settings.mode)
                     chat_request = dict(loaded.body)
                 except Exception as sync_exc:  # noqa: BLE001
