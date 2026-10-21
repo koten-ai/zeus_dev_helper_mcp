@@ -237,7 +237,8 @@ def use_sample(
     """UI sample path: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
     travel: locate/clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
-    beer: write demo_beer_sample catalog UI (run_turn, chat_request omitted; LLM key required).
+    beer: shallow-clone public demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR.
+    Start that checkout with python main.py (README). Search is run_turn with chat_request omitted.
     catalog: write demo_catalog_sample from explain_scope. Beer bucket or Beer + Brewery
     still writes the beer catalog UI.
     demo_yelp: locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp; set DEMO_YELP_SAMPLE_DIR. Aliases include yelp-demo.
@@ -311,6 +312,8 @@ def use_sample(
             "llm_key": ensured.get("llm_key"),
             "local_dir": ensured.get("local_dir") or ensured.get("target_dir"),
             "written": ensured.get("written"),
+            "cloned": bool(ensured.get("cloned")),
+            "repo": ensured.get("repo") or "https://github.com/koten-ai/demo_beer_sample",
             "project_name": ensured.get("project_name"),
             "layout": ensured.get("layout"),
             "env": ensured.get("env"),
@@ -320,9 +323,9 @@ def use_sample(
             "error": ensured.get("error"),
             "next_action": ensured.get("next_action")
             or (
-                "Set ZEUS_URL and LLM_API_KEY in .env. "
+                "Set LLM_API_KEY in .env. "
                 "Leave config.json llm.api_key_env as LLM_API_KEY. "
-                "Run verify_local_setup before uvicorn. "
+                "Start with python main.py. "
                 "Search is rt.agent.run_turn with chat_request omitted."
             ),
             "checklist_hint": "Mark 3.1 done after the beer Direct UI is on disk",
@@ -580,6 +583,10 @@ def scaffold_app(
         }
 
     root = Path(target_dir).expanduser().resolve()
+    from zeus_dev_helper_mcp.python_runtime import launch_note, venv_setup_shell
+
+    setup = venv_setup_shell()
+    py_note = launch_note()
     from zeus_dev_helper_mcp.app_env import basic_login_blocked
 
     blocked = basic_login_blocked(cfg)
@@ -622,8 +629,10 @@ This is an **API-only** app (no demo UI). For the travel planner UI use
 
 ## Setup
 
+Create the virtualenv with Python 3.11 or newer. `kotenai-zeus-client` does not install on Python 3.9.
+
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+{setup}
 pip install -r requirements.txt
 cp .env.example .env   # ZEUS_URL, ZEUS_USERNAME/ZEUS_PASSWORD or bearer, LLM_API_KEY
 ```
@@ -682,7 +691,7 @@ dependencies = [
 ]
 """
         run_cmd = (
-            f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && "
+            f"cd {root} && {setup} && "
             "pip install -r requirements.txt && cp -n .env.example .env"
         )
         next_action = (
@@ -690,6 +699,8 @@ dependencies = [
             "Leave config.json llm.api_key_env as LLM_API_KEY. "
             "Run verify_local_setup before uvicorn or smoke_test_agent."
         )
+        if py_note:
+            next_action = f"{py_note} {next_action}"
         project_name = default_name
     else:
         files["README.md"] = f"""# {project_name}
@@ -704,8 +715,10 @@ For a **UI** demo prefer `use_sample` / `demo_travel_sample`. For a **REST API**
 
 ## Setup
 
+Create the virtualenv with Python 3.11 or newer. `kotenai-zeus-client` does not install on Python 3.9.
+
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+{setup}
 pip install -r requirements.txt
 cp .env.example .env   # fill LLM_API_KEY and Zeus auth if needed
 ```
@@ -745,13 +758,15 @@ dependencies = [
 ]
 """
         run_cmd = (
-            f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && "
+            f"cd {root} && {setup} && "
             "pip install -r requirements.txt && cp -n .env.example .env"
         )
         next_action = (
             "Put LLM_API_KEY in .env. Leave config.json llm.api_key_env as that name. "
             "Run verify_local_setup before main.py or smoke_test_agent."
         )
+        if py_note:
+            next_action = f"{py_note} {next_action}"
 
     files["config.json"] = json.dumps(runtime_cfg, indent=2) + "\n"
 
@@ -836,6 +851,22 @@ def verify_local_setup(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
         )
 
     root = Path(target_dir).expanduser() if target_dir else None
+    from zeus_dev_helper_mcp.python_runtime import (
+        inspect_app_python,
+        sync_checklist_python,
+    )
+
+    python = inspect_app_python(root if root is not None and root.is_dir() else None)
+    sync_checklist_python(cfg, python)
+    checks.append(
+        {
+            "name": "python",
+            "ok": bool(python.get("ok")),
+            "version": python.get("version"),
+            "source": python.get("source"),
+            "note": python.get("message") or "",
+        }
+    )
     if root and root.is_dir():
         for name in ("main.py", "config.json", "requirements.txt", ".env.example"):
             p = root / name
@@ -881,9 +912,13 @@ def verify_local_setup(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
     ok = all(c.get("ok") for c in checks if c["name"] == "import_zeus_client")
     if any(c.get("name") == "llm_api_key" and not c.get("ok") for c in checks):
         ok = False
+    if not python.get("ok"):
+        ok = False
     next_action = "Install missing deps or scaffold_app if files missing"
+    if not python.get("ok"):
+        next_action = str(python.get("message") or next_action)
     llm_fail = next((c for c in checks if c.get("name") == "llm_api_key" and not c.get("ok")), None)
-    if llm_fail:
+    if llm_fail and python.get("ok"):
         next_action = str(llm_fail.get("note") or next_action)
     return {
         "ok": ok,
