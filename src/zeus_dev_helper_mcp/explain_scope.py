@@ -417,6 +417,17 @@ def write_catalog_sample(
         "Columns and card lines are the display fields.\n"
         f"{STAMP_NOTE}\n"
     )
+    from zeus_dev_helper_mcp.python_runtime import launch_note, venv_setup_shell
+
+    setup = venv_setup_shell()
+    py_note = launch_note()
+    readme = (
+        readme
+        + "\nCreate the virtualenv with Python 3.11 or newer. "
+        + "`kotenai-zeus-client` does not install on Python 3.9.\n\n```bash\n"
+        + setup
+        + "\npip install -r requirements.txt\n```\n"
+    )
     (root / "README.md").write_text(readme, encoding="utf-8")
     meta = {
         "sample": "catalog",
@@ -438,9 +449,13 @@ def write_catalog_sample(
         "catalog_kind": "generic",
         "note": STAMP_NOTE,
         "result_shapes": _shapes(),
-        "run": f"cd {root} && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && uvicorn main:app --port 8091",
+        "run": (
+            f"cd {root} && {setup} && "
+            "pip install -r requirements.txt && uvicorn main:app --port 8091"
+        ),
         "next_action": (
-            "Open the catalog page. Buttons and card lines are the live stamp fields. "
+            (f"{py_note} " if py_note else "")
+            + "Open the catalog page. Buttons and card lines are the live stamp fields. "
             + STAMP_NOTE
         ),
     }
