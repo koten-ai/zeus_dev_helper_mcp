@@ -4,6 +4,7 @@
 
 ### Fixed
 - **[ZDM-37](https://kotenai.atlassian.net/browse/ZDM-37)** `smoke_test_zeus` and `smoke_test_agent` mint `POST /v1/{bucket}/{scope}/auth/session` when auth is basic, then send only `X-Zeus-Session` on later calls. A readiness stop for `login_not_in_process` or `auth_failed` does not continue into an anonymous describe. One smoke does not spend the shared lab session `dev`. The tool result still has no password, token, or minted session id.
+- **[ZDM-38](https://kotenai.atlassian.net/browse/ZDM-38)** `smoke_test_agent` sets `client_floor` from the stamped catalog it loads (`client-floor-6.1` for `base-6.1`) before `catalog.load`, and again after `catalog.sync`. A base-6.1 catalog is not refused with error `000004` or `empty_tool_catalog` because the floor stayed at the client default `client-floor-5`. That floor matches `write_beer_config`.
 - Checklist 1.1 checks that the sample interpreter is Python 3.11 or newer before pip installs `kotenai-zeus-client`. `doctor` probes `python3` on PATH. `verify_local_setup` probes that, or `<app>/.venv/bin/python` when the file exists. `website_green` does not run pip when that interpreter is older. `use_sample` and `scaffold_app` put `python3 -m venv` in the run string only when `python3` is 3.11 or newer. An older `python3` names `python3.12` (or another 3.11+ interpreter on PATH) or `uv venv --python 3.12`.
 
 ### Changed
