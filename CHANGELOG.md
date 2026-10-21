@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **[ZDM-37](https://kotenai.atlassian.net/browse/ZDM-37)** `smoke_test_zeus` and `smoke_test_agent` mint `POST /v1/{bucket}/{scope}/auth/session` when auth is basic, then send only `X-Zeus-Session` on later calls. A readiness stop for `login_not_in_process` or `auth_failed` does not continue into an anonymous describe. One smoke does not spend the shared lab session `dev`. The tool result still has no password, token, or minted session id.
+
 ## 0.7.8
 
 ### Added
