@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.readiness import take_scope_session
 from zeus_dev_helper_mcp.smoke import smoke_test_agent, smoke_test_zeus
@@ -156,6 +158,7 @@ def test_auth_failed_stop_does_not_describe(tmp_path: Path, monkeypatch) -> None
 
 
 def test_agent_stops_when_login_is_missing(tmp_path: Path, monkeypatch) -> None:
+    pytest.importorskip("zeus_client")
     monkeypatch.setenv("LLM_API_KEY", "llm-secret")
     monkeypatch.delenv("ZEUS_USERNAME", raising=False)
     monkeypatch.delenv("ZEUS_PASSWORD", raising=False)
@@ -173,6 +176,7 @@ def test_agent_stops_when_login_is_missing(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_agent_runtime_uses_the_minted_session(tmp_path: Path, monkeypatch) -> None:
+    pytest.importorskip("zeus_client")
     monkeypatch.setenv("LLM_API_KEY", "llm-secret")
     monkeypatch.setenv("ZEUS_USERNAME", "tap")
     monkeypatch.setenv("ZEUS_PASSWORD", _PASSWORD)
