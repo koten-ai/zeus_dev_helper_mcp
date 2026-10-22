@@ -334,11 +334,22 @@ def _env_names(value: Any) -> list[str]:
     return []
 
 
+def _satisfied_bind_items(cfg: HelperConfig) -> set[str]:
+    """4.1 / 4.2 already true on disk. This read does not write the checklist."""
+    try:
+        from zeus_dev_helper_mcp.checklist import bound_catalog_done
+
+        return set(bound_catalog_done(cfg))
+    except Exception:  # noqa: BLE001
+        return set()
+
+
 def _checklist_rows(cfg: HelperConfig) -> list[str]:
     data = _read_json(cfg.state_dir / "checklist.json")
     phases = data.get("phases")
     if not isinstance(phases, list):
         return []
+    satisfied = _satisfied_bind_items(cfg)
     rows: list[str] = []
     for phase in phases:
         if not isinstance(phase, dict):
@@ -356,6 +367,8 @@ def _checklist_rows(cfg: HelperConfig) -> list[str]:
             if status not in {"todo", "blocked"}:
                 continue
             item_id = _one_line(str(item.get("id") or "")) or "?"
+            if item_id in satisfied:
+                continue
             title = _public_line(str(item.get("title") or "")) or item_id
             line = f"- {item_id} {status}: {title}"
             evidence = item.get("evidence")

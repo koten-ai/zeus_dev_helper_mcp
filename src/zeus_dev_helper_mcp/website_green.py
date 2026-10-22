@@ -588,11 +588,21 @@ def website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any]:
     return out
 
 
+def _sync_catalog_checklist(cfg: HelperConfig, root: Path | None) -> None:
+    try:
+        from zeus_dev_helper_mcp.checklist import sync_bound_catalog_checklist
+
+        sync_bound_catalog_checklist(cfg, root)
+    except Exception:  # noqa: BLE001, S110
+        pass
+
+
 def _run_website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any]:
     blocked = _mint_failure(cfg)
+    root = _resolve_root(cfg, target_dir)
+    _sync_catalog_checklist(cfg, root)
     if blocked is not None:
         return blocked
-    root = _resolve_root(cfg, target_dir)
     if root is None:
         return _result(
             failure_class="sample_dir_missing",

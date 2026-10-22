@@ -2275,7 +2275,14 @@ def _finish_beer_result(cfg: HelperConfig, root: Path, result: dict[str, Any]) -
     from zeus_dev_helper_mcp.app_env import annotate_app_env, annotate_pour
 
     result = annotate_app_env(cfg, root, result)
-    return annotate_pour(_attach_llm_key(root, result), catalog_ui=True)
+    result = annotate_pour(_attach_llm_key(root, result), catalog_ui=True)
+    try:
+        from zeus_dev_helper_mcp.checklist import sync_bound_catalog_checklist
+
+        sync_bound_catalog_checklist(cfg, root)
+    except Exception:  # noqa: BLE001, S110
+        pass
+    return result
 
 
 def write_beer_sample(

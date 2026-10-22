@@ -198,6 +198,12 @@ def _website_green_failed(cfg: HelperConfig) -> bool:
 
 
 def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
+    from zeus_dev_helper_mcp.checklist import sync_bound_catalog_checklist
+
+    try:
+        sync_bound_catalog_checklist(cfg)
+    except Exception:  # noqa: BLE001, S110
+        pass
     from zeus_dev_helper_mcp.beer import missing_recorded_beer_dir
 
     base = base_next_step(cfg)
