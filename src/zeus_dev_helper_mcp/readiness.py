@@ -920,6 +920,9 @@ def _finish(
             from zeus_dev_helper_mcp.llm_key import sync_checklist_llm_prereq
 
             sync_checklist_llm_prereq(cfg)
+            from zeus_dev_helper_mcp.checklist import sync_bound_catalog_checklist
+
+            sync_bound_catalog_checklist(cfg)
         except Exception:  # noqa: BLE001 — checklist optional
             pass
 

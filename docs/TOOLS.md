@@ -285,14 +285,14 @@ What `next_step` / `gap_report` recommend (`walkthrough.TOOL_HINTS`):
 | 2.3 | Scope enabled | `bootstrap_scope`, `readiness_check` |
 | 3.1 | Scaffold or clone sample | `scaffold_app`, `use_sample`, `travel_golden_path` |
 | 3.2 | App `.env` has the LLM key; `api_key_env` is the name | `write_env`, `verify_local_setup`, `lint_runtime_config` |
-| 4.1 | Fetch or sync chat_request | `fetch_chat_request`, `list_catalog_modes`, `bootstrap_scope` |
-| 4.2 | Pin `scope_contracts` after stamp | `bind_contract`, `catalog_diff`, `explain_hash_boundary` |
+| 4.1 | Fetch or sync chat_request. Done when the bound app has the scope catalog file the client loads. | `fetch_chat_request`, `list_catalog_modes`, `bootstrap_scope` |
+| 4.2 | Pin `scope_contracts` after stamp. Done when `config.json` has a real stamped `zeus.scope_contracts` hash. | `bind_contract`, `catalog_diff`, `explain_hash_boundary` |
 | 5.1 | `smoke_test_zeus` | Website (beer): `website_green`. Other tracks: `smoke_test_zeus`, `describe_scope` |
 | 5.2 | `smoke_test_agent` | Website (beer): `website_green`. Other tracks: `smoke_test_agent`, `suggest_demo_prompts` |
 | 6.1 | Multi-turn and/or hooks | `suggest_hooks`, `explain`, `suggest_demo_prompts` |
 | 7.1 | No anti-patterns; secrets out | `diagnose_error`, `suggest_hooks`, `support_pack_from_turn`, `detective_links`, `gap_report` |
 
-Ops note on **4.2:** stamp is usually Administrator / Hub Workbench. Dev binds `contract_id` + `contract_hash` after the stamp.
+Ops note on **4.2:** stamp is usually Administrator / Hub Workbench. Dev binds `contract_id` + `contract_hash` after the stamp. Checklist **4.1** is done when the bound app has the scope catalog file. Checklist **4.2** is done when `config.json` has a real stamped `scope_contracts` hash. `sample_support_pack` omits those rows.
 
 ---
 

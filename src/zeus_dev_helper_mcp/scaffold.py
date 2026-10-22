@@ -868,6 +868,12 @@ def verify_local_setup(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
         }
     )
     if root and root.is_dir():
+        try:
+            from zeus_dev_helper_mcp.checklist import sync_bound_catalog_checklist
+
+            sync_bound_catalog_checklist(cfg, root)
+        except Exception:  # noqa: BLE001, S110
+            pass
         for name in ("main.py", "config.json", "requirements.txt", ".env.example"):
             p = root / name
             checks.append({"name": f"file:{name}", "ok": p.is_file(), "path": str(p)})
