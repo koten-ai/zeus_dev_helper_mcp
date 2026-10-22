@@ -9,7 +9,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from zeus_dev_helper_mcp.catalog import list_modes
+from zeus_dev_helper_mcp.catalog import empty_template_next_action, list_modes
 from zeus_dev_helper_mcp.checklist import set_item_status
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.docs_links import docs_url
@@ -738,6 +738,7 @@ def _readiness_check_impl(
     try:
         modes = list_modes(cfg)
         n = len(modes.get("modes") or [])
+        local_dir = modes.get("local_dir")
         gates.append(
             _gate(
                 "template_catalogs",
@@ -747,9 +748,8 @@ def _readiness_check_impl(
                 detail=f"{n} modes available",
                 next_action=""
                 if n
-                else (
-                    "Helper clones public zeus_chat_request when ZEUS_CHAT_REQUEST_DIR "
-                    "is unset; fix git/network or set ZEUS_CHAT_REQUEST_DIR / GITHUB_TOKEN"
+                else empty_template_next_action(
+                    local_dir=local_dir if isinstance(local_dir, str) else None
                 ),
             )
         )
