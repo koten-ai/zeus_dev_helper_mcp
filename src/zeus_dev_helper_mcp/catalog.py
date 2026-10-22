@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -67,6 +68,105 @@ def load_chat_request_dir(cfg: HelperConfig | None = None) -> Path | None:
 
 def _is_chat_request_root(root: Path) -> bool:
     return root.is_dir() and (root / "manifest.json").is_file()
+
+
+_V2_MIN_FILE = re.compile(r"^chat_request_(?P<mode>.+)_v2_min\.json$")
+_CLONE_CATALOG_NEXT = (
+    "Helper clones public zeus_chat_request when ZEUS_CHAT_REQUEST_DIR "
+    "is unset; fix git/network or set ZEUS_CHAT_REQUEST_DIR / GITHUB_TOKEN"
+)
+
+
+def is_template_repo(root: Path | str | None) -> bool:
+    """True for a zeus_chat_request checkout.
+
+    A sync index (``version``, ``files``, ``synced_at``) is not enough.
+    A directory that only holds ``chat_request_<mode>_v2.json`` is a writable
+    store, including the temporary catalogs used by smoke.
+    """
+    if not root:
+        return False
+    path = Path(root)
+    if not path.is_dir():
+        return False
+    if (path / "v2").is_dir() and (path / "catalog-index.json").is_file():
+        return True
+    manifest_path = path / "manifest.json"
+    if not manifest_path.is_file():
+        return False
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(manifest, dict):
+        return False
+    catalogs = manifest.get("catalogs")
+    if isinstance(catalogs, list) and catalogs:
+        return True
+    if manifest.get("schema_version"):
+        return True
+    return str(manifest.get("repo") or "").strip() == "koten-ai/zeus_chat_request"
+
+
+def empty_template_next_action(*, local_dir: str | None) -> str:
+    """Coach text when the template mode list is empty."""
+    if local_dir:
+        return (
+            "manifest.json has no catalogs list. That file is the template index. "
+            "catalog.sync must not write it."
+        )
+    return _CLONE_CATALOG_NEXT
+
+
+def _manifest_entries(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = manifest.get("catalogs")
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict) and item.get("mode")]
+
+
+def _tree_entries(root: Path) -> list[dict[str, Any]]:
+    folder = root / "v2" / "min"
+    if not folder.is_dir():
+        return []
+    entries: list[dict[str, Any]] = []
+    for path in sorted(folder.glob("chat_request_*_v2_min.json")):
+        match = _V2_MIN_FILE.match(path.name)
+        if match is None:
+            continue
+        entries.append(
+            {
+                "mode": match.group("mode"),
+                "file": f"v2/min/{path.name}",
+            }
+        )
+    return entries
+
+
+def template_entries(
+    cfg: HelperConfig,
+    manifest: dict[str, Any],
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Catalog rows for list/fetch.
+
+    A sync index drops ``catalogs``. The ``v2/min`` files are still the
+    templates. An app ``data/chat_requests`` index has no ``v2/min`` tree.
+    """
+    raw_profile = manifest.get("profile")
+    if isinstance(raw_profile, str) and raw_profile.strip():
+        profile: str | None = raw_profile.strip()
+    else:
+        profile = None
+    entries = _manifest_entries(manifest)
+    if entries:
+        return entries, profile
+    root = cfg.chat_request_dir
+    if root is None:
+        return [], profile
+    tree = _tree_entries(Path(root))
+    if tree and profile is None:
+        profile = "v2_min"
+    return tree, profile
 
 
 def set_chat_request_dir_env(root: Path) -> str:
@@ -385,7 +485,7 @@ def list_modes(cfg: HelperConfig) -> dict[str, Any]:
     # ensure runs inside load_manifest; call once here for cloned/env fields.
     ensure = ensure_chat_request_dir(cfg)
     manifest = load_manifest(cfg)
-    catalogs = manifest.get("catalogs") or []
+    entries, profile = template_entries(cfg, manifest)
     modes = [
         {
             "mode": c.get("mode"),
@@ -394,10 +494,10 @@ def list_modes(cfg: HelperConfig) -> dict[str, Any]:
             "format": c.get("format"),
             "sha256": c.get("sha256"),
         }
-        for c in catalogs
+        for c in entries
     ]
     return {
-        "profile": manifest.get("profile"),
+        "profile": profile,
         "repo": f"https://github.com/{cfg.chat_request_repo}",
         "branch": cfg.chat_request_branch,
         "source": "local" if cfg.chat_request_dir else "github",
@@ -433,10 +533,10 @@ def fetch_chat_request(
 
     ensure = ensure_chat_request_dir(cfg)
     manifest = load_manifest(cfg)
-    catalogs = manifest.get("catalogs") or []
-    entry = next((c for c in catalogs if c.get("mode") == mode), None)
+    entries, _profile = template_entries(cfg, manifest)
+    entry = next((c for c in entries if c.get("mode") == mode), None)
     if not entry:
-        known = sorted(c.get("mode") for c in catalogs if c.get("mode"))
+        known = sorted(str(c.get("mode")) for c in entries if c.get("mode"))
         raise CatalogError(
             f"Unknown mode {mode!r}. Known: {', '.join(known)}",
             "empty_tool_catalog",
