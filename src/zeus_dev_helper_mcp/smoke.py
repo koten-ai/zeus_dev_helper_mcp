@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from zeus_dev_helper_mcp.catalog import is_template_repo
 from zeus_dev_helper_mcp.checklist import set_item_status
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.diagnose import _NEXT as _DIAGNOSE_NEXT
@@ -452,6 +453,83 @@ def stamped_catalog_floor(
     return client_floor_for_catalog(raw)
 
 
+def _checklist_sample_kind(cfg: HelperConfig) -> str | None:
+    path = cfg.state_dir / "checklist.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    from zeus_dev_helper_mcp.sample_log import sample_kind
+
+    return sample_kind(str(meta.get("sample") or ""))
+
+
+def _configured_chat_dir(root: Path) -> Path | None:
+    config_path = root / "config.json"
+    if not config_path.is_file():
+        return None
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw = data.get("chat_requests_dir")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    path = Path(raw.strip()).expanduser()
+    if not path.is_absolute():
+        path = root / path
+    return path
+
+
+def _bound_app_chat_dir(cfg: HelperConfig) -> Path | None:
+    """App catalog directory for the checklist sample, when that directory exists."""
+    kind = _checklist_sample_kind(cfg)
+    if not kind:
+        return None
+    from zeus_dev_helper_mcp.sample_log import bound_sample_dirs
+
+    raw = str(bound_sample_dirs(cfg).get(kind) or "").strip()
+    if not raw:
+        return None
+    root = Path(raw).expanduser()
+    if not root.is_dir():
+        return None
+    named = _configured_chat_dir(root)
+    if named is not None and named.is_dir() and not is_template_repo(named):
+        return named
+    fallback = root / "data" / "chat_requests"
+    has_app = (root / "main.py").is_file() or (root / "pyproject.toml").is_file()
+    if fallback.is_dir() and has_app and not is_template_repo(fallback):
+        return fallback
+    return None
+
+
+def smoke_catalog_dir(cfg: HelperConfig) -> Path:
+    """Directory ``catalog.sync`` may write during smoke.
+
+    The zeus_chat_request checkout stays the template index. A non-repo
+    ``chat_request_dir`` (a temp catalog or an app store) stays the store.
+    """
+    bound = _bound_app_chat_dir(cfg)
+    if bound is not None:
+        return bound
+    local = cfg.chat_request_dir
+    if local is not None:
+        path = Path(local).expanduser()
+        if path.is_dir() and not is_template_repo(path):
+            return path
+    dest = cfg.state_dir / "chat_requests"
+    dest.mkdir(parents=True, exist_ok=True)
+    return dest
+
+
 def apply_smoke_client_floor(mapping: dict[str, Any], cfg: HelperConfig) -> str | None:
     """Set ``mapping['client_floor']`` from the on-disk stamp. Scaffold stays unset."""
     target = mapping.get("target") if isinstance(mapping.get("target"), dict) else {}
@@ -607,6 +685,7 @@ def smoke_test_agent(
             "failure_class": "scope_not_enabled",
             "next_action": "Set ZEUS_BUCKET/ZEUS_SCOPE or client target in config.json",
         }
+    mapping["chat_requests_dir"] = str(smoke_catalog_dir(cfg))
     apply_smoke_client_floor(mapping, cfg)
 
     secrets_override = None
@@ -630,6 +709,8 @@ def smoke_test_agent(
         chat_dir = rt_cfg.chat_requests_dir or (
             str(cfg.chat_request_dir) if cfg.chat_request_dir else None
         )
+        if not chat_dir or is_template_repo(chat_dir):
+            chat_dir = str(smoke_catalog_dir(cfg))
         if chat_dir:
             catalog = FsCatalogStore(root=chat_dir)
         async with ZeusRuntime(rt_cfg, secrets=secrets, catalog=catalog) as rt:
