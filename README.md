@@ -27,16 +27,12 @@ Hard constraints the tools enforce:
 
 ## Install
 
-```bash
-pip install zeus-dev-helper-mcp
-# or
-uvx zeus-dev-helper-mcp
-```
-
-Optional extra for `smoke_test_agent` (pulls the Zeus Client package):
+`verify_local_setup` and `smoke_test_agent` import `zeus_client` in this Helper process. Install the `agent` extra into that environment. The app `.venv` does not satisfy the check.
 
 ```bash
 pip install "zeus-dev-helper-mcp[agent]"
+# or
+uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp
 ```
 
 ## Run
@@ -71,10 +67,10 @@ If the user names a URL or sample in chat, call **`set_prereq`** with that `zeus
 ```bash
 grok mcp add zeus-dev-helper \
   -e ZEUS_URL=http://192.168.0.219:8080 \
-  -- uvx zeus-dev-helper-mcp
+  -- uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp
 ```
 
-From a local checkout after `pip install -e ".[dev]"`, point `command` at this tree’s venv so the host can start the server even when it was launched without the venv activated:
+From a local checkout after `pip install -e ".[dev,agent]"`, point `command` at this tree’s venv so the host can start the server even when it was launched without the venv activated:
 
 ```bash
 grok mcp add zeus-dev-helper \
@@ -87,7 +83,7 @@ Equivalent config:
 ```toml
 [mcp_servers.zeus-dev-helper]
 command = "uvx"
-args = ["zeus-dev-helper-mcp"]
+args = ["--from", "zeus-dev-helper-mcp[agent]", "zeus-dev-helper-mcp"]
 env = { ZEUS_URL = "http://192.168.0.219:8080" }
 enabled = true
 ```
@@ -97,7 +93,8 @@ Then refresh MCP servers, or `grok mcp doctor zeus-dev-helper`.
 Common failures:
 
 - `unexpected argument '-m'` — missing `--` before the python command
-- `uvx zeus-dev-helper` / `No solution found` — wrong package name; use **`zeus-dev-helper-mcp`**
+- `uvx zeus-dev-helper` / `No solution found` — wrong package name; use **`uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp`**
+- `No module named 'zeus_client'` — this Helper process has no `agent` extra. Installing `kotenai-zeus-client` into the app `.venv` leaves the check red. Restart the MCP server after installing the extra into the Helper environment.
 - `No module named 'zeus_dev_helper_mcp'` / `python: No such file or directory` — the host did not inherit the venv; use the `.venv/bin/python` path above
 - `No module named 'mcp.server.fastmcp'` — mcp 2.x renamed FastMCP; use Helper **0.6.0+** (`mcp>=1.8.0,<3`)
 
@@ -108,7 +105,7 @@ Common failures:
   "mcpServers": {
     "zeus-dev-helper": {
       "command": "uvx",
-      "args": ["zeus-dev-helper-mcp"],
+      "args": ["--from", "zeus-dev-helper-mcp[agent]", "zeus-dev-helper-mcp"],
       "env": {
         "ZEUS_URL": "http://192.168.0.219:8080"
       }
@@ -126,7 +123,7 @@ Add (or merge) `.cursor/mcp.json` in the project (or use Cursor’s global MCP s
   "mcpServers": {
     "zeus-dev-helper": {
       "command": "uvx",
-      "args": ["zeus-dev-helper-mcp"],
+      "args": ["--from", "zeus-dev-helper-mcp[agent]", "zeus-dev-helper-mcp"],
       "env": {
         "ZEUS_URL": "http://192.168.0.219:8080"
       }
@@ -135,9 +132,34 @@ Add (or merge) `.cursor/mcp.json` in the project (or use Cursor’s global MCP s
 }
 ```
 
+### Codex
+
+The permission profile `:workspace` does not enable network. With `sandbox_approval` false, Codex does not ask to enable it. Pip then reports `[Errno -2] Name or service not known`. That is `EAI_NONAME` from the closed network. A package host that answers outside the sandbox can still look like a DNS failure inside it.
+
+Set a top-level profile that extends `:workspace` and enables network. Do not also set `sandbox_mode` or `[sandbox_workspace_write]`. Start a new Codex thread after the change. Leave the network proxy off unless localhost is allowlisted, because sandboxed commands still need local Zeus.
+
+```toml
+default_permissions = "workspace-net"
+
+[permissions.workspace-net]
+description = "Workspace writes plus outbound network so sandboxed commands can resolve package hosts."
+extends = ":workspace"
+
+[permissions.workspace-net.network]
+enabled = true
+```
+
+```toml
+[mcp_servers.zeus-dev-helper]
+command = "uvx"
+args = ["--from", "zeus-dev-helper-mcp[agent]", "zeus-dev-helper-mcp"]
+```
+
+Install the app `requirements.txt` from a process that already has network. That install does not put `zeus_client` on the Helper interpreter. Restart the MCP server after the Helper environment gains the `agent` extra.
+
 ### Other stdio hosts
 
-Point the host’s MCP stdio entry at `uvx zeus-dev-helper-mcp` (or `python -m zeus_dev_helper_mcp` from a venv) with the same env vars. Replace the sample IP with your Zeus host.
+Point the host’s MCP stdio entry at `uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp` (or `python -m zeus_dev_helper_mcp` from a venv that has the `agent` extra) with the same env vars. Replace the sample IP with your Zeus host.
 
 ## Day-one coach path
 
@@ -224,9 +246,7 @@ From a local checkout:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-# optional agent smoke:
-pip install -e ".[agent]"
+pip install -e ".[dev,agent]"
 export ZEUS_URL=http://localhost:8080
 ```
 

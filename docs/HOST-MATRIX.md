@@ -7,7 +7,7 @@ Local only: tool **ids** in `helper_metrics` / `metrics.jsonl`. No prompts, bodi
 | Host | Config | Last measured | Notes |
 | --- | --- | --- | --- |
 | Grok Build | checkout venv: `…/.venv/bin/python -m zeus_dev_helper_mcp` (see Grok gotchas) | **2026-09-15** (Helper **0.7.0**, `core` **12** tools) | First-green **reached** on `demos/travelapp` with **PyPI `kotenai-zeus-client==2.4.1`** (Paris hotels re-smoke). Checks **1–3 pass**, **4 partial**. `next_step` stayed on 2.2 after platform pass (auth skip). Did **not** call `smoke_test_agent` (ran `python main.py` instead). Prior 2026-09-14: handshake OK, 12 tools, checks 1–4 **not scored**. |
-| Claude Code / Desktop | `mcpServers` JSON, `uvx` / venv python | | Unmeasured |
+| Claude Code / Desktop | `mcpServers` JSON, `uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp` / venv python with the `agent` extra | | Unmeasured |
 | Cursor | MCP stdio entry, same env | | Unmeasured |
 
 ## Application-user beer utterance (Grok Build, 2026-09-18)
@@ -83,10 +83,10 @@ Set `ZEUS_URL` to the Zeus public API you actually use (`http://<zeus-host>:8080
 ```bash
 grok mcp add zeus-dev-helper \
   -e ZEUS_URL=http://192.168.0.219:8080 \
-  -- uvx zeus-dev-helper-mcp
+  -- uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp
 ```
 
-`uvx zeus-dev-helper` is **not** on PyPI. Status `unavailable`, `grok mcp doctor` handshake `connection closed: initialize response`, stderr `No solution found` / `zeus-dev-helper was not found in the package registry`.
+`uvx zeus-dev-helper` is **not** on PyPI. Status `unavailable`, `grok mcp doctor` handshake `connection closed: initialize response`, stderr `No solution found` / `zeus-dev-helper was not found in the package registry`. The package argument is `zeus-dev-helper-mcp` with the `agent` extra, as in the command above. A checkout venv launch needs `pip install -e ".[agent]"` (or `.[dev,agent]`) in that venv. `verify_local_setup` imports `zeus_client` in the Helper process. The app `.venv` does not satisfy that check.
 
 `uvx` installs whatever is on PyPI (may be older than this tree; 0.6.x exposes the full catalog, not `core`’s 12 tools). To measure an unreleased Helper, point at this checkout’s venv. Put `--` **before** `-m` or Grok reports `unexpected argument '-m'`:
 
@@ -106,3 +106,28 @@ Measure on each host (first-green session, `core` toolset):
 4. `helper_metrics` `tool_calls` is ids only.
 
 Fill **Last measured** after a real session. Unit tests cover the corpus and trace checker; they do not replace this table.
+
+## Codex
+
+The permission profile `:workspace` does not enable network. With `sandbox_approval` false, Codex does not ask to enable it. Pip then reports `[Errno -2] Name or service not known`. That is `EAI_NONAME` from the closed network. A package host that answers outside the sandbox can still look like a DNS failure inside it.
+
+Set a top-level profile that extends `:workspace` and enables network. Do not also set `sandbox_mode` or `[sandbox_workspace_write]`. Start a new Codex thread after the change. Leave the network proxy off unless localhost is allowlisted, because sandboxed commands still need local Zeus.
+
+```toml
+default_permissions = "workspace-net"
+
+[permissions.workspace-net]
+description = "Workspace writes plus outbound network so sandboxed commands can resolve package hosts."
+extends = ":workspace"
+
+[permissions.workspace-net.network]
+enabled = true
+```
+
+```toml
+[mcp_servers.zeus-dev-helper]
+command = "uvx"
+args = ["--from", "zeus-dev-helper-mcp[agent]", "zeus-dev-helper-mcp"]
+```
+
+Install the app `requirements.txt` from a process that already has network. That install does not put `zeus_client` on the Helper interpreter. Restart the MCP server after the Helper environment gains the `agent` extra. The same `uvx` launch is `uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp`.
