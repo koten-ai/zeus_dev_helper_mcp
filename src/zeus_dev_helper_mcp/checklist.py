@@ -185,8 +185,9 @@ def _hint_for(item_id: str, cfg: HelperConfig) -> str:
         "3.2": (
             "Copy .env.example to .env and set LLM_API_KEY there. Leave config.json "
             "llm.api_key_env as that name. verify_local_setup checks presence only, "
-            "then marks 3.2 done. Do not paste the secret into api_key_env or into "
-            "a tool argument."
+            "then marks 3.2 done. That call also imports zeus_client in this Helper "
+            "process. The app .venv does not satisfy the import. Do not paste the "
+            "secret into api_key_env or into a tool argument."
         ),
         "2.1": "curl $ZEUS_URL/healthz — not Hub :9091.",
         "4.1": "list_catalog_modes / fetch_chat_request from zeus_chat_request; then stamp on Zeus.",

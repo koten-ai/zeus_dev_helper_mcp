@@ -73,6 +73,8 @@ def test_host_docs_launch_uvx_with_the_agent_extra() -> None:
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
     matrix = (root / "docs" / "HOST-MATRIX.md").read_text(encoding="utf-8")
+    agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+    assert _LAUNCH in agents
     for text in (readme, matrix):
         assert _LAUNCH in text
         assert "default_permissions = \"workspace-net\"" in text

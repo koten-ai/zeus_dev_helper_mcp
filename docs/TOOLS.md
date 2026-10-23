@@ -73,7 +73,7 @@ Resources (not default tools): `zeus-helper://checklist` / `glossary/{topic}` / 
 | `live GET` | Public `:8080` GET (`/healthz`, `/readyz`, `/version`, `/v1/ai/bootstrap/…`) |
 | `live POST` | Public `:8080` read-only POST (`/v2/{bucket}/{scope}/describe` or one agent turn) |
 | `catalog` | Local `ZEUS_CHAT_REQUEST_DIR` (auto-clone public repo when unset) or GitHub Contents |
-| `LLM` | Needs LLM key + optional extra `kotenai-zeus-client` |
+| `LLM` | Needs an LLM key and the `agent` extra (`kotenai-zeus-client`) in this Helper process. The app `.venv` does not satisfy `verify_local_setup` |
 
 ## Sample creation log
 

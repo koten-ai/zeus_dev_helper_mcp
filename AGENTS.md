@@ -17,7 +17,8 @@
 - Public API **:8080** only (never Hub **:9091** from app path)  
 - Never invent `contract_hash`  
 - Catalogs: live stamp preferred; `fetch_chat_request` is **template only**  
-- No secrets in tool results, checklist evidence, the write-once sample creation logs (`beer-sample-build.md`, `travel-sample-build.md`, `yelp-demo-build.md`), or the support journals (`beer-sample-support.md`, `travel-sample-support.md`, `yelp-demo-support.md`)  
+- No secrets in tool results, checklist evidence, the write-once sample creation logs (`beer-sample-build.md`, `travel-sample-build.md`, `yelp-demo-build.md`), or the support journals (`beer-sample-support.md`, `travel-sample-support.md`, `yelp-demo-support.md`)
+- `verify_local_setup` imports `zeus_client` in this Helper process. The app `.venv` does not satisfy that check. Launch with `uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp` (or `pip install 'zeus-dev-helper-mcp[agent]'` in that interpreter) and restart the MCP server. A Codex `:workspace` profile with network off reports pip `[Errno -2] Name or service not known` (`EAI_NONAME`). The app `requirements.txt` install stays a separate step from a process that has network.  
 
 ## Tools to use first
 
