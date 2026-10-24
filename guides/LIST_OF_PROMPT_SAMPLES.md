@@ -115,7 +115,7 @@ Mark a checklist item blocked with a reason.
 2. I cannot run `smoke_test_agent` because there is no LLM key. Mark `5.2` blocked with that reason.
 
 **Expected:** Mark `5.2` blocked with no secret in the evidence. Also say checklist **1.2** stays open until `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is in this process. `has_llm_key=true` does not satisfy that. For the written app, checklist **3.2** stays open until `.env` has that name and `llm.api_key_env` is still the name.
-3. Block item `4.2` — we only have a `TO_BE_FILLED` template hash, not a live stamp. Do not invent a hash.
+3. Block item `4.2` only when the live bootstrap `chat_request` has no real `contract.hash` (a `TO_BE_FILLED` template). Do not invent a hash. If bootstrap `chat_request.contract` is already stamped, pin that hash in the app `config.json` instead of blocking for a Hub stamp.
 
 ---
 
@@ -359,11 +359,12 @@ Lint a chat_request JSON (path or pasted). Read-only; never stamps.
 
 ### `bind_contract`
 
-Extract stamped `contract.hash` only. Refuse placeholders / `compute_local`.
+Copy a stamped `contract.hash` only. With no path, the source is the live bootstrap `chat_request`. A helper directory pointer is not a catalog. Refuse placeholders / `compute_local`.
 
-1. Bind the contract from `./stamped_chat_request.json`. Extract the stamped hash only — refuse `TO_BE_FILLED`.
-2. I have a live stamp for `travel-sample` / `inventory` / `analytics`. Bind it; do not compute a local hash.
-3. Try to bind this template JSON. If the hash is a placeholder, refuse and tell me to stamp on Hub.
+1. Call `bind_contract` with no path for `beer-sample` / `_default` / `analytics`. Paste the `scope_contracts` snippet into the bound app `config.json`. Do not compute a hash.
+2. Bind the contract from `./stamped_chat_request.json`. Extract the stamped hash only — refuse `TO_BE_FILLED`.
+3. The path is `~/.config/zeus_dev_helper/chat_request.json` and the file only has `chat_request_dir`. Say that this is a directory pointer. Do not send the agent to Hub.
+4. Try to bind this template JSON. If the live bootstrap `chat_request` also has no real hash, refuse and say a Hub stamp is required. Do not invent a hash.
 
 ### `catalog_diff`
 
@@ -507,7 +508,7 @@ Emit a safe-by-default MCP config fragment for a future data-plane server.
 | `suggest_verb_call` | Draft a legal `find` body. |
 | `describe_scope` | Live types + field names only. |
 | `lint_chat_request` | Lint on-disk catalog; never stamp. |
-| `bind_contract` | Extract stamped hash only. |
+| `bind_contract` | Copy the live bootstrap `chat_request.contract` hash. A directory pointer is not a catalog. |
 | `catalog_diff` | Disk vs live bootstrap vs bound prefix. |
 | `lint_runtime_config` | Lint `config.json` (`:8080`, cache off). |
 | `lint_app_code` | Anti-example scan `main.py`. |

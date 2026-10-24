@@ -17,6 +17,7 @@
 - Public API **:8080** only (never Hub **:9091** from app path)  
 - Never invent `contract_hash`  
 - Catalogs: live stamp preferred; `fetch_chat_request` is **template only**  
+- Checklist **4.2** copies `bootstrap` `chat_request.contract` into the bound app `config.json` `zeus.scope_contracts`. `explain_scope` parses `bootstrap.chat_request` when `GET /v1/ai/chat_request.json` has no `## MINI-SCHEMA` heading. `bind_contract` with no path returns that snippet. A helper `chat_request.json` whose only field is `chat_request_dir` is a directory pointer, not an unstamped catalog. The Hub / Workbench note applies only when that live document has no real `contract.hash`. Pinning 4.2 does not turn Pour on. A done 4.1 row stays done when `data/chat_requests` is later absent.  
 - No secrets in tool results, checklist evidence, the write-once sample creation logs (`beer-sample-build.md`, `travel-sample-build.md`, `yelp-demo-build.md`), or the support journals (`beer-sample-support.md`, `travel-sample-support.md`, `yelp-demo-support.md`)  
 
 ## Tools to use first

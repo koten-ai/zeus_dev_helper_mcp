@@ -59,9 +59,9 @@ They still copy real secrets into `.env` themselves. Helper only writes `.env.ex
 This is where people usually go wrong. The coach’s job is to stop that.
 
 1. `list_catalog_modes` / `fetch_chat_request` — **TEMPLATE ONLY**. The hash in the file is not production.
-2. Ops stamps the catalog on Hub. The **dev does not invent** `contract_hash`.
-3. `bind_contract` copies the stamped hash only; placeholders / `compute_local` are refused.
-4. `catalog_diff` / `explain_hash_boundary` — live bootstrap vs on-disk vs bound prefix; MINI-SCHEMA / brief stay out of the hash.
+2. Read the live bootstrap `chat_request.contract`. If that hash is real, it is the stamp. Copy it into the bound app `config.json`. A trimmed `GET /v1/ai/chat_request.json` with no `## MINI-SCHEMA` heading is not an unstamped catalog. The helper file `chat_request.json` that only names `chat_request_dir` is a directory pointer.
+3. `bind_contract` with no path copies that hash into a `scope_contracts` snippet. Placeholders and `compute_local` are refused. A Hub / Workbench stamp is only when the live document has no real `contract.hash`.
+4. `catalog_diff` / `explain_hash_boundary` — live bootstrap vs on-disk vs bound prefix; MINI-SCHEMA / brief stay out of the hash. Pinning 4.2 does not turn Pour on.
 
 Meanwhile they pick a **surface**, not “just call the LLM”:
 

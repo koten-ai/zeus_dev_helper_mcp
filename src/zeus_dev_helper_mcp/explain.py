@@ -61,7 +61,10 @@ TOPICS: dict[str, dict[str, str]] = {
         "doc": "zeus-client/glossary.md#hub",
     },
     "workbench": {
-        "summary": "Hub Workbench stamps chat_request / contracts for a scope. Operators stamp; apps bind the result.",
+        "summary": (
+            "Hub Workbench stamps chat_request / contracts for a scope when the live "
+            "bootstrap document has no contract.hash. Operators stamp; apps bind the result."
+        ),
         "doc": "zeus-client/glossary.md#workbench",
     },
     "enable_wizard": {

@@ -159,7 +159,7 @@ def lint_chat_request(
             _issue(
                 "contract.hash",
                 "warn",
-                "no stamped hash (template or unstamped). Production bind needs Hub stamp.",
+                "no stamped hash on this file. bind_contract with no path reads bootstrap chat_request.contract. Hub stamp only when that live document has no real hash.",
                 "contract_required",
             )
         )
@@ -175,9 +175,13 @@ def lint_chat_request(
         "warning": STAMP_WARNING,
         "docs": docs_url("zeus-client/contracts-and-catalog.md"),
         "next_action": (
-            "bind_contract after Hub stamp"
+            "bind_contract copies this stamped hash"
             if ok and stamped
-            else "Fix issues; stamp on Hub — never compute_local for production"
+            else (
+                "Fix issues. bind_contract with no path reads bootstrap "
+                "chat_request.contract. Hub stamp only when that live document "
+                "has no real hash. Never compute_local."
+            )
         ),
     }
 
