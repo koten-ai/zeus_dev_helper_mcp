@@ -343,6 +343,8 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             "Copy .env.example to .env and set LLM_API_KEY there. "
             "config.json llm.api_key_env stays the name LLM_API_KEY. "
             "verify_local_setup checks presence only and then marks 3.2 done. "
+            "That call also imports zeus_client in this Helper process. "
+            "The app .venv does not satisfy the import. "
             "Do not run the app or smoke_test_agent before that."
         )
     # ZDM-15: after the app is chosen, one next action. Host ZEUS_URL does not count.

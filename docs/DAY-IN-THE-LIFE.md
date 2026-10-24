@@ -52,7 +52,7 @@ Two paths:
 - **Sample:** `use_sample` / `travel_golden_path` if `demo_travel_sample` is cloned
 - **From scratch:** `scaffold_app` → `write_env` → `verify_local_setup`
 
-They still copy real secrets into `.env` themselves. Helper only writes `.env.example`, with `LLM_API_KEY=` empty, and writes `config.json` `llm.api_key_env` as the name `LLM_API_KEY`. Checklist **3.2** stays open until `verify_local_setup` on that directory sees a non-empty value for the named variable. The check reports presence only. A secret pasted into `api_key_env` fails as `llm_key_missing`. Do not start uvicorn or Pour before that.
+They still copy real secrets into `.env` themselves. Helper only writes `.env.example`, with `LLM_API_KEY=` empty, and writes `config.json` `llm.api_key_env` as the name `LLM_API_KEY`. Checklist **3.2** stays open until `verify_local_setup` on that directory sees a non-empty value for the named variable. The check reports presence only. A secret pasted into `api_key_env` fails as `llm_key_missing`. The `zeus_client` import in that check is this Helper process. The app `.venv` does not satisfy it. Launch the Helper with `uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp` and restart the MCP server after installing the extra. Do not start uvicorn or Pour before the key check passes.
 
 ### Afternoon: bind without inventing a hash
 

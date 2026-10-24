@@ -27,16 +27,12 @@ Hard constraints the tools enforce:
 
 ## Install
 
-```bash
-pip install zeus-dev-helper-mcp
-# or
-uvx zeus-dev-helper-mcp
-```
-
-Optional extra for `smoke_test_agent` (pulls the Zeus Client package):
+`verify_local_setup` and `smoke_test_agent` import `zeus_client` in this Helper process. Install the `agent` extra into that environment. The app `.venv` does not satisfy the check.
 
 ```bash
 pip install "zeus-dev-helper-mcp[agent]"
+# or
+uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp
 ```
 
 ## Run
@@ -71,10 +67,10 @@ If the user names a URL or sample in chat, call **`set_prereq`** with that `zeus
 ```bash
 grok mcp add zeus-dev-helper \
   -e ZEUS_URL=http://192.168.0.219:8080 \
-  -- uvx zeus-dev-helper-mcp
+  -- uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp
 ```
 
-From a local checkout after `pip install -e ".[dev]"`, point `command` at this tree’s venv so the host can start the server even when it was launched without the venv activated:
+From a local checkout after `pip install -e ".[dev,agent]"`, point `command` at this tree’s venv so the host can start the server even when it was launched without the venv activated:
 
 ```bash
 grok mcp add zeus-dev-helper \
@@ -87,7 +83,7 @@ Equivalent config:
 ```toml
 [mcp_servers.zeus-dev-helper]
 command = "uvx"
-args = ["zeus-dev-helper-mcp"]
+args = ["--from", "zeus-dev-helper-mcp[agent]", "zeus-dev-helper-mcp"]
 env = { ZEUS_URL = "http://192.168.0.219:8080" }
 enabled = true
 ```
@@ -97,7 +93,8 @@ Then refresh MCP servers, or `grok mcp doctor zeus-dev-helper`.
 Common failures:
 
 - `unexpected argument '-m'` — missing `--` before the python command
-- `uvx zeus-dev-helper` / `No solution found` — wrong package name; use **`zeus-dev-helper-mcp`**
+- `uvx zeus-dev-helper` / `No solution found` — wrong package name; use **`uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp`**
+- `No module named 'zeus_client'` — this Helper process has no `agent` extra. Installing `kotenai-zeus-client` into the app `.venv` leaves the check red. Restart the MCP server after installing the extra into the Helper environment.
 - `No module named 'zeus_dev_helper_mcp'` / `python: No such file or directory` — the host did not inherit the venv; use the `.venv/bin/python` path above
 - `No module named 'mcp.server.fastmcp'` — mcp 2.x renamed FastMCP; use Helper **0.6.0+** (`mcp>=1.8.0,<3`)
 
@@ -108,7 +105,7 @@ Common failures:
   "mcpServers": {
     "zeus-dev-helper": {
       "command": "uvx",
-      "args": ["zeus-dev-helper-mcp"],
+      "args": ["--from", "zeus-dev-helper-mcp[agent]", "zeus-dev-helper-mcp"],
       "env": {
         "ZEUS_URL": "http://192.168.0.219:8080"
       }
@@ -126,7 +123,7 @@ Add (or merge) `.cursor/mcp.json` in the project (or use Cursor’s global MCP s
   "mcpServers": {
     "zeus-dev-helper": {
       "command": "uvx",
-      "args": ["zeus-dev-helper-mcp"],
+      "args": ["--from", "zeus-dev-helper-mcp[agent]", "zeus-dev-helper-mcp"],
       "env": {
         "ZEUS_URL": "http://192.168.0.219:8080"
       }
@@ -135,9 +132,34 @@ Add (or merge) `.cursor/mcp.json` in the project (or use Cursor’s global MCP s
 }
 ```
 
+### Codex
+
+The permission profile `:workspace` does not enable network. With `sandbox_approval` false, Codex does not ask to enable it. Pip then reports `[Errno -2] Name or service not known`. That is `EAI_NONAME` from the closed network. A package host that answers outside the sandbox can still look like a DNS failure inside it.
+
+Set a top-level profile that extends `:workspace` and enables network. Do not also set `sandbox_mode` or `[sandbox_workspace_write]`. Start a new Codex thread after the change. Leave the network proxy off unless localhost is allowlisted, because sandboxed commands still need local Zeus.
+
+```toml
+default_permissions = "workspace-net"
+
+[permissions.workspace-net]
+description = "Workspace writes plus outbound network so sandboxed commands can resolve package hosts."
+extends = ":workspace"
+
+[permissions.workspace-net.network]
+enabled = true
+```
+
+```toml
+[mcp_servers.zeus-dev-helper]
+command = "uvx"
+args = ["--from", "zeus-dev-helper-mcp[agent]", "zeus-dev-helper-mcp"]
+```
+
+Install the app `requirements.txt` from a process that already has network. That install does not put `zeus_client` on the Helper interpreter. Restart the MCP server after the Helper environment gains the `agent` extra.
+
 ### Other stdio hosts
 
-Point the host’s MCP stdio entry at `uvx zeus-dev-helper-mcp` (or `python -m zeus_dev_helper_mcp` from a venv) with the same env vars. Replace the sample IP with your Zeus host.
+Point the host’s MCP stdio entry at `uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp` (or `python -m zeus_dev_helper_mcp` from a venv that has the `agent` extra) with the same env vars. Replace the sample IP with your Zeus host.
 
 ## Day-one coach path
 
@@ -151,7 +173,7 @@ doctor → (if user named URL/sample) set_prereq → start_project → next_step
 Prefer `next_step` over dumping the full checklist. Two first-green paths (TravelPlan is **not** the only path):
 
 - **Travel + LLM (UI default):** `start_project(sample=travel)` → **`use_sample`**, which **clones** public [`demo_travel_sample`](https://github.com/koten-ai/demo_travel_sample) when missing (optional `project_name` for the directory) and sets `DEMO_TRAVEL_SAMPLE_DIR`. Checklist **1.2** stays open until this process has `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY`. `smoke_test_agent` reads that variable. Standalone clones pin `kotenai-zeus-client>=2.4.0,<2.5` so `run_turn` can recover a fenced pipeline inside the SDK.
-- **Beer catalog UI:** `start_project(sample=beer)` → `use_sample(sample=beer)` **clones** public [`demo_beer_sample`](https://github.com/koten-ai/demo_beer_sample) when missing and sets `DEMO_BEER_SAMPLE_DIR`. That checkout is the app. Start it with Python 3.11 or newer. The `use_sample` run string uses `python3 -m venv` only when `python3` is 3.11 or newer. Then `pip install -r requirements.txt`, `cp .env.example .env`, set `LLM_API_KEY`, and `python main.py` (binds `127.0.0.1:8090`). `website_green` does not run pip when the app `.venv` is older than 3.11. Search matches travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. The key is required even when `has_llm_key=false`. Put it in the app `.env`. Leave `config.json` `llm.api_key_env` as that variable name. `verify_local_setup` keeps checklist **3.2** open until that file check passes. The BFF does not build a pipeline body. Do not clone `demo_travel_sample`.
+- **Beer catalog UI:** `start_project(sample=beer)` → `use_sample(sample=beer)` **clones** public [`demo_beer_sample`](https://github.com/koten-ai/demo_beer_sample) when missing and sets `DEMO_BEER_SAMPLE_DIR`. That checkout is the app. Start it with Python 3.11 or newer. The `use_sample` run string uses `python3 -m venv` only when `python3` is 3.11 or newer. Then `pip install -r requirements.txt` and `python main.py` (binds `127.0.0.1:8090`). `use_sample` writes mode 600 `.env` from `.env.example`, keeps populated values, and adds missing template keys. It resolves `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` together, and copies `OPENAI_API_KEY` or `XAI_API_KEY` only when the base URL and model match that provider. The clone keeps `LLM_MODEL=grok-4.5-latest`. `run` and `next_action` do not say to copy `.env.example` over that file. `website_green` does not run pip when the app `.venv` is older than 3.11. Search matches travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. The key is required even when `has_llm_key=false`. Put it in the app `.env`. Leave `config.json` `llm.api_key_env` as that variable name. `verify_local_setup` keeps checklist **3.2** open until that file check passes. The BFF does not build a pipeline body. Do not clone `demo_travel_sample`.
 - **Yelp demo UI:** `start_project(sample=demo_yelp)` → `use_sample(sample=demo_yelp)` **clones** the LocalAI template [`demo_yelp`](https://github.com/koten-ai/demo_yelp) when missing (utterances `yelp-demo` / `demo_yelp`) and sets `DEMO_YELP_SAMPLE_DIR`. When `parent_dir` is set, the clone is created in that directory. That checkout is the app: run it, and do not write a replacement or copy the beer sample. `use_sample` also downloads the public business photo set into `frontend/public/business-images/<id>/{1,2,3}.png` (no `biz:` prefix, no API key). Search POSTs `/api/search` and sends the live chat request for `yelp-demo` / `_default` as the session body. Search cards unwrap a hybrid `{node, score}` hit and a nested pipeline row. The business page GETs `/api/business/{id}` when the id is not in the bundled catalog. Review text is the source document, not a `rev:` doc key. `set_prereq` bucket is `yelp-demo`, scope `_default`. Do not clone `demo_travel_sample`. Bare `sample=yelp` stays the multi-agent handoff.
 - **API-only:** user asks for an API/REST app → `start_project(sample=api)` → `scaffold_app(app_kind=api, coding_language=python)` (FastAPI `POST /turn` on `kotenai-zeus-client`). Other languages not scaffolded yet.
 - Credentials from chat → process env / gitignored `.env`; `set_prereq` presence flags only. `has_llm_key=true` does not count as the key. Pass the user’s Zeus URL into `set_prereq(zeus_url=…)`. Do not paste the secret into `llm.api_key_env`.
@@ -224,9 +246,7 @@ From a local checkout:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-# optional agent smoke:
-pip install -e ".[agent]"
+pip install -e ".[dev,agent]"
 export ZEUS_URL=http://localhost:8080
 ```
 

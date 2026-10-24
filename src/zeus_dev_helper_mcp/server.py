@@ -168,6 +168,10 @@ INSTRUCTIONS = (
     "SCOPE BRIEF + MINI-SCHEMA. An LLM key is required: set LLM_API_KEY in this process "
     "and in the app .env. config.json llm.api_key_env stays the name LLM_API_KEY. "
     "has_llm_key=true is not the key. verify_local_setup before Pour or smoke_test_agent. "
+    "verify_local_setup imports zeus_client in this Helper process. The app .venv does not "
+    "satisfy that check. Install the agent extra "
+    "(uvx --from '<package-or-path>[agent]' zeus-dev-helper-mcp) and restart this MCP server. "
+    "Do not pip install kotenai-zeus-client into the app as the fix for that check. "
     "The BFF does not build a pipeline body — "
     "https://docs.koten.ai/zeus-client/using-zeus-client. "
     "Bootstrap default is UI: use_sample clones public demo_travel_sample when missing "
@@ -177,9 +181,13 @@ INSTRUCTIONS = (
     "That checkout is the app. Create the virtualenv with Python 3.11 or newer. "
     "The use_sample run string uses python3 -m venv only when python3 is 3.11 or newer. "
     "kotenai-zeus-client does not install on Python 3.9. "
-    "Then pip install -r requirements.txt, cp .env.example .env, set LLM_API_KEY, "
-    "and python main.py "
-    "(binds 127.0.0.1:8090). Same run_turn search as travel; do not clone demo_travel_sample. "
+    "Then pip install -r requirements.txt and python main.py. "
+    "use_sample writes mode 600 .env from .env.example, keeps populated values, "
+    "and adds missing template keys. Resolve LLM_API_KEY, LLM_BASE_URL, and "
+    "LLM_MODEL together. Copy OPENAI_API_KEY or XAI_API_KEY only when the base "
+    "URL and model match that provider. The clone keeps LLM_MODEL=grok-4.5-latest. "
+    "Do not copy .env.example over a .env that already has values. "
+    "python main.py binds 127.0.0.1:8090. Same run_turn search as travel; do not clone demo_travel_sample. "
     "Yelp demo: utterances yelp-demo / demo_yelp use start_project(sample=demo_yelp) → "
     "use_sample(sample=demo_yelp), which clones the LocalAI template "
     "https://github.com/koten-ai/demo_yelp when "
@@ -557,8 +565,9 @@ def _start_project_body(
             "Beer catalog UI: after prereqs/readiness, use_sample(sample=beer) shallow-clones "
             "https://github.com/koten-ai/demo_beer_sample when missing and sets "
             "DEMO_BEER_SAMPLE_DIR. Start that checkout with python main.py after a "
-            "Python 3.11 or newer virtualenv, pip install -r requirements.txt, and "
-            "cp .env.example .env. python3 -m venv is used only when python3 is 3.11 "
+            "Python 3.11 or newer virtualenv and pip install -r requirements.txt. "
+            "use_sample merges .env from .env.example and does not say to copy the "
+            "template over a file that already has values. python3 -m venv is used only when python3 is 3.11 "
             "or newer. "
             "Search is rt.agent.run_turn with chat_request omitted so "
             "catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA (same as travel). "
@@ -1005,7 +1014,7 @@ def use_sample(
     """UI sample: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
-    sample=beer — shallow-clone https://github.com/koten-ai/demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR. Start with python main.py after a Python 3.11+ virtualenv (python3 -m venv only when python3 is 3.11 or newer), pip install -r requirements.txt, cp .env.example .env, and LLM_API_KEY. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body.
+    sample=beer — shallow-clone https://github.com/koten-ai/demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR. Start with python main.py after a Python 3.11+ virtualenv (python3 -m venv only when python3 is 3.11 or newer) and pip install -r requirements.txt. use_sample writes mode 600 .env from .env.example, keeps populated values, and adds missing template keys. LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL are resolved together. The clone keeps LLM_MODEL=grok-4.5-latest. Do not copy .env.example over a .env that already has values. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body. Clone success is not website_green.
     sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
     sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: pip install -e . && python -m local_guide on http://127.0.0.1:5000, and cd frontend && npm install && npm run dev on http://localhost:5173 (the SPA proxies /api to port 5000). Writes gitignored mode-600 config.json from this process. llm.api_key_env stays the name LLM_API_KEY. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. A 401 stays red. Search cards get latitude and longitude from biz:yelp:<id> when the project step omits them, including a cached business page. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample / demo_yelp).

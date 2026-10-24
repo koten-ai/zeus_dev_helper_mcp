@@ -129,7 +129,11 @@ def test_beer_old_pipeline_bff_is_rewritten(tmp_path: Path) -> None:
     main = (root / "main.py").read_text(encoding="utf-8")
     assert "HttpxZeusPort" in main
     assert "pipeline_body" not in main
-    assert (root / ".env").read_text(encoding="utf-8") == "ZEUS_URL=http://lab.example:8080\n"
+    env = (root / ".env").read_text(encoding="utf-8")
+    assert "ZEUS_URL=http://lab.example:8080" in env
+    assert "ZEUS_URL=http://localhost:8080" not in env
+    assert "LLM_BASE_URL=https://api.x.ai/v1" in env
+    assert "LLM_MODEL=grok-4-1-fast-non-reasoning" in env
 
 
 def test_beer_existing_dir_ok_if_looks_like_sample(tmp_path: Path) -> None:

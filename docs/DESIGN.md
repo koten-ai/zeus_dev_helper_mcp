@@ -88,7 +88,7 @@ Persisted under `~/.config/zeus_dev_helper/checklist.json` (override: `ZEUS_DEV_
 | `scaffold_app` | target_dir, project_name, force | files written | filesystem write |
 | `use_sample` | sample | clone URL / layout check | may update checklist |
 | `write_env` | target_dir | .env.example | filesystem write |
-| `verify_local_setup` | target_dir | checks[] | may update checklist 3.2 when the app `.env` key check applies |
+| `verify_local_setup` | target_dir | checks[]; a missing `zeus_client` import names this Helper interpreter and the `agent` extra | may update checklist 3.2 when the app `.env` key check applies |
 | `smoke_test_zeus` | update_checklist | describe + req_id | may update 5.1 |
 | `smoke_test_agent` | question | answer preview, session_id, tool_calls | may update 5.2; needs the process LLM key (`llm_key_missing` if absent) |
 | `diagnose_error` | status, body, message, … | failure_class + docs anchor | none |
