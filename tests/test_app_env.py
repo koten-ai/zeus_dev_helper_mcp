@@ -226,8 +226,15 @@ def test_existing_dotenv_is_not_rewritten(tmp_path: Path, monkeypatch: pytest.Mo
     cfg = HelperConfig(state_dir=tmp_path / "state", default_bucket="beer-sample")
     out = write_beer_sample(cfg, root)
     assert out["ok"] is True
-    assert (root / ".env").read_text(encoding="utf-8") == "ZEUS_URL=http://lab.example:8080\n"
-    assert PASSWORD not in json.dumps(out)
+    env_text = (root / ".env").read_text(encoding="utf-8")
+    assert "ZEUS_URL=http://lab.example:8080" in env_text
+    assert "ZEUS_URL=http://localhost:8080" not in env_text
+    assert "LLM_BASE_URL=https://api.x.ai/v1" in env_text
+    assert f"ZEUS_PASSWORD={PASSWORD}" in env_text
+    blob = json.dumps(out)
+    assert PASSWORD not in blob
+    assert "cp .env.example .env" not in (out.get("run") or "")
+    assert "cp .env.example .env" not in (out.get("next_action") or "")
 
 
 def test_scaffold_basic_login_and_private_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

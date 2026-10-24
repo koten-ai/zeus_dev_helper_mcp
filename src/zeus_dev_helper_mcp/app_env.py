@@ -1,16 +1,13 @@
-"""Write the app ``.env`` from this process. Never echo secret values."""
+"""Write the app ``.env`` from its template and this process. Never echo secrets."""
 
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
-from zeus_dev_helper_mcp.config import (
-    LLM_KEY_ENV_NAMES,
-    HelperConfig,
-    llm_key_in_process_env,
-)
+from zeus_dev_helper_mcp.config import HelperConfig, llm_key_in_process_env
 
 _POUR_OFF = (
     "Pour is disabled. Search calls rt.agent.run_turn and this process has no "
@@ -83,38 +80,272 @@ def _routing(cfg_value: str, env_name: str) -> str:
     return (os.environ.get(env_name) or "").strip()
 
 
-def _llm_assignments() -> list[tuple[str, str]]:
-    found: list[tuple[str, str]] = []
-    for name in LLM_KEY_ENV_NAMES:
-        value = (os.environ.get(name) or "").strip()
-        if value:
-            found.append((name, value))
-    if found and all(name != "LLM_API_KEY" for name, _value in found):
-        found.insert(0, ("LLM_API_KEY", found[0][1]))
+_ASSIGN_RE = re.compile(
+    r"^(?P<export>export\s+)?(?P<key>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>.*)$"
+)
+_COMMENT_ASSIGN_RE = re.compile(
+    r"^#\s*(?P<export>export\s+)?(?P<key>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>.*)$"
+)
+_SAFE_VALUE_RE = re.compile(r"^[A-Za-z0-9_./:@%+\-]+$")
+_LLM_GROUP = ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL")
+
+
+def _auth_mode(cfg: HelperConfig) -> str:
+    return (cfg.zeus_auth_mode or "none").strip().lower() or "none"
+
+
+def _unquote(value: str) -> str:
+    text = value.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
+        text = text[1:-1]
+    return text
+
+
+def _format_value(value: str) -> str:
+    if value == "" or _SAFE_VALUE_RE.fullmatch(value):
+        return value
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _dotenv_map(text: str) -> dict[str, str]:
+    found: dict[str, str] = {}
+    for line in text.splitlines():
+        match = _ASSIGN_RE.match(line.strip())
+        if match is None:
+            continue
+        found[match.group("key")] = _unquote(match.group("value"))
     return found
 
 
-def _env_lines(cfg: HelperConfig) -> tuple[list[str], list[str]]:
-    """Lines for a new ``.env``. Values come from routing config or this process."""
-    pairs: list[tuple[str, str]] = []
-    url = _routing(cfg.zeus_url, "ZEUS_URL")
-    if url:
-        pairs.append(("ZEUS_URL", url))
-    bucket = _routing(cfg.default_bucket, "ZEUS_BUCKET")
-    if bucket:
-        pairs.append(("ZEUS_BUCKET", bucket))
-    scope = _routing(cfg.default_scope, "ZEUS_SCOPE")
-    if scope:
-        pairs.append(("ZEUS_SCOPE", scope))
+def _url_host(url: str) -> str:
+    text = url.strip()
+    if "://" in text:
+        text = text.split("://", 1)[1]
+    return text.split("/", 1)[0].split("@")[-1].split(":")[0].lower()
+
+
+def _provider_match(base_url: str, model: str) -> str:
+    """Return ``xai`` or ``openai`` when the base URL and model are one provider."""
+    host = _url_host(base_url)
+    model_name = model.strip().lower()
+    if not host or not model_name:
+        return ""
+    if host == "api.x.ai" or host.endswith(".x.ai"):
+        if model_name.startswith("grok"):
+            return "xai"
+        return ""
+    if host == "api.openai.com" or host.endswith(".openai.com"):
+        if model_name.startswith(("gpt-", "o1", "o3", "o4", "chatgpt")):
+            return "openai"
+        return ""
+    return ""
+
+
+def _confirmed_routing(cfg: HelperConfig) -> dict[str, str]:
+    """Zeus routing and login from config or this process. No invented values."""
+    found: dict[str, str] = {}
+    for key, attr, env_name in (
+        ("ZEUS_URL", "zeus_url", "ZEUS_URL"),
+        ("ZEUS_BUCKET", "default_bucket", "ZEUS_BUCKET"),
+        ("ZEUS_SCOPE", "default_scope", "ZEUS_SCOPE"),
+        ("ZEUS_COLLECTION", "default_collection", "ZEUS_COLLECTION"),
+    ):
+        value = _routing(str(getattr(cfg, attr, "") or ""), env_name)
+        if value:
+            found[key] = value
     user = process_username()
     if user:
-        pairs.append(("ZEUS_USERNAME", user))
+        found["ZEUS_USERNAME"] = user
     password = process_password()
     if password:
-        pairs.append(("ZEUS_PASSWORD", password))
-    pairs.extend(_llm_assignments())
-    lines = [f"{key}={value}" for key, value in pairs]
-    names = [key for key, _value in pairs]
+        found["ZEUS_PASSWORD"] = password
+    if _auth_mode(cfg) == "bearer":
+        token = (os.environ.get("ZEUS_BEARER_TOKEN") or os.environ.get("ZEUS_TOKEN") or "").strip()
+        if token:
+            found["ZEUS_BEARER_TOKEN"] = token
+    return found
+
+
+def _llm_fills(template: dict[str, str], existing: dict[str, str]) -> tuple[dict[str, str], str]:
+    """Resolve the key, base URL, and model together.
+
+    An ``OPENAI_API_KEY`` or ``XAI_API_KEY`` is copied into ``LLM_API_KEY`` only
+    when the base URL and model match that provider. The returned alias name is
+    the one that was left unused. Values are not logged by the caller.
+    """
+    fills: dict[str, str] = {}
+    proc_key = (os.environ.get("LLM_API_KEY") or "").strip()
+    proc_base = (os.environ.get("LLM_BASE_URL") or "").strip()
+    proc_model = (os.environ.get("LLM_MODEL") or "").strip()
+    xai = (os.environ.get("XAI_API_KEY") or "").strip()
+    openai = (os.environ.get("OPENAI_API_KEY") or "").strip()
+
+    def _kept(name: str) -> str:
+        return (existing.get(name) or "").strip()
+
+    if proc_key:
+        fills["LLM_API_KEY"] = proc_key
+        if proc_base and not _kept("LLM_BASE_URL"):
+            fills["LLM_BASE_URL"] = proc_base
+        if proc_model and not _kept("LLM_MODEL"):
+            fills["LLM_MODEL"] = proc_model
+        return fills, ""
+
+    if proc_base and proc_model:
+        pair_base, pair_model = proc_base, proc_model
+        from_process = True
+    elif not proc_base and not proc_model:
+        pair_base = _kept("LLM_BASE_URL") or (template.get("LLM_BASE_URL") or "").strip()
+        pair_model = _kept("LLM_MODEL") or (template.get("LLM_MODEL") or "").strip()
+        from_process = False
+    else:
+        skipped = "OPENAI_API_KEY" if openai else ("XAI_API_KEY" if xai else "")
+        return fills, skipped
+
+    provider = _provider_match(pair_base, pair_model)
+    alias = ""
+    if provider == "xai" and xai:
+        alias = xai
+    elif provider == "openai" and openai:
+        alias = openai
+    if alias:
+        fills["LLM_API_KEY"] = alias
+        if from_process:
+            if not _kept("LLM_BASE_URL"):
+                fills["LLM_BASE_URL"] = pair_base
+            if not _kept("LLM_MODEL"):
+                fills["LLM_MODEL"] = pair_model
+        return fills, ""
+    if openai and provider != "openai":
+        return fills, "OPENAI_API_KEY"
+    if xai and provider != "xai":
+        return fills, "XAI_API_KEY"
+    return fills, ""
+
+
+def _merge_env_text(
+    example: str,
+    existing: str,
+    fills: dict[str, str],
+    *,
+    auth_mode: str,
+) -> str:
+    """Keep populated ``.env`` values, then fill empties, then the template."""
+    existing_vals = _dotenv_map(existing)
+    seen: set[str] = set()
+    out_lines: list[str] = []
+
+    def _choose(key: str, template_value: str) -> str:
+        current = (existing_vals.get(key) or "").strip()
+        if current:
+            return current
+        if key == "ZEUS_BEARER_TOKEN" and auth_mode == "basic":
+            return template_value.strip()
+        filled = (fills.get(key) or "").strip()
+        if filled:
+            return filled
+        return template_value.strip()
+
+    for raw in example.splitlines():
+        stripped = raw.strip()
+        match = _ASSIGN_RE.match(stripped)
+        if match is not None:
+            key = match.group("key")
+            seen.add(key)
+            value = _choose(key, _unquote(match.group("value")))
+            prefix = "export " if match.group("export") else ""
+            out_lines.append(f"{prefix}{key}={_format_value(value)}")
+            continue
+        comment = _COMMENT_ASSIGN_RE.match(stripped)
+        if comment is not None:
+            key = comment.group("key")
+            filled = (fills.get(key) or "").strip()
+            current = (existing_vals.get(key) or "").strip()
+            if key == "ZEUS_BEARER_TOKEN" and auth_mode == "basic":
+                out_lines.append(raw)
+                seen.add(key)
+                continue
+            if current or filled:
+                seen.add(key)
+                out_lines.append(f"{key}={_format_value(current or filled)}")
+                continue
+        out_lines.append(raw)
+
+    for key, value in existing_vals.items():
+        if key in seen or not value.strip():
+            continue
+        seen.add(key)
+        out_lines.append(f"{key}={_format_value(value.strip())}")
+    for key, value in fills.items():
+        if key in seen or not value.strip():
+            continue
+        if key == "ZEUS_BEARER_TOKEN" and auth_mode == "basic":
+            continue
+        out_lines.append(f"{key}={_format_value(value.strip())}")
+    text = "\n".join(out_lines)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    return text
+
+
+def _required_names(cfg: HelperConfig, template: dict[str, str]) -> list[str]:
+    names: list[str] = ["ZEUS_URL"]
+    for name in _LLM_GROUP:
+        if name in template:
+            names.append(name)
+    mode = _auth_mode(cfg)
+    if mode == "basic":
+        names.extend(["ZEUS_USERNAME", "ZEUS_PASSWORD"])
+    elif mode == "bearer":
+        names.append("ZEUS_BEARER_TOKEN")
+    return names
+
+
+def _process_has(cfg: HelperConfig, name: str, *, alias_accepted: bool) -> bool:
+    if name == "ZEUS_URL":
+        return bool(_routing(cfg.zeus_url, "ZEUS_URL"))
+    if name == "ZEUS_USERNAME":
+        return bool(process_username())
+    if name == "ZEUS_PASSWORD":
+        return bool(process_password())
+    if name == "ZEUS_BEARER_TOKEN":
+        token = (os.environ.get("ZEUS_BEARER_TOKEN") or os.environ.get("ZEUS_TOKEN") or "").strip()
+        return bool(token)
+    if name == "LLM_API_KEY":
+        if (os.environ.get("LLM_API_KEY") or "").strip():
+            return True
+        return alias_accepted
+    return bool((os.environ.get(name) or "").strip())
+
+
+def _missing_settings(
+    cfg: HelperConfig,
+    template: dict[str, str],
+    written: dict[str, str],
+    *,
+    alias_accepted: bool,
+) -> tuple[list[str], list[str]]:
+    app_missing: list[str] = []
+    process_missing: list[str] = []
+    for name in _required_names(cfg, template):
+        if not (written.get(name) or "").strip():
+            app_missing.append(name)
+        if _process_has(cfg, name, alias_accepted=alias_accepted):
+            continue
+        if name in {"LLM_BASE_URL", "LLM_MODEL"} and (written.get(name) or "").strip():
+            continue
+        process_missing.append(name)
+    return app_missing, process_missing
+
+
+def _env_lines(cfg: HelperConfig) -> tuple[list[str], list[str]]:
+    """Lines for a new ``.env`` when the app has no template."""
+    fills = _confirmed_routing(cfg)
+    llm, _skipped = _llm_fills({}, {})
+    fills.update(llm)
+    lines = [f"{key}={_format_value(value)}" for key, value in fills.items() if value.strip()]
+    names = [key for key, _value in fills.items() if _value.strip()]
     return lines, names
 
 
@@ -161,24 +392,54 @@ def _ensure_gitignore(root: Path) -> bool:
 
 
 def ensure_app_env(cfg: HelperConfig, target_dir: str | Path) -> dict[str, Any]:
-    """Create a mode 600 ``.env`` when the app does not have one yet.
+    """Create or merge a mode 600 ``.env`` from this app's ``.env.example``.
 
-    An existing non-empty ``.env`` is left as the user wrote it. The result
-    lists variable names only.
+    Populated values already in ``.env`` stay. Missing template keys are added.
+    Confirmed Zeus routing and this process fill empty keys. The result lists
+    variable names only.
     """
     root = Path(target_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     path = root / ".env"
+    example_path = root / ".env.example"
     created = False
-    names: list[str] = []
     existing = ""
-    if path.is_file():
+    if path.is_file() and not path.is_symlink():
         try:
             existing = path.read_text(encoding="utf-8")
         except OSError:
             existing = ""
-    if existing.strip():
+    example = ""
+    if example_path.is_file() and not example_path.is_symlink():
+        try:
+            example = example_path.read_text(encoding="utf-8")
+        except OSError:
+            example = ""
+    template = _dotenv_map(example)
+    existing_vals = _dotenv_map(existing)
+    fills = _confirmed_routing(cfg)
+    llm_fills, skipped_alias = _llm_fills(template, existing_vals)
+    fills.update(llm_fills)
+    auth_mode = _auth_mode(cfg)
+    if path.is_symlink():
         names = _env_key_names(existing)
+        written = existing_vals
+    elif example:
+        merged = _merge_env_text(example, existing, fills, auth_mode=auth_mode)
+        if not path.exists():
+            created = True
+        if merged != existing or created:
+            _write_private(path, merged)
+        else:
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+        written = _dotenv_map(merged)
+        names = _env_key_names(merged)
+    elif existing.strip():
+        names = _env_key_names(existing)
+        written = existing_vals
         try:
             os.chmod(path, 0o600)
         except OSError:
@@ -188,14 +449,31 @@ def ensure_app_env(cfg: HelperConfig, target_dir: str | Path) -> dict[str, Any]:
         if lines:
             _write_private(path, "\n".join(lines) + "\n")
             created = True
+        written = _dotenv_map("\n".join(lines))
     gitignore = _ensure_gitignore(root)
-    present = path.is_file() and bool(names or created)
-    return {
+    present = path.is_file() and not path.is_symlink() and bool(names or created)
+    if path.is_symlink():
+        present = bool(names)
+    app_missing, process_missing = _missing_settings(
+        cfg,
+        template,
+        written,
+        alias_accepted=bool(llm_fills.get("LLM_API_KEY")) and not (os.environ.get("LLM_API_KEY") or "").strip(),
+    )
+    report: dict[str, Any] = {
         "wrote_env": present,
         "created_env": created,
         "env_keys": names,
         "gitignore": gitignore,
+        "env_template": ".env.example",
+        "env_target": ".env",
+        "configuration_policy": "preserve_existing_then_fill_missing",
+        "missing_app_settings": app_missing,
+        "missing_process_settings": process_missing,
     }
+    if skipped_alias:
+        report["skipped_llm_alias"] = skipped_alias
+    return report
 
 
 def strip_dotenv_copy(run: str) -> str:
@@ -204,7 +482,13 @@ def strip_dotenv_copy(run: str) -> str:
     return run.strip()
 
 
-def annotate_app_env(cfg: HelperConfig, root: str | Path, result: dict[str, Any]) -> dict[str, Any]:
+def annotate_app_env(
+    cfg: HelperConfig,
+    root: str | Path,
+    result: dict[str, Any],
+    *,
+    report: bool = False,
+) -> dict[str, Any]:
     info = ensure_app_env(cfg, root)
     result["app_env"] = {
         "wrote_env": info["wrote_env"],
@@ -214,6 +498,19 @@ def annotate_app_env(cfg: HelperConfig, root: str | Path, result: dict[str, Any]
     }
     if info["wrote_env"] and result.get("run"):
         result["run"] = strip_dotenv_copy(str(result["run"]))
+    if info["wrote_env"] and result.get("next_action"):
+        result["next_action"] = strip_dotenv_copy(str(result["next_action"]))
+    if report:
+        for key in (
+            "env_template",
+            "env_target",
+            "configuration_policy",
+            "missing_app_settings",
+            "missing_process_settings",
+            "skipped_llm_alias",
+        ):
+            if key in info:
+                result[key] = info[key]
     return result
 
 
