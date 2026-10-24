@@ -918,6 +918,9 @@ def explain_scope() -> dict[str, Any]:
     Entity types, display fields, text-search fields, foreign-key fields,
     and the verb for list (find), detail (get), and search. No prompt text,
     document bodies, or secrets. fetch_chat_request stays template only.
+    When GET /v1/ai/chat_request.json has no ## MINI-SCHEMA heading, the
+    summary is parsed from bootstrap.chat_request. missing_mini_schema
+    remains when that message also has no heading.
     A failed stamp sets failure_class and does not invent entity types.
     """
     from zeus_dev_helper_mcp.explain_scope import explain_scope as explain_scope_impl
@@ -1201,7 +1204,11 @@ def bind_contract(
     scope: str = "",
     mode: str = "",
 ) -> dict[str, Any]:
-    """Extract stamped contract.hash only. Refuse placeholders / compute_local (ZDH-22)."""
+    """Extract stamped contract.hash only. Refuse placeholders / compute_local (ZDH-22).
+
+    With no path, copy the hash from the live bootstrap chat_request.
+    A helper chat_request.json directory pointer is not an unstamped catalog.
+    """
     return bind_contract_impl(
         _cfg(),
         path=path,

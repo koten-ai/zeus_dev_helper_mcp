@@ -182,25 +182,53 @@ def lint_chat_request(
     }
 
 
-def bind_contract(
+_POINTER_KEYS = frozenset(
+    {"verbs", "tools", "messages", "contract", "_format", "instructions"}
+)
+_POINTER_NEXT = (
+    "This file is the helper chat_request directory pointer, not a chat request. "
+    "Call bind_contract with no path to read bootstrap chat_request.contract, "
+    "or pass the scope catalog file. Do not invent a hash."
+)
+
+
+def _is_directory_pointer(doc: dict[str, Any]) -> bool:
+    """True for ``{"chat_request_dir": ...}`` and not for a catalog document."""
+    if "chat_request_dir" not in doc:
+        return False
+    if extract_stamped_hash(doc):
+        return False
+    return not any(key in doc for key in _POINTER_KEYS)
+
+
+def _as_chat_request(doc: dict[str, Any]) -> dict[str, Any]:
+    """Use a nested bootstrap ``chat_request`` when the wrapper has no stamp."""
+    if extract_stamped_hash(doc):
+        return doc
+    inner = doc.get("chat_request")
+    if isinstance(inner, dict):
+        return inner
+    return doc
+
+
+def _bound_config_path(cfg: HelperConfig) -> str:
+    from zeus_dev_helper_mcp.checklist import bound_app_root
+
+    app = bound_app_root(cfg)
+    if app is None:
+        return ""
+    return str(app / "config.json")
+
+
+def _bind_doc(
     cfg: HelperConfig,
+    doc: dict[str, Any],
     *,
-    path: str = "",
-    json_text: str = "",
     bucket: str = "",
     scope: str = "",
     mode: str = "",
 ) -> dict[str, Any]:
     """Extract stamped hash only. Refuse empty / TO_BE_FILLED / compute_local for prod."""
-    doc, err = _load_doc(path=path, json_text=json_text)
-    if err:
-        return {
-            "ok": False,
-            "failure_class": "contract_required",
-            "next_action": err,
-            "docs": docs_url("zeus-client/contracts-and-catalog.md"),
-        }
-    assert doc is not None
     h = extract_stamped_hash(doc)
     if not h:
         return {
@@ -240,6 +268,88 @@ def bind_contract(
     }
 
 
+def live_contract_status(cfg: HelperConfig) -> dict[str, Any]:
+    """Whether bootstrap ``chat_request.contract`` has a real hash. No hash value."""
+    from zeus_dev_helper_mcp.explain_scope import fetch_bootstrap_chat_request
+
+    loaded = fetch_bootstrap_chat_request(cfg)
+    chat = loaded.get("chat_request")
+    has_hash = isinstance(chat, dict) and bool(extract_stamped_hash(chat))
+    return {
+        "has_real_hash": has_hash,
+        "failure_class": None if has_hash else loaded.get("failure_class"),
+    }
+
+
+def _bind_live_bootstrap(
+    cfg: HelperConfig,
+    *,
+    bucket: str = "",
+    scope: str = "",
+    mode: str = "",
+) -> dict[str, Any]:
+    from zeus_dev_helper_mcp.explain_scope import fetch_bootstrap_chat_request
+
+    loaded = fetch_bootstrap_chat_request(cfg)
+    chat = loaded.get("chat_request")
+    if not loaded.get("ok") or not isinstance(chat, dict):
+        return {
+            "ok": False,
+            "failure_class": loaded.get("failure_class") or "contract_required",
+            "req_id": loaded.get("req_id") or "",
+            "next_action": loaded.get("next_action")
+            or "The live bootstrap chat_request did not answer. Do not invent a hash.",
+            "docs": docs_url("zeus-client/contracts-and-catalog.md"),
+        }
+    out = _bind_doc(cfg, chat, bucket=bucket, scope=scope, mode=mode)
+    out["req_id"] = loaded.get("req_id") or ""
+    out["pin_source"] = "bootstrap.chat_request.contract"
+    if out.get("ok"):
+        config_path = _bound_config_path(cfg) or "the bound app config.json"
+        out["config_path"] = config_path
+        out["next_action"] = (
+            f"Paste scope_contracts into {config_path}. "
+            "The hash is copied from bootstrap chat_request.contract. Do not invent a hash."
+        )
+    return out
+
+
+def bind_contract(
+    cfg: HelperConfig,
+    *,
+    path: str = "",
+    json_text: str = "",
+    bucket: str = "",
+    scope: str = "",
+    mode: str = "",
+) -> dict[str, Any]:
+    """Extract stamped hash only. Refuse empty / TO_BE_FILLED / compute_local for prod.
+
+    With no path and no json_text, the source is the live bootstrap ``chat_request``.
+    A helper directory pointer is not an unstamped catalog.
+    """
+    if not (path or "").strip() and not (json_text or "").strip():
+        return _bind_live_bootstrap(cfg, bucket=bucket, scope=scope, mode=mode)
+    doc, err = _load_doc(path=path, json_text=json_text)
+    if err:
+        return {
+            "ok": False,
+            "failure_class": "contract_required",
+            "next_action": err,
+            "docs": docs_url("zeus-client/contracts-and-catalog.md"),
+        }
+    assert doc is not None
+    if _is_directory_pointer(doc):
+        return {
+            "ok": False,
+            "failure_class": "contract_required",
+            "input_kind": "chat_request_dir_pointer",
+            "next_action": _POINTER_NEXT,
+            "docs": docs_url("zeus-client/contracts-and-catalog.md"),
+        }
+    return _bind_doc(cfg, _as_chat_request(doc), bucket=bucket, scope=scope, mode=mode)
+
+
 def explain_hash_boundary(cfg: HelperConfig) -> dict[str, Any]:
     """MINI-SCHEMA / brief are excluded from hash; injected at call time."""
     _ = cfg
@@ -259,7 +369,10 @@ def explain_hash_boundary(cfg: HelperConfig) -> dict[str, Any]:
             "Do not include live MINI-SCHEMA / brief in the stamped file expecting it to affect the hash",
         ],
         "docs": docs_url("zeus-client/contracts-and-catalog.md"),
-        "next_action": "bind_contract from a Hub-stamped file; inject MINI-SCHEMA at runtime",
+        "next_action": (
+            "bind_contract with no path reads bootstrap chat_request.contract; "
+            "inject MINI-SCHEMA at runtime"
+        ),
     }
 
 
