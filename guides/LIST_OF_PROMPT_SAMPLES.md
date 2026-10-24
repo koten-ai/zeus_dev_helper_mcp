@@ -262,11 +262,11 @@ Write `.env.example` from prereqs (no secrets).
 
 ### `verify_local_setup`
 
-Check `zeus_client` import, scaffold files, and the app LLM key. Pass the project directory. The check reports presence only. It marks checklist 3.2 done when `.env` has a non-empty value for the variable named by `config.json` `llm.api_key_env`, and that name is an env-var name such as `LLM_API_KEY`. A secret in `api_key_env` blocks 3.2.
+Check the `zeus_client` import in this Helper process, scaffold files, and the app LLM key. Pass the project directory. The app `.venv` does not satisfy the import. A failure names this interpreter and says to install the `agent` extra (`uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp`) and restart the MCP server. The check reports key presence only. It marks checklist 3.2 done when `.env` has a non-empty value for the variable named by `config.json` `llm.api_key_env`, and that name is an env-var name such as `LLM_API_KEY`. A secret in `api_key_env` blocks 3.2.
 
-1. Verify local setup for `./zeus_first_app`: can we import the client, are scaffold files present, and is `LLM_API_KEY` set in `.env` without `api_key_env` holding the secret?
-2. Check whether `kotenai-zeus-client` is installed and whether the target dir looks like a Helper scaffold. Do not print the key.
-3. Run `verify_local_setup` with no target dir — just tell me if the Zeus Client import works. That call does not close checklist 3.2.
+1. Verify local setup for `./zeus_first_app`: can this Helper process import the client, are scaffold files present, and is `LLM_API_KEY` set in `.env` without `api_key_env` holding the secret?
+2. If `import_zeus_client` fails, install the `agent` extra into the Helper environment and restart the MCP server. Do not install `kotenai-zeus-client` into the app `.venv` as the fix. Do not print the key.
+3. Run `verify_local_setup` with no target dir — just tell me if the Zeus Client import works in this Helper process. That call does not close checklist 3.2.
 
 ---
 

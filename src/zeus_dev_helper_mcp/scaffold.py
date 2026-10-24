@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -839,21 +840,43 @@ dependencies = [
     }, catalog_ui=False)
 
 
+def missing_zeus_client_action() -> str:
+    """Install hint for this Helper process.
+
+    The app ``.venv`` is a different interpreter and does not satisfy the check.
+    """
+    return (
+        f"Helper interpreter {sys.executable} cannot import zeus_client. "
+        "The app .venv does not satisfy this check. "
+        "Install the agent extra into the Helper environment "
+        "(`uvx --from '<package-or-path>[agent]' zeus-dev-helper-mcp`, "
+        "or `pip install 'zeus-dev-helper-mcp[agent]'` for that interpreter) "
+        "and restart the MCP server."
+    )
+
+
+def _load_zeus_client() -> Any:
+    import zeus_client  # type: ignore
+
+    return zeus_client
+
+
 def verify_local_setup(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any]:
     """Check imports and basic project layout."""
     checks: list[dict[str, Any]] = []
-    # zeus_client import
+    # zeus_client import runs in this Helper process, not the app .venv.
     try:
-        import zeus_client  # type: ignore
-
+        zeus_client = _load_zeus_client()
         checks.append({"name": "import_zeus_client", "ok": True, "version": getattr(zeus_client, "__version__", "?")})
-    except ImportError as e:
+    except ImportError:
+        action = missing_zeus_client_action()
         checks.append(
             {
                 "name": "import_zeus_client",
                 "ok": False,
-                "error": str(e),
-                "next_action": "pip install kotenai-zeus-client",
+                "error": "No module named 'zeus_client'",
+                "interpreter": sys.executable,
+                "next_action": action,
             }
         )
 
@@ -922,17 +945,23 @@ def verify_local_setup(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
             except Exception:  # noqa: BLE001, S110
                 pass
 
-    ok = all(c.get("ok") for c in checks if c["name"] == "import_zeus_client")
+    import_check = next(c for c in checks if c["name"] == "import_zeus_client")
+    ok = bool(import_check.get("ok"))
     if any(c.get("name") == "llm_api_key" and not c.get("ok") for c in checks):
         ok = False
     if not python.get("ok"):
         ok = False
-    next_action = "Install missing deps or scaffold_app if files missing"
+    notes: list[str] = []
+    if not import_check.get("ok"):
+        notes.append(str(import_check.get("next_action") or ""))
     if not python.get("ok"):
-        next_action = str(python.get("message") or next_action)
+        notes.append(str(python.get("message") or ""))
     llm_fail = next((c for c in checks if c.get("name") == "llm_api_key" and not c.get("ok")), None)
     if llm_fail and python.get("ok"):
-        next_action = str(llm_fail.get("note") or next_action)
+        notes.append(str(llm_fail.get("note") or ""))
+    next_action = " ".join(note for note in notes if note)
+    if not next_action:
+        next_action = "Install missing deps or scaffold_app if files missing"
     return {
         "ok": ok,
         "checks": checks,
