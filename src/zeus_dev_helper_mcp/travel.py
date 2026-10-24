@@ -822,7 +822,13 @@ def travel_golden_path(
                 "(optional project_name for directory); or scaffold_app fallback"
             ),
         },
-        {"phase": "4", "action": "bootstrap_scope + stamp catalog in Hub Workbench"},
+        {
+            "phase": "4",
+            "action": (
+                "bind_contract with no path copies bootstrap chat_request.contract. "
+                "Hub Workbench stamp only when that live document has no real hash"
+            ),
+        },
         {"phase": "5", "action": phase5},
         {"phase": "6+", "action": "gap_report; customize domain"},
     ]

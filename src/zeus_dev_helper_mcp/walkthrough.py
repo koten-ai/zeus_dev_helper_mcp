@@ -401,9 +401,44 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         "resources": "Read zeus-helper:// checklist / glossary / verbs / policies instead of encyclopedia tools",
     }
     if item_id == "4.2":
-        base["ops_note"] = (
-            "Contract stamp is usually Administrator/Hub. Dev binds id+hash after stamp."
+        from zeus_dev_helper_mcp.checklist import (
+            _identity,
+            _read_object,
+            bound_app_root,
         )
+        from zeus_dev_helper_mcp.contract import live_contract_status
+
+        app = bound_app_root(cfg)
+        if app is not None:
+            config_path = str(app / "config.json")
+            bucket, scope, mode = _identity(cfg, _read_object(app / "config.json"))
+        else:
+            config_path = "the bound app config.json"
+            bucket, scope, mode = "", "", ""
+        bucket = bucket or (cfg.default_bucket or "<bucket>").strip() or "<bucket>"
+        scope = scope or (cfg.default_scope or "_default").strip() or "_default"
+        mode = mode or (cfg.default_mode or "analytics").strip() or "analytics"
+        live = live_contract_status(cfg)
+        base["pin_source"] = "bootstrap.chat_request.contract"
+        base["config_path"] = config_path
+        base["note"] = (
+            f"Pin zeus.scope_contracts for {bucket}/{scope} mode {mode} in {config_path}. "
+            "The source is bootstrap chat_request.contract. "
+            "bind_contract with no path returns that snippet. Do not invent a hash."
+        )
+        if live.get("has_real_hash"):
+            base["ops_note"] = (
+                "The live bootstrap chat_request.contract already has a stamped hash. "
+                f"Copy it into {config_path}. No Hub stamp is required for this scope."
+            )
+        elif live.get("failure_class") == "wrong_port_hub_vs_public":
+            base["ops_note"] = (
+                "Use the public API :8080. bind_contract does not call Hub :9091."
+            )
+        else:
+            base["ops_note"] = (
+                "Contract stamp is usually Administrator/Hub. Dev binds id+hash after stamp."
+            )
     # Post-green handoffs (ZDH-11 / ZDH-12)
     if _smokes_green(cfg):
         base["post_green"] = {

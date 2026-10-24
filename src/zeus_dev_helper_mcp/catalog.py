@@ -16,7 +16,8 @@ from zeus_dev_helper_mcp.docs_links import docs_url
 
 STAMP_WARNING = (
     "TEMPLATE ONLY — not stamped for your cluster. "
-    "Verify/stamp on your Zeus (Hub) before production; never invent contract_hash."
+    "Copy contract.hash from the live bootstrap chat_request when that hash is real. "
+    "Stamp on Hub only when that document has no real hash. Never invent contract_hash."
 )
 
 ENV_CHAT_REQUEST_DIR = "ZEUS_CHAT_REQUEST_DIR"

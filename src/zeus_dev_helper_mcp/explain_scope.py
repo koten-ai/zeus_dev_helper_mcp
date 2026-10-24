@@ -184,6 +184,99 @@ def _bearer_headers(cfg: HelperConfig) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def fetch_bootstrap_chat_request(cfg: HelperConfig) -> dict[str, Any]:
+    """GET bootstrap and return its ``chat_request`` object for in-process parsing.
+
+    Callers must not put that object, or its prompt text, on a tool result.
+    """
+    from zeus_dev_helper_mcp.readiness import _looks_like_hub
+
+    url = _public_url(cfg.zeus_url)
+    bucket = (cfg.default_bucket or "").strip()
+    scope = (cfg.default_scope or "_default").strip() or "_default"
+    if not url:
+        return {
+            "ok": False,
+            "failure_class": "zeus_url_missing",
+            "req_id": "",
+            "chat_request": None,
+            "next_action": "set_prereq with the public :8080 URL, bucket, and scope.",
+        }
+    if _looks_like_hub(url):
+        return {
+            "ok": False,
+            "failure_class": "wrong_port_hub_vs_public",
+            "req_id": "",
+            "chat_request": None,
+            "next_action": "Use the public API :8080. This path does not call Hub :9091.",
+        }
+    if not bucket:
+        return {
+            "ok": False,
+            "failure_class": "scope_not_enabled",
+            "req_id": "",
+            "chat_request": None,
+            "next_action": "set_prereq with the bucket and scope.",
+        }
+    path = f"/v1/ai/bootstrap/scope/{bucket}/{scope}"
+    try:
+        with httpx.Client(
+            timeout=5.0,
+            auth=_auth(cfg),
+            headers=_bearer_headers(cfg),
+            trust_env=False,
+        ) as client:
+            response = client.get(url + path)
+    except httpx.HTTPError:
+        return {
+            "ok": False,
+            "failure_class": "stamp_fetch_failed",
+            "req_id": "",
+            "chat_request": None,
+            "next_action": "The live bootstrap document did not answer. Do not invent a hash.",
+        }
+    req_id = _req_id(response.headers)
+    if response.status_code == 401:
+        return {
+            "ok": False,
+            "failure_class": "auth_failed",
+            "req_id": req_id,
+            "chat_request": None,
+            "next_action": "The live bootstrap returned HTTP 401. Fix the process login.",
+        }
+    if response.status_code != 200:
+        return {
+            "ok": False,
+            "failure_class": "stamp_fetch_failed",
+            "req_id": req_id,
+            "chat_request": None,
+            "next_action": (
+                f"The live bootstrap returned HTTP {response.status_code}. "
+                "Do not invent a hash."
+            ),
+        }
+    try:
+        data = response.json()
+    except ValueError:
+        data = None
+    chat = data.get("chat_request") if isinstance(data, dict) else None
+    if not isinstance(chat, dict):
+        return {
+            "ok": False,
+            "failure_class": "stamp_fetch_failed",
+            "req_id": req_id,
+            "chat_request": None,
+            "next_action": "The live bootstrap has no chat_request object. Do not invent a hash.",
+        }
+    return {
+        "ok": True,
+        "failure_class": None,
+        "req_id": req_id,
+        "chat_request": chat,
+        "next_action": None,
+    }
+
+
 def explain_scope(cfg: HelperConfig) -> dict[str, Any]:
     """GET the live chat_request stamp and return entity fields only."""
     from zeus_dev_helper_mcp.readiness import _looks_like_hub
@@ -249,6 +342,16 @@ def explain_scope(cfg: HelperConfig) -> dict[str, Any]:
             req_id=req_id,
         )
     parsed = parse_mini_schema(_system_text(doc))
+    schema_source = "chat_request.json"
+    if not parsed:
+        boot = fetch_bootstrap_chat_request(cfg)
+        boot_doc = boot.get("chat_request")
+        if isinstance(boot_doc, dict):
+            parsed = parse_mini_schema(_system_text(boot_doc))
+            if parsed:
+                schema_source = "bootstrap.chat_request"
+                if boot.get("req_id"):
+                    req_id = str(boot.get("req_id") or req_id)
     entities = summarize_entities(parsed)
     if not entities:
         return _empty(
@@ -256,6 +359,11 @@ def explain_scope(cfg: HelperConfig) -> dict[str, Any]:
             "missing_mini_schema",
             "The live stamp has no MINI-SCHEMA entities. No entity types were filled in.",
             req_id=req_id,
+        )
+    next_action = "use_sample(sample=catalog) writes a page from these fields."
+    if schema_source == "bootstrap.chat_request":
+        next_action = (
+            "MINI-SCHEMA is on bootstrap.chat_request. " + next_action
         )
     return {
         "ok": True,
@@ -265,12 +373,13 @@ def explain_scope(cfg: HelperConfig) -> dict[str, Any]:
         "scope": scope,
         "mode": mode,
         "req_id": req_id,
+        "schema_source": schema_source,
         "entity_types": [row["name"] for row in entities],
         "entities": entities,
         "verbs": dict(_VERBS),
         "note": STAMP_NOTE,
         "result_shapes": _shapes(),
-        "next_action": "use_sample(sample=catalog) writes a page from these fields.",
+        "next_action": next_action,
     }
 
 
