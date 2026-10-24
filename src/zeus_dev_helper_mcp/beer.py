@@ -29,7 +29,7 @@ def beer_quick_start() -> str:
 
     return (
         f"{venv_setup_shell()} && "
-        "pip install -r requirements.txt && cp .env.example .env && python main.py"
+        "pip install -r requirements.txt && python main.py"
     )
 _DIR_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
@@ -1700,8 +1700,9 @@ Create the virtualenv with Python 3.11 or newer. `kotenai-zeus-client` does not 
 ```bash
 {venv_line}
 pip install -r requirements.txt
-cp .env.example .env   # set ZEUS_URL and LLM_API_KEY
 ```
+
+`.env` is written from `.env.example`. Keep populated values. Do not copy the template over a file that already has values. Restart the app after an env change.
 
 ## Run
 
@@ -2270,12 +2271,116 @@ def _attach_serving_verdict(
     return verdict
 
 
+def _public_beer_checkout(root: Path) -> bool:
+    """True when this tree is the public sample, not the generated catalog.
+
+    The sample stores ``llm.base_url`` and ``llm.model`` as the env names, and
+    its template model is ``grok-4.5-latest``. The generated tree writes a real
+    URL and ``grok-4-1-fast-non-reasoning``.
+    """
+    example = root / ".env.example"
+    if example.is_file():
+        try:
+            text = example.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        if "LLM_MODEL=grok-4.5-latest" in text:
+            return True
+    config = root / "config.json"
+    if not config.is_file():
+        return False
+    try:
+        doc = json.loads(config.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(doc, dict):
+        return False
+    llm = doc.get("llm")
+    if not isinstance(llm, dict):
+        return False
+    return llm.get("base_url") == "LLM_BASE_URL" or llm.get("model") == "LLM_MODEL"
+
+
+def _beer_setup_next_action(root: Path, result: dict[str, Any]) -> str:
+    """Start text that matches the merged ``.env``. Names only."""
+    from zeus_dev_helper_mcp.python_runtime import launch_note
+
+    app_missing = result.get("missing_app_settings") or []
+    process_missing = result.get("missing_process_settings") or []
+    app_names = ", ".join(app_missing) if app_missing else "none"
+    process_names = ", ".join(process_missing) if process_missing else "none"
+    skipped = str(result.get("skipped_llm_alias") or "").strip()
+    alias_note = ""
+    if skipped:
+        alias_note = (
+            f" {skipped} is set in this process. It was not copied to LLM_API_KEY "
+            "because LLM_BASE_URL and LLM_MODEL do not match that provider. "
+            "Set LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL together."
+        )
+    note = launch_note()
+    prefix = f"{note} " if note else ""
+    return (
+        f"{prefix}The checkout is the complete beer-sample application at {root} "
+        f"({BEER_REPO}). Read its README and use its source and configuration. "
+        ".env keeps populated values and adds missing keys from .env.example "
+        "(preserve_existing_then_fill_missing). "
+        "Do not copy .env.example onto .env when that file already has values. "
+        "Restart the app after an env change. "
+        "Check compatible workspace configuration, such as a sibling sample .env, "
+        "before asking the user. A missing name is not proof the user has no key. "
+        f"App settings still empty: {app_names}. "
+        f"This process is still missing: {process_names}. "
+        "The app .env and this process stay separate. "
+        "load_process_login loads a mode-600 env file into this process."
+        f"{alias_note} "
+        "Clone success is not website green. "
+        "Call website_green for install, auth, named beer cards, and search. "
+        "A brewery-card check stays separate when website_green reads /api/beers. "
+        "A describe 200 does not mark the page ready. "
+        "Leave config.json llm.api_key_env as the name LLM_API_KEY. "
+        "Do not clone demo_travel_sample. "
+        f"From that directory: {beer_quick_start()}."
+    )
+
+
 def _finish_beer_result(cfg: HelperConfig, root: Path, result: dict[str, Any]) -> dict[str, Any]:
     """Attach env, key presence, and Pour state. Secret values stay out of the result."""
     from zeus_dev_helper_mcp.app_env import annotate_app_env, annotate_pour
 
-    result = annotate_app_env(cfg, root, result)
+    serving = bool(result.get("already_serving"))
+    page_only = bool(result.get("page_only"))
+    result = annotate_app_env(cfg, root, result, report=True)
+    result["verification"] = {
+        "authentication": "not_checked",
+        "beer_list": "not_checked",
+        "brewery_list": "not_checked",
+        "search": "not_checked",
+    }
+    if serving:
+        action = str(result.get("next_action") or "")
+    elif page_only:
+        action = str(result.get("next_action") or "")
+        if "Restart the app after an env change." not in action:
+            action = f"{action} Restart the app after an env change.".strip()
+    else:
+        action = _beer_setup_next_action(root, result)
+    result["next_action"] = action
     result = annotate_pour(_attach_llm_key(root, result), catalog_ui=True)
+    if result.get("skipped_llm_alias") and "LLM_API_KEY" in (result.get("missing_app_settings") or []):
+        result["pour_enabled"] = False
+        tools = result.get("recommended_tools")
+        if isinstance(tools, list):
+            result["recommended_tools"] = [name for name in tools if name != "smoke_test_agent"]
+        else:
+            result["recommended_tools"] = []
+        reason = (
+            "Pour is disabled. The app .env has no LLM_API_KEY. "
+            "The list page still loads. Do not call smoke_test_agent."
+        )
+        result["pour_reason"] = reason
+        action = str(result.get("next_action") or "")
+        if reason not in action:
+            result["next_action"] = f"{action} {reason}".strip()
     try:
         from zeus_dev_helper_mcp.checklist import sync_bound_catalog_checklist
 
@@ -2315,6 +2420,27 @@ def write_beer_sample(
 
     upgrading = False
     if root.exists() and any(root.iterdir()) and not force:
+        if looks_like_beer_sample(root) and _public_beer_checkout(root):
+            env_path = set_demo_beer_sample_dir_env(root)
+            save_beer_sample_dir(cfg, root)
+            layout = validate_beer_layout(root)
+            return _finish_beer_result(
+                cfg,
+                root,
+                {
+                    "ok": True,
+                    "written": False,
+                    "cloned": False,
+                    "local_dir": str(root),
+                    "project_name": root.name,
+                    "layout": layout,
+                    "env": {ENV_BEER_DIR: env_path},
+                    "run": f"cd {root} && {beer_quick_start()}",
+                    "repo": BEER_REPO,
+                    "llm_required": True,
+                    "next_action": _beer_start_action(root),
+                },
+            )
         if looks_like_beer_sample(root):
             main_text = (root / "main.py").read_text(encoding="utf-8", errors="replace")
             if beer_bff_is_current(main_text):

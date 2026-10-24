@@ -343,6 +343,13 @@ def use_sample(
             "url",
             "zeus_url",
             "version",
+            "env_template",
+            "env_target",
+            "configuration_policy",
+            "missing_app_settings",
+            "missing_process_settings",
+            "verification",
+            "skipped_llm_alias",
         ):
             if ensured.get(key) is not None:
                 payload[key] = ensured[key]
