@@ -1664,7 +1664,8 @@ _INDEX_HTML = """\
 _REQUIREMENTS = """\
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
-kotenai-zeus-client>=2.4.0,<2.5
+# kotenai-zeus-client is the zeus_client_python package on PyPI (2.5.3).
+kotenai-zeus-client>=2.5.3,<2.6
 python-dotenv>=1.0.0
 """
 
@@ -1695,7 +1696,7 @@ into `post_trace`.
 
 ## Setup
 
-Create the virtualenv with Python 3.11 or newer. `kotenai-zeus-client` does not install on Python 3.9.
+Create the virtualenv with Python 3.11 or newer. `kotenai-zeus-client` does not install on Python 3.9. `requirements.txt` installs `kotenai-zeus-client>=2.5.3,<2.6` from PyPI.
 
 ```bash
 {venv_line}
@@ -2512,7 +2513,7 @@ def write_beer_sample(
         "from": "zeus_dev_helper_mcp.beer.write_beer_sample",
         "bff": "rt.agent.run_turn omits chat_request; catalog.load_for_turn merges MINI-SCHEMA",
         "client_floor": "client-floor-6.1",
-        "client": "kotenai-zeus-client>=2.4.0,<2.5",
+        "client": "kotenai-zeus-client>=2.5.3,<2.6",
     }
     meta_path = root / "sample_meta.json"
     meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")

@@ -14,6 +14,7 @@
 - Checklist 1.1 checks that the sample interpreter is Python 3.11 or newer before pip installs `kotenai-zeus-client`. `doctor` probes `python3` on PATH. `verify_local_setup` probes that, or `<app>/.venv/bin/python` when the file exists. `website_green` does not run pip when that interpreter is older. `use_sample` and `scaffold_app` put `python3 -m venv` in the run string only when `python3` is 3.11 or newer. An older `python3` names `python3.12` (or another 3.11+ interpreter on PATH) or `uv venv --python 3.12`.
 
 ### Changed
+- The beer sample installs `kotenai-zeus-client` from PyPI. `requirements.txt` pins `kotenai-zeus-client>=2.5.3,<2.6` (release 2.5.3). A generated tree writes that line. The public `demo_beer_sample` checkout uses the same line.
 - `use_sample(sample=beer)` shallow-clones https://github.com/koten-ai/demo_beer_sample when the directory is missing and sets `DEMO_BEER_SAMPLE_DIR`. The checkout is the app. Start it with `python main.py` after a Python 3.11 or newer virtualenv and `pip install -r requirements.txt`. `use_sample` merges `.env` from `.env.example`. `config.json` `llm.api_key_env` stays the name `LLM_API_KEY`. `website_green` starts that app with `python main.py`. An existing beer tree is left in place. A foreign default directory still gets the next open sibling.
 
 ## 0.7.8

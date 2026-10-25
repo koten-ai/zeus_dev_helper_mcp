@@ -85,7 +85,7 @@ def test_beer_sources_use_direct_find_then_get(tmp_path: Path) -> None:
     assert "CELLAR_CACHE_TTL" in env
     assert "fastapi" in reqs
     assert "uvicorn" in reqs
-    assert "kotenai-zeus-client>=2.4.0,<2.5" in reqs
+    assert "kotenai-zeus-client>=2.5.3,<2.6" in reqs
     cfg_text = (root / "config.json").read_text(encoding="utf-8")
     assert "client-floor-6.1" in cfg_text
     assert '"durable_sessions": false' in cfg_text
