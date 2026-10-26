@@ -2061,6 +2061,7 @@ def write_beer_config(cfg: HelperConfig, target_dir: str | Path) -> dict[str, An
         "url": "http://localhost:8080",
         "auth_mode": auth,
         "timeout_s": 30,
+        "username": "tester_beer",
     }
     if auth == "basic":
         zeus["password_env"] = "ZEUS_PASSWORD"

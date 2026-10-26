@@ -58,7 +58,8 @@ def test_written_tree_is_a_portable_run(tmp_path: Path, monkeypatch: pytest.Monk
     assert "ZEUS_URL=http://lab.example:8080" in example
     assert "LLM_MODEL=grok-4-1-fast-non-reasoning" in example
     assert config["zeus"]["url"] == "http://localhost:8080"
-    assert "username" not in config["zeus"]
+    assert config["zeus"]["username"] == "tester_beer"
+    assert "lab-user" not in config["zeus"]["username"]
     assert config["zeus"]["password_env"] == "ZEUS_PASSWORD"
     assert _PASSWORD not in (root / "config.json").read_text(encoding="utf-8")
     assert _PASSWORD not in json.dumps(out)

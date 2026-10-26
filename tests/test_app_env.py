@@ -175,7 +175,7 @@ def test_process_env_writes_private_dotenv(tmp_path: Path, monkeypatch: pytest.M
     assert "cp -n .env.example .env" not in (out.get("run") or "")
     config = (root / "config.json").read_text(encoding="utf-8")
     assert USER not in config
-    assert "username" not in config
+    assert '"username": "tester_beer"' in config
     assert PASSWORD not in config
     assert "password_env" in config
     blob = json.dumps(out)
