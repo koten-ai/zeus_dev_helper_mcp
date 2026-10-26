@@ -26,13 +26,14 @@ ZEUS_BUCKET=beer-sample
 ZEUS_SCOPE=_default
 ZEUS_COLLECTION=_default
 ZEUS_MODE=analytics
+HOST=127.0.0.1
 PORT=8090
 CELLAR_CACHE_TTL=600
 LLM_BASE_URL=https://api.x.ai/v1
 LLM_API_KEY=
 LLM_MODEL=grok-4.5-latest
-# ZEUS_USERNAME=
-# ZEUS_PASSWORD=
+ZEUS_USERNAME=tester_beer
+ZEUS_PASSWORD=
 # ZEUS_BEARER_TOKEN=
 """
 
@@ -164,6 +165,8 @@ def test_fresh_clone_merges_the_sample_template(
     env = (root / ".env").read_text(encoding="utf-8")
     assert "LLM_MODEL=grok-4.5-latest" in env
     assert "LLM_BASE_URL=https://api.x.ai/v1" in env
+    assert "ZEUS_USERNAME=tester_beer" in env
+    assert "HOST=127.0.0.1" in env
     assert "ZEUS_URL=http://lab.example:8080" in env
     assert "grok-4-1-fast-non-reasoning" not in env
     assert "LLM_API_KEY=" in env

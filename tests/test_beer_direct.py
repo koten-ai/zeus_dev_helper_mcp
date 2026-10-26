@@ -93,7 +93,13 @@ def test_beer_sources_use_direct_find_then_get(tmp_path: Path) -> None:
     assert "post_trace" in readme
     assert "chat_requests_dir" in cfg_text
     assert "LLM_API_KEY" in cfg_text
-    catalog = root / "data" / "chat_requests" / "chat_request_analytics_v2.json"
+    catalog = (
+        root
+        / "data"
+        / "chat_requests"
+        / "beer-sample__default"
+        / "chat_request_analytics_v2.json"
+    )
     assert catalog.is_file()
     catalog_text = catalog.read_text(encoding="utf-8")
     assert "## MINI-SCHEMA" not in catalog_text

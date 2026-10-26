@@ -418,6 +418,7 @@ Scaffolded by zeus_dev_helper_mcp use_sample(sample=beer).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import uuid
@@ -434,7 +435,10 @@ from zeus_client.adapters.catalog_fs.store import FsCatalogStore
 from zeus_client.adapters.llm_openai_compatible import OpenAICompatibleLlmClient
 from zeus_client.adapters.zeus_http import HttpxZeusPort
 from zeus_client.adapters.zeus_http.catalog_remote import HttpxCatalogRemote
+from zeus_client.domain.catalog import chat_request_filename, scope_chat_requests_subdir
 from zeus_client.domain.errors import ZeusClientError
+
+logger = logging.getLogger("demo_beer_sample")
 
 _ROOT = Path(__file__).resolve().parent
 load_dotenv(_ROOT / ".env")
@@ -500,6 +504,61 @@ def _build_runtime() -> ZeusRuntime:
     return rt
 
 
+def _copy_live_pin(chat_dir: Path, bucket: str, scope: str, mode: str) -> Path | None:
+    '''Copy the synced scope file to the live pin filename.
+
+    The client loads ``<bucket>__<scope>/chat_request_<mode>_v2.json`` when
+    ``base_id`` is unset. The pin name (``chat_request_analytics_base-6.1.json``
+    today) is the same bytes, for the operator. The loader does not open that
+    name unless ``base_id`` is set.
+    '''
+    if not bucket or not scope or not mode:
+        return None
+    scope_file = (
+        chat_dir
+        / scope_chat_requests_subdir(bucket, scope)
+        / chat_request_filename(mode)
+    )
+    if not scope_file.is_file():
+        return None
+    try:
+        body = json.loads(scope_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    lineage = body.get("_lineage") if isinstance(body, dict) else None
+    base_id = ""
+    if isinstance(lineage, dict):
+        base_id = str(lineage.get("base_id") or "").strip()
+    if not base_id or "/" in base_id or "\\" in base_id or ".." in base_id:
+        return None
+    dest = chat_dir / chat_request_filename(mode, base_id)
+    data = scope_file.read_bytes()
+    if dest.is_file():
+        try:
+            if dest.read_bytes() == data:
+                return dest
+        except OSError:
+            return None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    return dest
+
+
+async def _sync_catalog(rt: ZeusRuntime) -> None:
+    '''Fetch the live pin into the scope path. A failed sync stays a later 502.'''
+    try:
+        await rt.catalog.sync()
+    except Exception:
+        logger.warning("beer catalog sync failed", exc_info=True)
+    chat = Path(rt.config.chat_requests_dir or (_ROOT / "data" / "chat_requests"))
+    _copy_live_pin(
+        chat,
+        rt.config.target.bucket,
+        rt.config.target.scope,
+        rt.config.settings.mode or "analytics",
+    )
+
+
 def _runtime() -> ZeusRuntime:
     global _runtime_obj
     if _runtime_obj is None:
@@ -509,6 +568,8 @@ def _runtime() -> ZeusRuntime:
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
+    rt = _runtime()
+    await _sync_catalog(rt)
     try:
         yield
     finally:
@@ -832,9 +893,12 @@ async def _run_search(query: str, *, limit: int) -> dict[str, Any]:
     rt = _runtime()
     cfg = rt.config
     chat_id = "beer_" + uuid.uuid4().hex[:12]
-    # Omit chat_request so 2.4 AgentAPI.run_turn calls catalog.load_for_turn
-    # (SCOPE BRIEF + MINI-SCHEMA merge). Do not pass a frozen body here.
+    # Omit chat_request so AgentAPI.run_turn calls catalog.load_for_turn
+    # (SCOPE BRIEF + MINI-SCHEMA merge). Do not pass a frozen body or base_id.
+    # Load first so a missing catalog is HTTP 502 on the current client, which
+    # otherwise swallows CATALOG_NOT_FOUND and answers with empty req_ids.
     try:
+        await rt.catalog.load_for_turn(cfg.settings.mode, target=cfg.target)
         result = await rt.agent.run_turn(
             message,
             target=cfg.target,
@@ -1716,6 +1780,17 @@ Open `http://127.0.0.1:8090/`. Try **Fruit Beer**, **ipa**, **Duvel**, or
 “What beers are made from fruits?”. The search box keeps the question.
 `/search?q=…` opens the same page.
 
+## Docker
+
+Copy `.env` into place before Compose. Compose publishes `8090`, sets
+`HOST=0.0.0.0`, and points `ZEUS_URL` at `http://host.docker.internal:8080`
+(public API, not Hub `:9091`). `./data` is bind-mounted so the synced catalog
+survives a restart. `.env` and `data/` are not copied into the image.
+
+```bash
+docker compose up --build
+```
+
 ## Env
 
 | Variable | Default | Notes |
@@ -1724,21 +1799,24 @@ Open `http://127.0.0.1:8090/`. Try **Fruit Beer**, **ipa**, **Duvel**, or
 | `ZEUS_BUCKET` | `beer-sample` | |
 | `ZEUS_SCOPE` | `_default` | |
 | `ZEUS_COLLECTION` | `_default` | |
+| `HOST` | `127.0.0.1` | Bind address. Compose sets `0.0.0.0` |
 | `PORT` | `8090` | BFF listen port |
 | `CELLAR_CACHE_TTL` | `600` | Seconds to cache a successful search turn. The list cache stays off until the offset probe finishes, then at most 30 seconds |
 | `LLM_API_KEY` | — | Required. The secret lives here. `config.json` `llm.api_key_env` names this variable |
 | `LLM_BASE_URL` | `https://api.x.ai/v1` | |
 | `LLM_MODEL` | `grok-4-1-fast-non-reasoning` | |
-| `ZEUS_USERNAME` / `ZEUS_PASSWORD` | — | Optional basic auth |
+| `ZEUS_USERNAME` | `tester_beer` | Application user. An empty name falls back to `tester` |
+| `ZEUS_PASSWORD` | — | Password. Only in the environment |
 | `ZEUS_BEARER_TOKEN` | — | Optional bearer |
 
 ## Search path (BFF)
 
 `GET /api/search` sends the raw question to `rt.agent.run_turn` with the
-runtime target and settings. `chat_request` is not passed. The client loads
-`data/chat_requests/chat_request_analytics_v2.json` (analytics template, no
-baked scope brief) and fetches the live brief for this bucket/scope so
-`## MINI-SCHEMA` is part of the model request. Cards on the page are beer
+runtime target and settings. `chat_request` is not passed and `base_id` is
+not passed. Startup `catalog.sync()` writes
+`data/chat_requests/<bucket>__<scope>/chat_request_analytics_v2.json` from
+the live Zeus pin. The seeded file is the brief-free analytics template at
+that same path. A missing catalog is HTTP 502. Cards on the page are beer
 rows taken from the turn's tool results.
 
 `GET /api/beers` and `GET /api/breweries` list the catalog. `limit` defaults to 24. The displayed `find` omits `offset`. A probe `find` sends `offset` equal to that limit, and Next appears only when those page 2 ids differ from page 1 (`/api/beers?limit=24&offset=24` is page 2 after the probe says the server honored it). A missing total renders `1–N shown`. Each page is a Direct `find` ordered by id, then `get` for the card fields. List results stay uncached until that probe finishes, then for at most 30 seconds. Pour search stays on `run_turn`. A doc_key-only search hit is an empty state. The id routes use that same turn.
@@ -1829,6 +1907,7 @@ def beer_bff_is_current(text: str) -> bool:
         and "catalog_find_body" in text
         and "search_hit_state" in text
         and "offset_page_differs" in text
+        and "catalog.sync" in text
     )
 
 
@@ -1913,9 +1992,17 @@ def analytics_catalog_source(cfg: HelperConfig | None = None) -> Path | None:
     return None
 
 
+def _scope_catalog_dirname(bucket: str, scope: str) -> str:
+    """Match ``scope_chat_requests_subdir`` without importing the client."""
+    tail = scope[1:] if scope.startswith("_") else scope
+    return f"{bucket}__{tail}"
+
+
 def install_beer_catalog(cfg: HelperConfig, root: Path) -> dict[str, Any]:
-    """Copy the brief-free analytics catalog to the filename FsCatalogStore loads."""
-    dest_dir = root / "data" / "chat_requests"
+    """Copy the brief-free analytics catalog to the scope path the client loads."""
+    bucket = cfg.default_bucket or "beer-sample"
+    scope = cfg.default_scope or "_default"
+    dest_dir = root / "data" / "chat_requests" / _scope_catalog_dirname(bucket, scope)
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / "chat_request_analytics_v2.json"
     src = analytics_catalog_source(cfg)
@@ -1948,13 +2035,14 @@ ZEUS_BUCKET={cfg.default_bucket or "beer-sample"}
 ZEUS_SCOPE={cfg.default_scope or "_default"}
 ZEUS_COLLECTION={cfg.default_collection or "_default"}
 ZEUS_MODE=analytics
+HOST=127.0.0.1
 PORT=8090
 CELLAR_CACHE_TTL=600
 LLM_BASE_URL=https://api.x.ai/v1
 LLM_API_KEY=
 LLM_MODEL=grok-4-1-fast-non-reasoning
-# ZEUS_USERNAME=
-# ZEUS_PASSWORD=
+ZEUS_USERNAME=tester_beer
+ZEUS_PASSWORD=
 # ZEUS_BEARER_TOKEN=
 """
     path.write_text(content, encoding="utf-8")
@@ -1970,24 +2058,20 @@ def write_beer_config(cfg: HelperConfig, target_dir: str | Path) -> dict[str, An
     if auth not in {"none", "basic", "bearer", "session", "certificate"}:
         auth = "none"
     zeus: dict[str, Any] = {
-        "url": (cfg.zeus_url or "http://localhost:8080").rstrip("/"),
+        "url": "http://localhost:8080",
         "auth_mode": auth,
         "timeout_s": 30,
     }
-    user = (os.environ.get("ZEUS_USERNAME") or os.environ.get("ZEUS_USER") or "").strip()
-    if user:
-        zeus["username"] = user
     if auth == "basic":
         zeus["password_env"] = "ZEUS_PASSWORD"
     elif auth == "bearer":
         zeus["token_env"] = "ZEUS_BEARER_TOKEN"
     elif auth == "session":
         zeus["token_env"] = "ZEUS_SESSION_ID"
-    chat_dir = root / "data" / "chat_requests"
     payload = {
         "profile": "development",
         "client_floor": "client-floor-6.1",
-        "chat_requests_dir": str(chat_dir),
+        "chat_requests_dir": "data/chat_requests",
         "zeus": zeus,
         "target": {
             "bucket": cfg.default_bucket or "beer-sample",
@@ -1996,8 +2080,8 @@ def write_beer_config(cfg: HelperConfig, target_dir: str | Path) -> dict[str, An
         },
         "llm": {
             "provider": "xai",
-            "base_url": (os.environ.get("LLM_BASE_URL") or "https://api.x.ai/v1").rstrip("/"),
-            "model": os.environ.get("LLM_MODEL") or "grok-4-1-fast-non-reasoning",
+            "base_url": "LLM_BASE_URL",
+            "model": "LLM_MODEL",
             "api_key_env": "LLM_API_KEY",
             "timeout_s": 120,
         },
@@ -2068,6 +2152,84 @@ def install_beer_page(root: Path) -> list[str]:
     return written
 
 
+_DOCKERFILE = """\
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Secrets and the synced catalog stay on the host. Do not copy .env or data/.
+COPY requirements.txt ./
+COPY main.py config.json ./
+COPY static ./static
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+ENV PORT=8090
+ENV HOST=0.0.0.0
+ENV ZEUS_CLIENT_CHAT_REQUESTS_DIR=/app/data/chat_requests
+
+EXPOSE 8090
+CMD ["python", "main.py"]
+"""
+
+_COMPOSE = """\
+services:
+  demo-beer-sample:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: demo-beer-sample
+    ports:
+      - "8090:8090"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8090"
+      # Public API on the host. Hub :9091 is the wrong port.
+      # Replace this to point the container at another public :8080 URL.
+      ZEUS_URL: "http://host.docker.internal:8080"
+      ZEUS_CHAT_REQUESTS_DIR: "/app/data/chat_requests"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+"""
+
+_DOCKERIGNORE = """\
+.git
+.venv
+__pycache__
+*.pyc
+.env
+data
+"""
+
+_GITIGNORE = """\
+.env
+.venv/
+__pycache__/
+data/
+"""
+
+
+def install_beer_run_layout(root: Path) -> list[str]:
+    """Dockerfile, compose, and ignore files. Secrets and data stay off the image."""
+    files = {
+        "Dockerfile": _DOCKERFILE,
+        "docker-compose.yml": _COMPOSE,
+        ".dockerignore": _DOCKERIGNORE,
+        ".gitignore": _GITIGNORE,
+    }
+    written: list[str] = []
+    for name, body in files.items():
+        path = root / name
+        path.write_text(body, encoding="utf-8")
+        written.append(str(path))
+    return written
+
+
 def _write_generated_tree(cfg: HelperConfig, root: Path, name: str) -> list[str]:
     files: dict[str, str] = {
         "main.py": _MAIN_PY,
@@ -2081,6 +2243,7 @@ def _write_generated_tree(cfg: HelperConfig, root: Path, name: str) -> list[str]
         path.write_text(body, encoding="utf-8")
         written.append(str(path))
     written.extend(install_beer_page(root))
+    written.extend(install_beer_run_layout(root))
     env_info = write_beer_env_example(cfg, root)
     written.append(str(env_info["path"]))
     catalog_info = install_beer_catalog(cfg, root)
@@ -2275,9 +2438,9 @@ def _attach_serving_verdict(
 def _public_beer_checkout(root: Path) -> bool:
     """True when this tree is the public sample, not the generated catalog.
 
-    The sample stores ``llm.base_url`` and ``llm.model`` as the env names, and
-    its template model is ``grok-4.5-latest``. The generated tree writes a real
-    URL and ``grok-4-1-fast-non-reasoning``.
+    The public template model is ``grok-4.5-latest``. The generated tree's
+    template model is ``grok-4-1-fast-non-reasoning``. Both store ``llm.base_url``
+    and ``llm.model`` as the env names.
     """
     example = root / ".env.example"
     if example.is_file():
@@ -2285,6 +2448,8 @@ def _public_beer_checkout(root: Path) -> bool:
             text = example.read_text(encoding="utf-8", errors="replace")
         except OSError:
             text = ""
+        if "grok-4-1-fast-non-reasoning" in text:
+            return False
         if "LLM_MODEL=grok-4.5-latest" in text:
             return True
     config = root / "config.json"
