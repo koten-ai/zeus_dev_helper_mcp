@@ -223,12 +223,17 @@ def _mint_scope_session(
         public["detail"] = (
             "auth_mode=basic and ZEUS_USERNAME or ZEUS_PASSWORD is empty in this process"
         )
-        public["next_action"] = (
-            "Write ZEUS_USERNAME and ZEUS_PASSWORD to a mode-600 env file and "
-            "call load_process_login with that path. Do not pass the password "
-            "as a tool argument. set_prereq stores presence flags only. "
-            "A describe 200 is not a login."
+        from zeus_dev_helper_mcp.env_questions import (
+            attach_login_ask,
+            login_ask_text,
+            missing_login_names,
         )
+
+        missing = missing_login_names()
+        public["next_action"] = (
+            login_ask_text(missing) + " A describe 200 is not a login."
+        )
+        attach_login_ask(public, missing)
         return public, None
     if not base or not bucket or not scope:
         public["failure_class"] = "login_not_in_process"

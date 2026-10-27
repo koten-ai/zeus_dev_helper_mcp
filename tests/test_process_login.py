@@ -23,6 +23,9 @@ _KEYS = (
     "LLM_API_KEY",
     "XAI_API_KEY",
     "OPENAI_API_KEY",
+    "LLM_BASE_URL",
+    "LLM_MODEL",
+    "ZEUS_AUTH_MODE",
 )
 
 
@@ -90,6 +93,31 @@ def test_refuses_a_missing_file(tmp_path: Path, clean_login: None) -> None:
     empty = load_process_login("  ")
     assert empty["ok"] is False
     assert "mode-600" in empty["next_action"]
+
+
+def test_loads_llm_endpoint_without_a_login(
+    tmp_path: Path, clean_login: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("ZEUS_AUTH_MODE", "none")
+    path = tmp_path / "llm.env"
+    _write(
+        path,
+        "LLM_BASE_URL=https://api.openai.com/v1\n"
+        "LLM_MODEL=gpt-5.6-sol\n"
+        f"LLM_API_KEY={LLM}\n",
+    )
+    out = load_process_login(str(path))
+    blob = json.dumps(out)
+    assert out["ok"] is True
+    assert out["failure_class"] is None
+    assert "LLM_BASE_URL" in out["loaded"]
+    assert "LLM_MODEL" in out["loaded"]
+    assert "LLM_API_KEY" in out["loaded"]
+    assert os.environ["LLM_BASE_URL"] == "https://api.openai.com/v1"
+    assert os.environ["LLM_MODEL"] == "gpt-5.6-sol"
+    assert LLM not in blob
+    assert "gpt-5.6-sol" not in blob
 
 
 def test_incomplete_file_stays_red(tmp_path: Path, clean_login: None) -> None:

@@ -634,18 +634,17 @@ def smoke_test_agent(
     from zeus_dev_helper_mcp.config import llm_key_in_process_env
 
     if not llm_key_in_process_env():
+        from zeus_dev_helper_mcp.env_questions import attach_llm_ask, llm_ask_text
+
         docker = _docker_guidance_for_agent(cfg)
-        next_action = (
-            "Set LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY in this process "
-            "before smoke_test_agent. A stored has_llm_key flag is not the key. "
-            "In the app, put the secret in .env and leave llm.api_key_env as that name."
-        )
+        next_action = llm_ask_text()
         out: dict[str, Any] = {
             "ok": False,
             "failure_class": "llm_key_missing",
             "next_action": next_action,
             "docs": _agent_docs(),
         }
+        attach_llm_ask(out)
         if docker:
             out["install_path"] = "docker"
             out["sample"] = docker.get("sample") or "travel"
@@ -832,6 +831,11 @@ def smoke_test_agent(
             "error": msg[:800],
             "next_action": "diagnose_error with the message; fix config; see using-zeus-client.md",
         }
+        if failure == "llm_key_missing":
+            from zeus_dev_helper_mcp.env_questions import attach_llm_ask, llm_ask_text
+
+            result["next_action"] = llm_ask_text()
+            attach_llm_ask(result)
 
     if update_checklist:
         try:

@@ -58,19 +58,22 @@ def basic_login_blocked(cfg: HelperConfig) -> dict[str, Any] | None:
         missing.append("ZEUS_PASSWORD")
     if not missing:
         return None
-    return {
-        "ok": False,
-        "written": False,
-        "failure_class": "login_not_in_process",
-        "missing_env": missing,
-        "next_action": (
-            "Set "
-            + " and ".join(missing)
-            + " in this process before writing the app. "
-            "A stored has_username or has_password flag is not a login. "
-            "This app was not written."
-        ),
-    }
+    from zeus_dev_helper_mcp.env_questions import attach_login_ask, login_ask_text
+
+    return attach_login_ask(
+        {
+            "ok": False,
+            "written": False,
+            "failure_class": "login_not_in_process",
+            "missing_env": missing,
+            "next_action": (
+                login_ask_text(missing)
+                + " A stored has_username or has_password flag is not a login. "
+                "This app was not written."
+            ),
+        },
+        missing,
+    )
 
 
 def _routing(cfg_value: str, env_name: str) -> str:
