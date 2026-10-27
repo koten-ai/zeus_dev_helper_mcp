@@ -269,7 +269,7 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         base["use_sample_args_hint"] = {
             "sample": "beer",
             "project_name": "demo_beer_sample",
-            "note": "Beer catalog UI. Clones https://github.com/koten-ai/demo_beer_sample. Start with python main.py. Search is rt.agent.run_turn with chat_request omitted (MINI-SCHEMA merge). Do not clone travel.",
+            "note": "Beer catalog UI. Clones https://github.com/koten-ai/demo_beer_sample. When that checkout has both a Dockerfile and a compose file, ask the user to choose Python or Docker before starting. Otherwise start with python main.py. Search is rt.agent.run_turn with chat_request omitted (MINI-SCHEMA merge). Do not clone travel.",
         }
     elif sample == "beer" and item_id in ("5.1", "5.2", "6.1"):
         if _website_green_failed(cfg):
@@ -281,7 +281,10 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         else:
             tools = ["website_green"]
             base["note"] = (
-                "The catalog sample is the demo_beer_sample checkout. website_green installs, starts python main.py, and "
+                "The catalog sample is the demo_beer_sample checkout. "
+                "When that directory has both a Dockerfile and a compose file, ask the user "
+                "to choose Python or Docker and pass serve_with to website_green. "
+                "Otherwise website_green installs, starts python main.py, and "
                 "checks the list page. smoke_test_agent is not this check. "
                 "A describe 200 is not this check."
             )

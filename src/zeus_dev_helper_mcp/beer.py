@@ -2510,7 +2510,13 @@ def _beer_setup_next_action(root: Path, result: dict[str, Any]) -> str:
     )
 
 
-def _finish_beer_result(cfg: HelperConfig, root: Path, result: dict[str, Any]) -> dict[str, Any]:
+def _finish_beer_result(
+    cfg: HelperConfig,
+    root: Path,
+    result: dict[str, Any],
+    *,
+    serve_with: str = "",
+) -> dict[str, Any]:
     """Attach env, key presence, and Pour state. Secret values stay out of the result."""
     from zeus_dev_helper_mcp.app_env import annotate_app_env, annotate_pour
 
@@ -2554,7 +2560,9 @@ def _finish_beer_result(cfg: HelperConfig, root: Path, result: dict[str, Any]) -
         sync_bound_catalog_checklist(cfg, root)
     except Exception:  # noqa: BLE001, S110
         pass
-    return result
+    from zeus_dev_helper_mcp.serve_choice import annotate_serve_choice
+
+    return annotate_serve_choice(result, root, cfg=cfg, serve_with=serve_with)
 
 
 def write_beer_sample(
@@ -2563,6 +2571,7 @@ def write_beer_sample(
     *,
     project_name: str = DEFAULT_BEER_DIR_NAME,
     force: bool = False,
+    serve_with: str = "",
 ) -> dict[str, Any]:
     """Write the beer catalog UI. Search uses rt.agent.run_turn like travel."""
     from zeus_dev_helper_mcp.app_env import basic_login_blocked
@@ -2607,6 +2616,7 @@ def write_beer_sample(
                     "llm_required": True,
                     "next_action": _beer_start_action(root),
                 },
+                serve_with=serve_with,
             )
         if looks_like_beer_sample(root):
             main_text = (root / "main.py").read_text(encoding="utf-8", errors="replace")
@@ -2628,6 +2638,7 @@ def write_beer_sample(
                             "env": {ENV_BEER_DIR: env_path},
                             "next_action": _beer_start_action(root),
                         },
+                        serve_with=serve_with,
                     )
                 page_files = install_beer_page(root)
                 return _finish_beer_result(
@@ -2650,6 +2661,7 @@ def write_beer_sample(
                             "Restart uvicorn if it is already running."
                         ),
                     },
+                    serve_with=serve_with,
                 )
             upgrading = True
         else:
@@ -2717,7 +2729,7 @@ def write_beer_sample(
             "design": "docs/DESIGN-zdm-1-beer-first-green.md",
         },
     }
-    return _finish_beer_result(cfg, root, result)
+    return _finish_beer_result(cfg, root, result, serve_with=serve_with)
 
 
 def _beer_start_action(root: Path) -> str:
@@ -2825,6 +2837,7 @@ def _finish_cloned_beer(
     root: Path,
     *,
     cloned: bool,
+    serve_with: str = "",
 ) -> dict[str, Any]:
     """Bind a public demo_beer_sample checkout and describe the README start."""
     env_path = set_demo_beer_sample_dir_env(root)
@@ -2863,7 +2876,7 @@ def _finish_cloned_beer(
             f"{BEER_REPO}."
         )
         return result
-    return _finish_beer_result(cfg, root, result)
+    return _finish_beer_result(cfg, root, result, serve_with=serve_with)
 
 
 def _nonempty(path: Path) -> bool:
@@ -2893,6 +2906,7 @@ def ensure_beer_sample(
     project_name: str = "",
     parent_dir: str = "",
     force: bool = False,
+    serve_with: str = "",
 ) -> dict[str, Any]:
     """Locate an existing beer Direct UI or write a fresh template."""
     dir_name = sanitize_beer_dir_name(project_name)
@@ -2963,7 +2977,7 @@ def ensure_beer_sample(
                 "next_action": clone_info.get("next_action")
                 or f"Clone {BEER_REPO} and set {ENV_BEER_DIR}",
             }
-        result = _finish_cloned_beer(cfg, dest, cloned=True)
+        result = _finish_cloned_beer(cfg, dest, cloned=True, serve_with=serve_with)
         if relocated_from and result.get("ok"):
             result["relocated_from"] = relocated_from
             prior = str(result.get("next_action") or "").strip()
@@ -2978,6 +2992,7 @@ def ensure_beer_sample(
         dest,
         project_name=dir_name,
         force=force,
+        serve_with=serve_with,
     )
     if relocated_from and result.get("ok"):
         result["relocated_from"] = relocated_from

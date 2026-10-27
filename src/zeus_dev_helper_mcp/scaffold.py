@@ -234,12 +234,16 @@ def use_sample(
     project_name: str = "",
     parent_dir: str = "",
     clone_if_missing: bool = True,
+    serve_with: str = "",
 ) -> dict[str, Any]:
     """UI sample path: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
     travel: locate/clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
     beer: shallow-clone public demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR.
     Start that checkout with python main.py (README). Search is run_turn with chat_request omitted.
+    When the checkout has both a Dockerfile and a compose file, serve_choice_required
+    is set, serve_options lists Python and Docker, and run stays empty until
+    serve_with is python or docker. The helper does not run Docker.
     catalog: write demo_catalog_sample from explain_scope. Beer bucket or Beer + Brewery
     still writes the beer catalog UI.
     demo_yelp: locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp; set DEMO_YELP_SAMPLE_DIR. Aliases include yelp-demo.
@@ -255,6 +259,7 @@ def use_sample(
             sample_dir=sample_dir,
             project_name=project_name,
             parent_dir=parent_dir,
+            serve_with=serve_with,
         )
     if sample in ("travel", "demo_travel", "travel_sample", "demo_travel_sample", "ui"):
         from zeus_dev_helper_mcp.travel import travel_golden_path
@@ -265,6 +270,7 @@ def use_sample(
             project_name=project_name,
             parent_dir=parent_dir,
             clone_if_missing=clone_if_missing,
+            serve_with=serve_with,
         )
         info = dict(SAMPLE_TRAVEL)
         info["sample"] = "travel"
@@ -282,6 +288,10 @@ def use_sample(
             "docker": golden.get("docker"),
             "docker_setup": golden.get("docker_setup"),
             "env": golden.get("env"),
+            "run": golden.get("run"),
+            "serve_choice_required": golden.get("serve_choice_required"),
+            "serve_options": golden.get("serve_options"),
+            "serve_with": golden.get("serve_with"),
             "next_action": golden.get("next_action")
             or (
                 "Set DEMO_TRAVEL_SAMPLE_DIR after clone, or scaffold_app "
@@ -298,6 +308,7 @@ def use_sample(
             sample_dir=sample_dir,
             project_name=project_name,
             parent_dir=parent_dir,
+            serve_with=serve_with,
         )
         info = dict(SAMPLE_BEER)
         info["sample"] = "beer"
@@ -351,6 +362,9 @@ def use_sample(
             "missing_process_settings",
             "verification",
             "skipped_llm_alias",
+            "serve_choice_required",
+            "serve_options",
+            "serve_with",
         ):
             if ensured.get(key) is not None:
                 payload[key] = ensured[key]
@@ -395,7 +409,7 @@ def use_sample(
             ),
             "clone": f"git clone --depth 1 {YELP_REPO_GIT}",
         }
-        return {
+        payload = {
             "ok": bool(ensured.get("ok")),
             "sample": info,
             "app_kind": "ui",
@@ -415,6 +429,17 @@ def use_sample(
             "checklist_hint": "Mark 3.1 done after the yelp demo clone or reuse",
             "do_not": ensured.get("do_not"),
         }
+        local = payload.get("local_dir")
+        if payload.get("ok") and local:
+            from zeus_dev_helper_mcp.serve_choice import annotate_serve_choice
+
+            return annotate_serve_choice(
+                payload,
+                Path(str(local)),
+                cfg=cfg,
+                serve_with=serve_with,
+            )
+        return payload
     if sample in ("api", "rest", "api_only", "api-only"):
         return {
             "ok": False,

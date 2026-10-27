@@ -228,6 +228,8 @@ TOPICS: dict[str, dict[str, str]] = {
             "use_sample(sample=beer) shallow-clones https://github.com/koten-ai/demo_beer_sample "
             "when it is missing and sets DEMO_BEER_SAMPLE_DIR. "
             "Start that checkout with python main.py. "
+            "When it has both a Dockerfile and a compose file, ask the user to choose "
+            "Python or Docker before starting. The helper does not run Docker. "
             "Do not clone demo_travel_sample for this bucket."
         ),
         "doc": "zeus-client/using-zeus-client.md",

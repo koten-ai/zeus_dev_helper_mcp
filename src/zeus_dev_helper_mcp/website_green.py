@@ -577,13 +577,19 @@ def _record_website_green(cfg: HelperConfig, result: dict[str, Any]) -> None:
         return
 
 
-def website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any]:
+def website_green(
+    cfg: HelperConfig,
+    target_dir: str = "",
+    serve_with: str = "",
+) -> dict[str, Any]:
     """Install, start, and check the catalog page.
 
     Calls the session mint when auth is basic. Does not call describe and
-    does not call smoke_test_agent.
+    does not call smoke_test_agent. When the checkout has both a Dockerfile
+    and a compose file, serve_with must be python or docker before this tool
+    starts Python. Docker is not started here.
     """
-    out = _run_website_green(cfg, target_dir)
+    out = _run_website_green(cfg, target_dir, serve_with=serve_with)
     _record_website_green(cfg, out)
     return out
 
@@ -597,7 +603,84 @@ def _sync_catalog_checklist(cfg: HelperConfig, root: Path | None) -> None:
         pass
 
 
-def _run_website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any]:
+def _serve_choice_block(
+    cfg: HelperConfig,
+    root: Path,
+    serve_with: str,
+    state: str,
+) -> dict[str, Any] | None:
+    """Stop before Python starts when the user has not chosen, or chose Docker."""
+    from zeus_dev_helper_mcp.serve_choice import (
+        ASK,
+        has_serve_choice,
+        parse_serve_with,
+        remember_serve_with,
+        serve_options,
+        stored_serve_with,
+    )
+
+    parsed, valid = parse_serve_with(serve_with)
+    if not valid:
+        return _result(
+            failure_class="serve_choice_unavailable",
+            next_action="serve_with must be python or docker.",
+            recommended_tools=[],
+        )
+    packaged = has_serve_choice(root)
+    if parsed == "docker" and not packaged:
+        return _result(
+            failure_class="serve_choice_unavailable",
+            next_action=(
+                "This checkout has no Dockerfile and compose file. "
+                "Start it with Python."
+            ),
+            recommended_tools=[],
+        )
+    if state != "down":
+        if parsed:
+            remember_serve_with(cfg, root, parsed)
+        return None
+    if not packaged:
+        if parsed == "python":
+            remember_serve_with(cfg, root, "python")
+        return None
+    chosen = parsed or stored_serve_with(cfg, root)
+    options = serve_options(root)
+    if chosen not in {"python", "docker"}:
+        return _result(
+            failure_class="serve_choice_required",
+            next_action=ASK,
+            serve_choice_required=True,
+            serve_options=options,
+            serve_with="",
+            run="",
+            recommended_tools=[],
+        )
+    remember_serve_with(cfg, root, chosen)
+    if chosen == "python":
+        return None
+    docker = options[1]
+    return _result(
+        failure_class="docker_not_started",
+        url=docker["url"],
+        next_action=(
+            f"The user chose Docker. Start only this command: {docker['run']} "
+            f"Open {docker['url']}. The helper does not run Docker. "
+            "Call website_green again after the app answers."
+        ),
+        serve_choice_required=False,
+        serve_with="docker",
+        serve_options=options,
+        run=docker["run"],
+        recommended_tools=[],
+    )
+
+
+def _run_website_green(
+    cfg: HelperConfig,
+    target_dir: str = "",
+    serve_with: str = "",
+) -> dict[str, Any]:
     blocked = _mint_failure(cfg)
     root = _resolve_root(cfg, target_dir)
     _sync_catalog_checklist(cfg, root)
@@ -625,6 +708,11 @@ def _run_website_green(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
                 "Do not start another process on this port."
             ),
         )
+    choice_block = _serve_choice_block(cfg, root, serve_with, state)
+    if choice_block is not None:
+        if choice_block.get("url") in ("", None):
+            choice_block["url"] = base
+        return choice_block
     if state == "down":
         installed = install_app(root)
         if not installed.get("ok"):

@@ -789,6 +789,7 @@ def travel_golden_path(
     project_name: str = "",
     parent_dir: str = "",
     clone_if_missing: bool = True,
+    serve_with: str = "",
 ) -> dict[str, Any]:
     """Locate or clone public demo_travel_sample; validate layout; set DEMO_TRAVEL_SAMPLE_DIR."""
     ensured = ensure_travel_sample(
@@ -804,12 +805,21 @@ def travel_golden_path(
     docker = detect_docker_install(root) if root else None
     docker_setup = ensured.get("docker_setup")
 
-    phase5 = (
-        "smoke_test_zeus then docker compose up --build (demo UI) "
-        "or smoke_test_agent with [agent] extra"
-        if docker and docker.get("ok")
-        else "smoke_test_zeus then sample make smoke / smoke_test_agent"
-    )
+    from zeus_dev_helper_mcp.serve_choice import has_serve_choice
+
+    if root is not None and has_serve_choice(root):
+        phase5 = (
+            "Ask the user to choose Python or Docker before starting the UI. "
+            'Python is pip install -e ".[dev]" && python -m travel_planner. '
+            "Docker is docker compose up --build. Then smoke_test_zeus."
+        )
+    elif docker and docker.get("ok"):
+        phase5 = (
+            "smoke_test_zeus then docker compose up --build (demo UI) "
+            "or smoke_test_agent with [agent] extra"
+        )
+    else:
+        phase5 = "smoke_test_zeus then sample make smoke / smoke_test_agent"
 
     phases = [
         {"phase": "0", "action": "start_project(goal=single-agent, sample=travel)"},
@@ -875,7 +885,7 @@ def travel_golden_path(
     else:
         next_action = ensured.get("next_action") or "use_sample to clone demo_travel_sample"
 
-    return {
+    payload = {
         "ok": bool(ensured.get("ok")),
         "sample": "travel",
         "repo": TRAVEL_REPO,
@@ -906,3 +916,6 @@ def travel_golden_path(
         },
         "jira": "https://kotenai.atlassian.net/browse/ZDH-10",
     }
+    from zeus_dev_helper_mcp.serve_choice import annotate_serve_choice
+
+    return annotate_serve_choice(payload, root, cfg=cfg, serve_with=serve_with)
