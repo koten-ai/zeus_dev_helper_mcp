@@ -214,6 +214,12 @@ INSTRUCTIONS = (
     "Never pass username/password/token into MCP tools — env + set_prereq presence flags only. "
     "When auth is basic, write ZEUS_USERNAME and ZEUS_PASSWORD to a mode-600 env file "
     "and call load_process_login with that path. The password is not a tool argument. "
+    "When a result includes ask_user, ask for each env name in order and wait. "
+    "llm_options lists Grok, OpenAI, Anthropic, Gemini, and Other. "
+    "Set LLM_BASE_URL from the chosen base_url. For Other, ask for the base URL. "
+    "Then ask LLM_MODEL and offer that option's model as the default. "
+    "Then ask LLM_API_KEY. Write LLM_BASE_URL, LLM_MODEL, and LLM_API_KEY to the "
+    "same mode-600 file. Do not pass the password or the API key as a tool argument. "
     "Knowledge is resources under zeus-helper:// (checklist, glossary, verbs, policies, catalog modes). "
     "Walkthroughs are prompts: first_green, smoke_question, support_pack. "
     "sample_support_pack(sample=beer|travel|demo_yelp) pastes the support journal "
@@ -722,19 +728,27 @@ def validate_env() -> dict[str, Any]:
 
     ok = not any(i.get("level") == "error" for i in issues)
     from zeus_dev_helper_mcp.app_env import credential_presence
+    from zeus_dev_helper_mcp.env_questions import (
+        attach_llm_ask,
+        attach_login_ask,
+        llm_ask_text,
+        login_ask_text,
+        missing_login_names,
+    )
 
+    parts: list[str] = []
+    login_missing: list[str] = []
+    if (cfg.zeus_auth_mode or "none").strip().lower() == "basic":
+        login_missing = missing_login_names()
+        if login_missing:
+            parts.append(login_ask_text(login_missing))
     if not cfg.zeus_url:
-        next_action = "Set ZEUS_URL, then validate_env"
+        parts.append("Set ZEUS_URL, then validate_env")
     elif needs_llm_key and not cfg.has_llm_key:
-        next_action = (
-            "Set LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY in the environment "
-            "that runs Helper. set_prereq(has_llm_key=true) does not count. "
-            "In the app, put that variable in .env and leave config.json "
-            "llm.api_key_env as the name. Then validate_env."
-        )
+        parts.append(llm_ask_text())
     else:
-        next_action = "Run readiness_check after ZEUS_URL is set"
-    return {
+        parts.append("Run readiness_check after ZEUS_URL is set")
+    result = {
         "ok": ok,
         "config": cfg.public_view(),
         "credentials": credential_presence(cfg),
@@ -744,8 +758,13 @@ def validate_env() -> dict[str, Any]:
         "docs": (
             docs_url("zeus-client/config-reference.md")
         ),
-        "next_action": next_action,
+        "next_action": " ".join(parts),
     }
+    if login_missing:
+        attach_login_ask(result, login_missing)
+    if needs_llm_key and not cfg.has_llm_key:
+        attach_llm_ask(result)
+    return result
 
 
 def set_prereq(
@@ -867,8 +886,9 @@ def load_process_login(env_file: str) -> dict[str, Any]:
 
     Write ZEUS_USERNAME and ZEUS_PASSWORD to a file outside the repo or
     gitignored, chmod 600, then pass that path. The password is not an
-    argument. set_prereq stores presence flags only. The result lists
-    loaded names and never values. Then readiness_check.
+    argument. The same file may set LLM_BASE_URL, LLM_MODEL, and LLM_API_KEY.
+    set_prereq stores presence flags only. The result lists loaded names
+    and never values. Then readiness_check.
     """
     return load_process_login_impl(env_file)
 

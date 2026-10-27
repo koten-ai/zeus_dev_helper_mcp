@@ -2027,6 +2027,8 @@ def _attach_llm_key(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def write_beer_env_example(cfg: HelperConfig, target_dir: str | Path) -> dict[str, Any]:
+    from zeus_dev_helper_mcp.env_questions import LLM_PROVIDER_COMMENTS
+
     root = Path(target_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     path = root / ".env.example"
@@ -2039,6 +2041,7 @@ ZEUS_MODE=analytics
 HOST=127.0.0.1
 PORT=8090
 CELLAR_CACHE_TTL=600
+{LLM_PROVIDER_COMMENTS}
 LLM_BASE_URL=https://api.x.ai/v1
 LLM_API_KEY=
 LLM_MODEL=grok-4-1-fast-non-reasoning

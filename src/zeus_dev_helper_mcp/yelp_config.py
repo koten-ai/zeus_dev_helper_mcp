@@ -110,17 +110,26 @@ def write_yelp_config(cfg: HelperConfig, root: Path) -> dict[str, Any]:
                 "fields": ["config.json"],
             }
     if _login_missing(cfg):
-        return {
-            "created": False,
-            "existed": False,
-            "failure_class": "login_not_in_process",
-            "next_action": (
-                "ZEUS_USERNAME and ZEUS_PASSWORD are not in this process. "
-                "Write them to a mode-600 env file and call load_process_login. "
-                "set_prereq stores presence flags only. Then use_sample again "
-                "so config.json can be written. Do not pass the password as a tool argument."
-            ),
-        }
+        from zeus_dev_helper_mcp.env_questions import (
+            attach_login_ask,
+            login_ask_text,
+            missing_login_names,
+        )
+
+        missing = missing_login_names()
+        return attach_login_ask(
+            {
+                "created": False,
+                "existed": False,
+                "failure_class": "login_not_in_process",
+                "missing_env": missing,
+                "next_action": (
+                    login_ask_text(missing)
+                    + " Then use_sample again so config.json can be written."
+                ),
+            },
+            missing,
+        )
 
     doc = _base_document(root)
     zeus = doc.get("zeus")

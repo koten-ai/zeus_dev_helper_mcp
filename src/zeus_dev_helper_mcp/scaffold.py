@@ -529,6 +529,8 @@ def runtime_config_dict(cfg: HelperConfig) -> dict[str, Any]:
 
 
 def write_env_example(cfg: HelperConfig, target_dir: str | Path) -> dict[str, Any]:
+    from zeus_dev_helper_mcp.env_questions import LLM_PROVIDER_COMMENTS
+
     root = Path(target_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     path = root / ".env.example"
@@ -543,6 +545,7 @@ ZEUS_SCOPE={cfg.default_scope or "_default"}
 ZEUS_COLLECTION={cfg.default_collection or "_default"}
 ZEUS_MODE={cfg.default_mode or "analytics"}
 # OpenAI-compatible LLM (config.json llm.api_key_env points at this name)
+{LLM_PROVIDER_COMMENTS}
 LLM_BASE_URL=https://api.x.ai/v1
 LLM_API_KEY=
 LLM_MODEL=grok-4-1-fast-non-reasoning
@@ -987,9 +990,18 @@ def verify_local_setup(cfg: HelperConfig, target_dir: str = "") -> dict[str, Any
     next_action = " ".join(note for note in notes if note)
     if not next_action:
         next_action = "Install missing deps or scaffold_app if files missing"
-    return {
+    result = {
         "ok": ok,
         "checks": checks,
         "config": cfg.public_view(),
         "next_action": next_action,
     }
+    if llm_fail and root is not None and root.is_dir():
+        from zeus_dev_helper_mcp.env_questions import attach_llm_ask, llm_ask_text
+        from zeus_dev_helper_mcp.llm_key import inspect_app_llm_key
+
+        report = inspect_app_llm_key(root)
+        if report.get("missing_env"):
+            attach_llm_ask(result, root=root)
+            result["next_action"] = f"{result['next_action']} {llm_ask_text()}".strip()
+    return result

@@ -183,6 +183,7 @@ def inspect_app_llm_key(root: Path) -> dict[str, Any]:
             "applies": True,
             "ok": False,
             "api_key_env": names[0] if len(names) == 1 else names,
+            "missing_env": missing,
             "message": (
                 f"Set {missing_shown} in .env. "
                 "Leave config.json llm.api_key_env as that name. "

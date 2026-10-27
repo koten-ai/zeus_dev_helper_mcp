@@ -21,7 +21,16 @@ _LOGIN_KEYS = (
     "LLM_API_KEY",
     "XAI_API_KEY",
     "OPENAI_API_KEY",
+    "LLM_BASE_URL",
+    "LLM_MODEL",
 )
+_LOGIN_FILE_KEYS = {
+    "ZEUS_USERNAME",
+    "ZEUS_USER",
+    "ZEUS_PASSWORD",
+    "ZEUS_BEARER_TOKEN",
+    "ZEUS_TOKEN",
+}
 
 
 def _parse_env(text: str) -> dict[str, str]:
@@ -56,34 +65,41 @@ def load_process_login(env_file: str) -> dict[str, Any]:
     """Load login from ``env_file`` into this process.
 
     The file must be mode 600. Allowed keys are ``ZEUS_USERNAME``,
-    ``ZEUS_PASSWORD``, ``ZEUS_BEARER_TOKEN``, and the LLM key names.
-    The result lists names only.
+    ``ZEUS_PASSWORD``, ``ZEUS_BEARER_TOKEN``, the LLM key names,
+    ``LLM_BASE_URL``, and ``LLM_MODEL``. The result lists names only.
     """
     raw = (env_file or "").strip()
     if not raw:
-        return {
-            "ok": False,
-            "loaded": [],
-            "failure_class": "login_not_in_process",
-            "next_action": (
-                "Write ZEUS_USERNAME and ZEUS_PASSWORD to a mode-600 env file, "
-                "then call load_process_login with that path. "
-                "Do not pass the password as a tool argument. "
-                "set_prereq stores presence flags only."
-            ),
-        }
+        from zeus_dev_helper_mcp.env_questions import attach_login_ask, login_ask_text
+
+        return attach_login_ask(
+            {
+                "ok": False,
+                "loaded": [],
+                "failure_class": "login_not_in_process",
+                "next_action": login_ask_text(
+                    ["ZEUS_USERNAME", "ZEUS_PASSWORD"]
+                ),
+            },
+            ["ZEUS_USERNAME", "ZEUS_PASSWORD"],
+        )
     path = Path(raw).expanduser()
     if not path.is_file():
-        return {
-            "ok": False,
-            "loaded": [],
-            "failure_class": "login_not_in_process",
-            "next_action": (
-                "That env file is not on disk. Write ZEUS_USERNAME and "
-                "ZEUS_PASSWORD in a mode-600 file and call load_process_login again. "
-                "Do not pass the password as a tool argument."
-            ),
-        }
+        from zeus_dev_helper_mcp.env_questions import attach_login_ask
+
+        return attach_login_ask(
+            {
+                "ok": False,
+                "loaded": [],
+                "failure_class": "login_not_in_process",
+                "next_action": (
+                    "That env file is not on disk. Ask the user for ZEUS_USERNAME "
+                    "and ZEUS_PASSWORD. Write them in a mode-600 file and call "
+                    "load_process_login again. Do not pass the password as a tool argument."
+                ),
+            },
+            ["ZEUS_USERNAME", "ZEUS_PASSWORD"],
+        )
     if not _private_file(path):
         return {
             "ok": False,
@@ -128,13 +144,60 @@ def load_process_login(env_file: str) -> dict[str, Any]:
             "failure_class": None,
             "next_action": "readiness_check. The password stays in this process.",
         }
-    return {
-        "ok": False,
-        "loaded": loaded,
-        "failure_class": "login_not_in_process",
-        "next_action": (
-            "The env file did not set both ZEUS_USERNAME and ZEUS_PASSWORD. "
-            "Add the missing name and call load_process_login again. "
-            "Do not pass the password as a tool argument. Then readiness_check."
-        ),
-    }
+    from zeus_dev_helper_mcp.config import llm_key_in_process_env
+    from zeus_dev_helper_mcp.env_questions import (
+        attach_llm_ask,
+        attach_login_ask,
+        llm_ask_text,
+        login_ask_text,
+    )
+
+    file_had_login = any(key in parsed for key in _LOGIN_FILE_KEYS)
+    llm_ready = (
+        llm_key_in_process_env()
+        and bool((os.environ.get("LLM_BASE_URL") or "").strip())
+        and bool((os.environ.get("LLM_MODEL") or "").strip())
+    )
+    loaded_llm = [name for name in loaded if name.startswith("LLM_")]
+    if loaded_llm and not file_had_login and _auth_mode() != "basic":
+        if llm_ready:
+            return {
+                "ok": True,
+                "loaded": loaded,
+                "failure_class": None,
+                "next_action": (
+                    "LLM_BASE_URL, LLM_MODEL, and LLM_API_KEY are in this process. "
+                    "The API key stays out of tool arguments. Then readiness_check."
+                ),
+            }
+        return attach_llm_ask(
+            {
+                "ok": True,
+                "loaded": loaded,
+                "failure_class": None,
+                "next_action": llm_ask_text(),
+            }
+        )
+    missing: list[str] = []
+    if not has_login:
+        missing.append("ZEUS_USERNAME")
+    if not has_password:
+        missing.append("ZEUS_PASSWORD")
+    return attach_login_ask(
+        {
+            "ok": False,
+            "loaded": loaded,
+            "failure_class": "login_not_in_process",
+            "next_action": login_ask_text(missing),
+        },
+        missing,
+    )
+
+
+def _auth_mode() -> str:
+    try:
+        from zeus_dev_helper_mcp.config import reload_config
+
+        return (reload_config().zeus_auth_mode or "none").strip().lower() or "none"
+    except Exception:  # noqa: BLE001
+        return (os.environ.get("ZEUS_AUTH_MODE") or "none").strip().lower() or "none"

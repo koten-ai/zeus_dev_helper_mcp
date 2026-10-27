@@ -113,12 +113,18 @@ def _yelp_use_sample_hint() -> dict[str, str]:
     }
 
 
-_LOGIN_NOTE = (
-    "ZEUS_USERNAME and ZEUS_PASSWORD are not in this process. "
-    "Write them to a mode-600 env file and call load_process_login with that path. "
-    "Do not pass the password as a tool argument. "
-    "set_prereq stores presence flags only. Then readiness_check."
-)
+def _apply_login_ask(base: dict[str, Any]) -> dict[str, Any]:
+    from zeus_dev_helper_mcp.env_questions import (
+        attach_login_ask,
+        login_ask_text,
+        missing_login_names,
+    )
+
+    missing = missing_login_names()
+    base["note"] = login_ask_text(missing)
+    base.pop("llm_choice_required", None)
+    base.pop("llm_options", None)
+    return attach_login_ask(base, missing, replace=True)
 
 
 def _stored_zeus_url(cfg: HelperConfig) -> str:
@@ -151,8 +157,7 @@ def _process_login_missing(cfg: HelperConfig) -> bool:
 
 def _recommend_login(base: dict[str, Any]) -> dict[str, Any]:
     base["recommended_tools"] = _keep_enabled(["load_process_login"])
-    base["note"] = _LOGIN_NOTE
-    return base
+    return _apply_login_ask(base)
 
 
 def _checklist_sample(cfg: HelperConfig) -> str:
@@ -333,14 +338,19 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         from zeus_dev_helper_mcp.llm_key import path_needs_llm_key
 
         if path_needs_llm_key(cfg) and not llm_key_in_process_env():
+            from zeus_dev_helper_mcp.env_questions import attach_llm_ask
+
             extra = (
                 "1.2 stays open until LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY "
                 "is set in this process. set_prereq(has_llm_key=true) does not count. "
-                "Put the secret in the environment or the app .env, never in "
-                "config.json api_key_env and never in a tool argument. Then validate_env."
+                "Ask the user to choose from llm_options, then LLM_MODEL, then "
+                "LLM_API_KEY. Put the secret in the environment or the app .env, "
+                "never in config.json api_key_env and never in a tool argument. "
+                "Then validate_env."
             )
             prior = (base.get("note") or "").strip()
             base["note"] = f"{prior} {extra}".strip()
+            attach_llm_ask(base)
     elif item_id == "3.2":
         base["note"] = (
             "Copy .env.example to .env and set LLM_API_KEY there. "
@@ -464,7 +474,7 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
             base["recommended_tools"] = _keep_enabled(list(base["recommended_tools"]))
     if _process_login_missing(cfg):
         base["recommended_tools"] = _keep_enabled(["load_process_login"])
-        base["note"] = _LOGIN_NOTE
+        _apply_login_ask(base)
     base["result_shapes"] = dict(RESULT_SHAPES)
     return base
 

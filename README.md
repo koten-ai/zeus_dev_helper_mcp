@@ -220,6 +220,7 @@ Secrets stay in the process environment. `set_prereq` stores presence flags only
 | `ZEUS_USERNAME` / `ZEUS_PASSWORD` | Basic auth (never logged) |
 | `ZEUS_BEARER_TOKEN` | Bearer auth (never logged) |
 | `LLM_API_KEY` / `XAI_API_KEY` / `OPENAI_API_KEY` | Process key for checklist **1.2**, `validate_env`, and `smoke_test_agent`. The app `.env` needs the same name for Pour / `uvicorn`. `config.json` `llm.api_key_env` stays the name. A stored `has_llm_key` flag does not count |
+| `LLM_BASE_URL` / `LLM_MODEL` | OpenAI-compatible endpoint and model. Offered defaults: Grok `https://api.x.ai/v1` / `grok-4.5-latest`, OpenAI `https://api.openai.com/v1` / `gpt-5.6-sol`, Anthropic `https://api.anthropic.com/v1` / `claude-opus-5-5`, Gemini `https://generativelanguage.googleapis.com/v1beta/openai/` / `gemini-3.8-flash`, or a base URL the user types. `load_process_login` reads both names from a mode-600 file |
 | `ZEUS_CHAT_REQUEST_DIR` | Local directory of min catalog templates; auto-set when `list_catalog_modes` / `fetch_chat_request` locate or clone public `zeus_chat_request` |
 | `DEMO_TRAVEL_SAMPLE_DIR` | Local sample directory for `use_sample` / `travel_golden_path` |
 | `DEMO_YELP_SAMPLE_DIR` | Local `demo_yelp` directory for `use_sample(sample=demo_yelp)` |
