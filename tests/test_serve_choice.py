@@ -76,9 +76,23 @@ def test_written_beer_app_asks_before_starting(tmp_path: Path) -> None:
 
 
 def test_serve_with_docker_records_one_command(tmp_path: Path) -> None:
+    import socket
+
     cfg = _cfg(tmp_path)
     root = tmp_path / "demo_beer_sample"
     assert write_beer_sample(cfg, root)["ok"] is True
+    # A live app on 8090 is already_serving and returns before the choice.
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        closed = sock.getsockname()[1]
+    env_path = root / ".env"
+    lines = [
+        line
+        for line in env_path.read_text(encoding="utf-8").splitlines()
+        if not line.startswith("PORT=")
+    ]
+    lines.append(f"PORT={closed}")
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     chosen = write_beer_sample(cfg, root, serve_with="docker")
     assert chosen["ok"] is True
     assert chosen["serve_choice_required"] is False

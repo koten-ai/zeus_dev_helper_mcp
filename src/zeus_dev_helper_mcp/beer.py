@@ -1784,8 +1784,9 @@ Open `http://127.0.0.1:8090/`. Try **Fruit Beer**, **ipa**, **Duvel**, or
 
 Copy `.env` into place before Compose. Compose publishes `8090`, sets
 `HOST=0.0.0.0`, and points `ZEUS_URL` at `http://host.docker.internal:8080`
-(public API, not Hub `:9091`). `./data` is bind-mounted so the synced catalog
-survives a restart. `.env` and `data/` are not copied into the image.
+(public API, not Hub `:9091`). `./.env` and `./data` are bind-mounted. The
+app reads `.env` with python-dotenv, so a `$` in a password is unchanged.
+`.env` and `data/` are not copied into the image.
 
 ```bash
 docker compose up --build
@@ -2189,9 +2190,10 @@ services:
       # Replace this to point the container at another public :8080 URL.
       ZEUS_URL: "http://host.docker.internal:8080"
       ZEUS_CHAT_REQUESTS_DIR: "/app/data/chat_requests"
-    env_file:
-      - .env
+    # Mount .env. env_file interpolates dollar signs and shortens a password.
+    # python-dotenv reads this file, as it does for python main.py.
     volumes:
+      - ./.env:/app/.env:ro
       - ./data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"

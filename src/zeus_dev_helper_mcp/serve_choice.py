@@ -85,7 +85,7 @@ def docker_notes(root: Path) -> str:
         notes.append("Compose points ZEUS_URL at http://host.docker.internal:8080.")
     if "./data:" in text or "./data/" in text:
         notes.append("./data is bind-mounted.")
-    if "env_file" in text:
+    if "env_file" in text or ".env:" in text:
         notes.append(".env stays on the host and is not copied into the image.")
     return " ".join(notes)
 

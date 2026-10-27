@@ -41,6 +41,8 @@ def test_written_tree_is_a_portable_run(tmp_path: Path, monkeypatch: pytest.Monk
     assert "COPY data" not in dockerfile
     assert "8090:8090" in compose
     assert "http://host.docker.internal:8080" in compose
+    assert "./.env:/app/.env:ro" in compose
+    assert "env_file:" not in compose
     assert "./data:/app/data" in compose
     url_lines = [
         line
