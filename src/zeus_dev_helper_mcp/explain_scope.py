@@ -593,6 +593,7 @@ def use_catalog_sample(
     sample_dir: str = "",
     project_name: str = "",
     parent_dir: str = "",
+    serve_with: str = "",
 ) -> dict[str, Any]:
     """sample=catalog. Beer copy only for beer-sample or Beer + Brewery."""
     dest = _catalog_dest(
@@ -609,6 +610,7 @@ def use_catalog_sample(
             sample_dir=sample_dir,
             project_name=project_name,
             parent_dir=parent_dir,
+            serve_with=serve_with,
         )
         out["catalog_kind"] = "beer"
         return out
@@ -624,6 +626,7 @@ def use_catalog_sample(
             sample_dir=sample_dir,
             project_name=project_name,
             parent_dir=parent_dir,
+            serve_with=serve_with,
         )
         out["catalog_kind"] = "beer"
         out["explain_scope"] = {

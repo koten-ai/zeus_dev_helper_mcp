@@ -188,6 +188,11 @@ INSTRUCTIONS = (
     "URL and model match that provider. The clone keeps LLM_MODEL=grok-4.5-latest. "
     "Do not copy .env.example over a .env that already has values. "
     "python main.py binds 127.0.0.1:8090. Same run_turn search as travel; do not clone demo_travel_sample. "
+    "When use_sample or website_green returns serve_choice_required, the checkout has "
+    "both a Dockerfile and a compose file. Ask the user whether to serve the app with "
+    "Python or Docker and wait. Do not start either command before that answer. "
+    "Then call use_sample or website_green with serve_with=python or serve_with=docker. "
+    "The helper does not run Docker. "
     "Yelp demo: utterances yelp-demo / demo_yelp use start_project(sample=demo_yelp) → "
     "use_sample(sample=demo_yelp), which clones the LocalAI template "
     "https://github.com/koten-ai/demo_yelp when "
@@ -571,7 +576,9 @@ def _start_project_body(
             "or newer. "
             "Search is rt.agent.run_turn with chat_request omitted so "
             "catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA (same as travel). "
-            "Put LLM_API_KEY in .env. The BFF does not build a pipeline body."
+            "Put LLM_API_KEY in .env. The BFF does not build a pipeline body. "
+            "When that checkout has both a Dockerfile and a compose file, ask the user "
+            "to choose Python or Docker before starting either command."
         )
         if rerouted_from_travel:
             out["note"] = (
@@ -1010,11 +1017,12 @@ def use_sample(
     project_name: str = "",
     parent_dir: str = "",
     clone_if_missing: bool = True,
+    serve_with: str = "",
 ) -> dict[str, Any]:
     """UI sample: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
-    sample=beer — shallow-clone https://github.com/koten-ai/demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR. Start with python main.py after a Python 3.11+ virtualenv (python3 -m venv only when python3 is 3.11 or newer) and pip install -r requirements.txt. use_sample writes mode 600 .env from .env.example, keeps populated values, and adds missing template keys. LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL are resolved together. The clone keeps LLM_MODEL=grok-4.5-latest. Do not copy .env.example over a .env that already has values. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body. Clone success is not website_green.
+    sample=beer — shallow-clone https://github.com/koten-ai/demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR. Start with python main.py after a Python 3.11+ virtualenv (python3 -m venv only when python3 is 3.11 or newer) and pip install -r requirements.txt. use_sample writes mode 600 .env from .env.example, keeps populated values, and adds missing template keys. LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL are resolved together. The clone keeps LLM_MODEL=grok-4.5-latest. Do not copy .env.example over a .env that already has values. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body. Clone success is not website_green. When the checkout has both a Dockerfile and a compose file, serve_choice_required is true, serve_options lists Python and Docker, and run is empty until serve_with is python or docker. Ask the user and wait. The helper does not run Docker. Pass serve_with on a later use_sample or website_green call. An already-serving checkout does not ask.
     sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
     sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: pip install -e . && python -m local_guide on http://127.0.0.1:5000, and cd frontend && npm install && npm run dev on http://localhost:5173 (the SPA proxies /api to port 5000). Writes gitignored mode-600 config.json from this process. llm.api_key_env stays the name LLM_API_KEY. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. A 401 stays red. Search cards get latitude and longitude from biz:yelp:<id> when the project step omits them, including a cached business page. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample / demo_yelp).
@@ -1028,6 +1036,7 @@ def use_sample(
         project_name=project_name,
         parent_dir=parent_dir,
         clone_if_missing=clone_if_missing,
+        serve_with=serve_with,
     )
 
 
@@ -1037,6 +1046,7 @@ def _use_sample_body(
     project_name: str = "",
     parent_dir: str = "",
     clone_if_missing: bool = True,
+    serve_with: str = "",
     gate_outcome: Any = UNASKED,
 ) -> dict[str, Any]:
     _gate, blocked = _apply_gate(gate_outcome, kind="sample")
@@ -1049,6 +1059,7 @@ def _use_sample_body(
         project_name=project_name,
         parent_dir=parent_dir,
         clone_if_missing=clone_if_missing,
+        serve_with=serve_with,
     )
 
 
@@ -1057,14 +1068,20 @@ def travel_golden_path(
     project_name: str = "",
     parent_dir: str = "",
     clone_if_missing: bool = True,
+    serve_with: str = "",
 ) -> dict[str, Any]:
-    """ZDH-10: locate/clone public demo_travel_sample + golden path validation."""
+    """ZDH-10: locate/clone public demo_travel_sample + golden path validation.
+
+    When the checkout has both a Dockerfile and a compose file, ask the user
+    to choose Python or Docker. serve_with records that choice. Docker is not run.
+    """
     return travel_golden_path_impl(
         _cfg(),
         sample_dir=sample_dir,
         project_name=project_name,
         parent_dir=parent_dir,
         clone_if_missing=clone_if_missing,
+        serve_with=serve_with,
     )
 
 
@@ -1083,17 +1100,20 @@ def smoke_test_zeus(update_checklist: bool = True) -> dict[str, Any]:
     return smoke_zeus_impl(_cfg(), update_checklist=update_checklist)
 
 
-def website_green(target_dir: str = "") -> dict[str, Any]:
+def website_green(target_dir: str = "", serve_with: str = "") -> dict[str, Any]:
     """Install, start, and check the catalog page.
 
     Separate from smoke_test_zeus. Mints the scope session when auth is basic,
     then checks list cards and, when Pour is on, one search. A title-cased
     doc_key or src_keys entry is not a search card. A describe 200 is not
     this check. Does not call smoke_test_agent. No secrets in the result.
+    serve_with is python or docker. When the checkout has both a Dockerfile
+    and a compose file and serve_with is empty, this returns
+    serve_choice_required and does not start Python. Docker is not run.
     """
     from zeus_dev_helper_mcp.website_green import website_green as website_green_impl
 
-    return website_green_impl(_cfg(), target_dir=target_dir)
+    return website_green_impl(_cfg(), target_dir=target_dir, serve_with=serve_with)
 
 
 def smoke_test_agent(
@@ -1477,6 +1497,7 @@ if _HAS_ELICIT:
         project_name: str = "",
         parent_dir: str = "",
         clone_if_missing: bool = True,
+        serve_with: str = "",
         clarification: Annotated[ElicitationResult[Clarification], Resolve(clarify_project)] = UNASKED,
     ) -> dict[str, Any]:
         return _use_sample_body(
@@ -1485,6 +1506,7 @@ if _HAS_ELICIT:
             project_name=project_name,
             parent_dir=parent_dir,
             clone_if_missing=clone_if_missing,
+            serve_with=serve_with,
             gate_outcome=clarification,
         )
 
