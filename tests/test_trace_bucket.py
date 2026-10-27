@@ -166,6 +166,8 @@ def test_scaffold_sessions_stay_off(tmp_path: Path) -> None:
 
 
 def test_existing_beer_tree_pins_sessions_off(tmp_path: Path) -> None:
+    import socket
+
     cfg = HelperConfig(
         state_dir=tmp_path / "state",
         default_bucket="beer-sample",
@@ -179,6 +181,16 @@ def test_existing_beer_tree_pins_sessions_off(tmp_path: Path) -> None:
     doc["settings"]["durable_sessions"] = True
     config_path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
     (root / "README.md").write_text("old readme\n", encoding="utf-8")
+    # The sample defaults to 8090. A live beer app on that port is already_serving
+    # and returns before the pin. This tree uses a closed port.
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        closed = sock.getsockname()[1]
+    env_path = root / ".env"
+    text = env_path.read_text(encoding="utf-8") if env_path.is_file() else ""
+    lines = [line for line in text.splitlines() if not line.startswith("PORT=")]
+    lines.append(f"PORT={closed}")
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     again = write_beer_sample(cfg, root)
     assert again["ok"] is True
     assert again.get("written") is False
