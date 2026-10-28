@@ -20,7 +20,7 @@ MCP is wired in the host (`grok mcp add`, Claude config, etc.) with:
 - `ZEUS_BUCKET` / `ZEUS_SCOPE` (e.g. `travel-sample` / `inventory`)
 - Auth in env only (`ZEUS_USERNAME` / `ZEUS_PASSWORD` or bearer) — Helper never stores secret values
 - `ZEUS_CHAT_REQUEST_DIR` (or `GITHUB_TOKEN`) so catalog templates resolve
-- `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` in this process when the path calls `run_turn` (travel, beer, API, yelp demo). A stored `has_llm_key` flag is not the key
+- `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` in this process when the path calls `run_turn` (travel, API, yelp demo, and beer Pour). Beer lists do not wait on that key. A stored `has_llm_key` flag is not the key
 - Optional: `DEMO_TRAVEL_SAMPLE_DIR`, `ZEUS_DEV_HELPER_TOOLSETS` (default `core`)
 
 State lives locally: `~/.config/zeus_dev_helper/checklist.json` (override: `ZEUS_DEV_HELPER_STATE_DIR`). The day is a walk down that checklist, one blocker at a time.
@@ -41,7 +41,7 @@ This is the day the product is designed for. Typical talk with the agent:
 | “Start the project” | `start_project` | Checklist reset: `single-agent:travel` |
 | “What’s the one next step?” | `next_step` | Current blocker + 1–3 recommended tools |
 
-They record non-secret prereqs (`set_prereq`), then `validate_env` (presence only). On a `run_turn` path a missing process key is an error (`llm_key_missing`), including beer when `has_llm_key=false`. `set_prereq(has_llm_key=true)` does not clear it. Then a live `readiness_check`: healthz / readyz / version, auth, bootstrap, chat_request. That check marks checklist **1.2** done only when `ZEUS_URL` is set and, for those paths, the process key is present. A non-beer Direct opt-out can close 1.2 from the URL alone. If something is red, they get a `failure_class` (`wrong_port_hub_vs_public`, `auth_failed`, `scope_not_enabled`, `llm_key_missing`, …) and a next action — not a stack dump.
+They record non-secret prereqs (`set_prereq`), then `validate_env` (presence only). On a `run_turn` path a missing process key is an error (`llm_key_missing`) for travel, API, and yelp. Beer lists warn: Pour stays off until the key is in the app `.env`. `set_prereq(has_llm_key=true)` does not clear it. Then a live `readiness_check`: healthz / readyz / version, auth, bootstrap, chat_request. That check marks checklist **1.2** done when `ZEUS_URL` is set and, for travel, API, and yelp, the process key is present. Beer lists and a travel Direct opt-out can close 1.2 from the URL alone. If something is red, they get a `failure_class` (`wrong_port_hub_vs_public`, `auth_failed`, `scope_not_enabled`, `llm_key_missing`, …) and a next action — not a stack dump.
 
 If they do not know a term: `explain("contract_hash")`, `explain("zeus_runtime")`. Glossary + docs link, not a guess.
 

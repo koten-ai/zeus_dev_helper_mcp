@@ -30,7 +30,11 @@ def test_use_sample_beer_writes_tree(tmp_path: Path) -> None:
     )
     assert out["ok"] is True
     assert out.get("track") == "ui-direct"
-    assert out.get("llm_required") is True
+    assert out.get("llm_required") is False
+    assert out.get("lists_llm_required") is False
+    assert out.get("question_llm_required") is True
+    assert out["sample"]["llm_required"] is False
+    assert out["sample"]["question_llm_required"] is True
     assert out.get("cloned") is True
     action = out.get("next_action") or ""
     if out.get("serve_choice_required"):

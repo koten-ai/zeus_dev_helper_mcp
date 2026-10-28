@@ -274,7 +274,7 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
         base["use_sample_args_hint"] = {
             "sample": "beer",
             "project_name": "demo_beer_sample",
-            "note": "Beer catalog UI. Clones https://github.com/koten-ai/demo_beer_sample. When that checkout has both a Dockerfile and a compose file, ask the user to choose Python or Docker before starting. Otherwise start with python main.py. Search is rt.agent.run_turn with chat_request omitted (MINI-SCHEMA merge). Do not clone travel.",
+            "note": "Beer catalog UI. Clones https://github.com/koten-ai/demo_beer_sample. When that checkout has both a Dockerfile and a compose file, ask the user to choose Python or Docker before starting. Otherwise start with python main.py. Lists are Direct find and get. Pour is rt.agent.run_turn with chat_request omitted and stays off until an LLM key is in the app .env. Do not clone travel. Do not write a job for this one-scope page.",
         }
     elif sample == "beer" and item_id in ("5.1", "5.2", "6.1"):
         if _website_green_failed(cfg):
@@ -326,7 +326,8 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
                 base["app_track"] = "ui-direct"
                 base["note"] = (
                     "Prereqs name beer-sample and have no LLM key. "
-                    "use_sample(sample=beer); search still needs an LLM key. Do not clone travel."
+                    "use_sample(sample=beer). Lists are Direct and render with no LLM key. "
+                    "Pour stays off until the key is in the app .env. Do not clone travel."
                 )
             else:
                 base["note"] = (
@@ -335,9 +336,26 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
                 )
     if item_id == "1.2":
         from zeus_dev_helper_mcp.config import llm_key_in_process_env
-        from zeus_dev_helper_mcp.llm_key import path_needs_llm_key
+        from zeus_dev_helper_mcp.llm_key import (
+            path_needs_llm_key,
+            question_box_needs_llm_key,
+        )
 
-        if path_needs_llm_key(cfg) and not llm_key_in_process_env():
+        if (
+            question_box_needs_llm_key(cfg)
+            and not path_needs_llm_key(cfg)
+            and not llm_key_in_process_env()
+        ):
+            prior = (base.get("note") or "").strip()
+            extra = (
+                "Direct lists do not need an LLM key, so 1.2 does not block them. "
+                "Pour stays off until LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY "
+                "is in this process and in the app .env. smoke_test_agent and "
+                "verify_local_setup check that key. "
+                "set_prereq(has_llm_key=true) does not count."
+            )
+            base["note"] = f"{prior} {extra}".strip()
+        elif path_needs_llm_key(cfg) and not llm_key_in_process_env():
             from zeus_dev_helper_mcp.env_questions import attach_llm_ask
 
             extra = (
@@ -386,8 +404,9 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
                 "sample": sample,
                 "note": (
                     "readiness_check first. Then use_sample for this sample. "
-                    "Beer search is run_turn with chat_request omitted and needs an LLM key. "
-                    "Do not clone travel on the beer path."
+                    "Lists are Direct and need no LLM key. Pour is One chat: "
+                    "run_turn with chat_request omitted, and it stays off until an LLM key "
+                    "is in the app .env. Do not clone travel on the beer path."
                     if sample == "beer"
                     else "readiness_check first, then use_sample."
                 ),
@@ -467,10 +486,29 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
                 "data-plane MCP and multi-agent (ZJA) are handoffs only."
             ),
         }
+        catalog_page = sample == "beer"
+        if catalog_page:
+            base["post_green"]["suggested_tools"] = [
+                "recommend_data_plane_mcp",
+                "emit_mcp_config",
+                "gap_report",
+            ]
+            base["post_green"]["note"] = (
+                "Lists and detail are Direct. Pour is One chat on one URL and one scope. "
+                "Smoke-green does not make this page a job. "
+                "handoff_to_multi stays off the next build step."
+            )
         if not item_id or item_id in ("6.1", "7.1") or base.get("complete"):
-            for t in ("recommend_data_plane_mcp", "handoff_to_multi"):
+            extra_tools = ["recommend_data_plane_mcp"]
+            if not catalog_page:
+                extra_tools.append("handoff_to_multi")
+            for t in extra_tools:
                 if t not in base["recommended_tools"]:
                     base["recommended_tools"].append(t)
+            if catalog_page:
+                base["recommended_tools"] = [
+                    t for t in base["recommended_tools"] if t != "handoff_to_multi"
+                ]
             base["recommended_tools"] = _keep_enabled(list(base["recommended_tools"]))
     if _process_login_missing(cfg):
         base["recommended_tools"] = _keep_enabled(["load_process_login"])

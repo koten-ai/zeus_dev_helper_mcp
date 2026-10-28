@@ -219,11 +219,15 @@ TOPICS: dict[str, dict[str, str]] = {
     },
     "demo_beer_sample": {
         "summary": (
-            "demo_beer_sample is the data-plane catalog UI for beer-sample: "
-            "FastAPI same-origin BFF. Search follows travel — rt.agent.run_turn with "
+            "demo_beer_sample is the catalog UI for beer-sample: "
+            "FastAPI same-origin BFF. Lists, chips, and detail are Direct find and get "
+            "and need no LLM key. Pour is One chat — rt.agent.run_turn with "
             "chat_request omitted so catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA. "
-            "An LLM key is required even when has_llm_key=false: process env for checklist 1.2, "
-            "app .env for checklist 3.2, and config.json llm.api_key_env left as that name. "
+            "max_rounds is 4. Pour stays off until LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY "
+            "is in the app .env. Checklist 1.2 does not block the lists. "
+            "smoke_test_agent and verify_local_setup still require the key for Pour. "
+            "config.json llm.api_key_env stays that name. has_llm_key=true does not count. "
+            "Two source types stay in that one chat. Do not write a job for this page. "
             "The BFF does not build a pipeline body. "
             "use_sample(sample=beer) shallow-clones https://github.com/koten-ai/demo_beer_sample "
             "when it is missing and sets DEMO_BEER_SAMPLE_DIR. "

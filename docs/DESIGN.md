@@ -81,7 +81,7 @@ Persisted under `~/.config/zeus_dev_helper/checklist.json` (override: `ZEUS_DEV_
 | `mark_done` / `mark_blocked` | item_id, evidence/reason | updated checklist | writes checklist |
 | `set_prereq` | url, bucket, scope, … flags | stored prereqs | writes prereqs.json (no secret values) |
 | `validate_env` | — | issues[] | none |
-| `readiness_check` | update_checklist | gates[] + failure_class | may update checklist 2.x and 1.2 (1.2 needs the process LLM key on `run_turn` paths) |
+| `readiness_check` | update_checklist | gates[] + failure_class | may update checklist 2.x and 1.2 (1.2 needs the process LLM key on travel, API, and yelp `run_turn` paths; beer lists do not keep 1.2 open) |
 | `bootstrap_scope` | bucket, scope, mode, detail | bootstrap summary | may update checklist |
 | `list_catalog_modes` | — | modes from zeus_chat_request | none / network |
 | `fetch_chat_request` | mode, detail | template + **TEMPLATE ONLY** warning | none / network |
@@ -94,7 +94,8 @@ Persisted under `~/.config/zeus_dev_helper/checklist.json` (override: `ZEUS_DEV_
 | `diagnose_error` | status, body, message, … | failure_class + docs anchor | none |
 | `explain` | topic | glossary short answer + docs link | none |
 | `suggest_demo_prompts` | — | prompt list | none |
-| `handoff_to_multi` | force | multi-agent graduation gate | none |
+| `handoff_to_multi` | force, confirm, url_count, scope_count, report_wait_s | Job hint. `job_write` only after confirm on two or more URLs, two or more scopes, or a long report | none |
+| `recommend_surface` | intent, needs_llm, url_count, scope_count, page | Website `inputs` (Direct boxes + One chat question). One box still returns one surface | none |
 | `recommend_data_plane_mcp` | — | handoff guidance | none |
 | `emit_mcp_config` | scope, host | MCP config fragment | none |
 
@@ -156,6 +157,8 @@ start_project → set_prereq → validate_env → readiness_check
   → smoke_test_zeus → smoke_test_agent → gap_report
   → (optional) recommend_data_plane_mcp | handoff_to_multi
 ```
+
+A website is One chat paired with Direct. `recommend_surface` names each input. List, chips, typeahead, paging, and detail are Direct and need no LLM key. The question box is `rt.agent.run_turn` with `chat_request` omitted. A catalog page uses `max_rounds` 4. A copilot uses 8. `settings.mode=analytics` leaves the question box on One chat. `handoff_to_multi` writes `jobs.host_url` or orchestrator and advisor roles only after the operator confirms two or more Zeus URLs, two or more scopes, or a report wait of 20 seconds to 5 minutes. One scope, two source types, and a page interaction stay on the pair. Smoke-green is not that confirmation. The default job wall is `wall_ms` 120000. Use 300000 when the operator asked for up to 5 minutes.
 
 ---
 

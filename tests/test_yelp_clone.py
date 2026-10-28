@@ -672,6 +672,23 @@ def test_start_project_bare_yelp_still_blocked(tmp_path: Path, monkeypatch) -> N
     assert out["blocked"] is True
 
 
+def test_start_project_yelp_asks_for_job_facts(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    from zeus_dev_helper_mcp.server import start_project
+
+    out = start_project(sample="yelp", force_multi=True)
+    assert out["started"] is True
+    assert out["track"] == "multi-agent"
+    handoff = out["handoff_to_multi"]
+    assert handoff["job_write"] is False
+    assert handoff["job"]["reason"] == "facts_required"
+    assert handoff["job"]["hard_stop"] is None
+    action = handoff["next_action"]
+    assert "multi-agent handoff" in action
+    assert "jobs.host_url" in action
+    assert "One Zeus URL" not in action
+
+
 def test_probe_target_and_glossary(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
     from zeus_dev_helper_mcp.clarify import probe_target

@@ -314,13 +314,20 @@ def use_sample(
         info["sample"] = "beer"
         info["app_kind"] = "ui"
         info["track"] = "ui-direct"
-        info["llm_required"] = True
+        llm_required = bool(ensured.get("llm_required", False))
+        lists_llm_required = bool(ensured.get("lists_llm_required", False))
+        question_llm_required = bool(ensured.get("question_llm_required", True))
+        info["llm_required"] = llm_required
+        info["lists_llm_required"] = lists_llm_required
+        info["question_llm_required"] = question_llm_required
         payload = {
             "ok": bool(ensured.get("ok")),
             "sample": info,
             "app_kind": "ui",
             "track": "ui-direct",
-            "llm_required": bool(ensured.get("llm_required", True)),
+            "llm_required": llm_required,
+            "lists_llm_required": lists_llm_required,
+            "question_llm_required": question_llm_required,
             "llm_key": ensured.get("llm_key"),
             "local_dir": ensured.get("local_dir") or ensured.get("target_dir"),
             "written": ensured.get("written"),
@@ -335,10 +342,11 @@ def use_sample(
             "error": ensured.get("error"),
             "next_action": ensured.get("next_action")
             or (
-                "Set LLM_API_KEY in .env. "
+                "Lists are Direct and need no LLM key. "
                 "Leave config.json llm.api_key_env as LLM_API_KEY. "
+                "Pour stays off until that key is in .env. "
                 "Start with python main.py. "
-                "Search is rt.agent.run_turn with chat_request omitted."
+                "Pour is rt.agent.run_turn with chat_request omitted."
             ),
             "checklist_hint": "Mark 3.1 done after the beer Direct UI is on disk",
             "docs": ensured.get("docs"),
@@ -485,7 +493,13 @@ def _llm_api_key_env() -> str:
 
 
 def runtime_config_dict(cfg: HelperConfig) -> dict[str, Any]:
-    """RuntimeConfig JSON shape (env *names* only — never secret values)."""
+    """RuntimeConfig JSON shape (env *names* only — never secret values).
+
+    CLI and API scaffolds are one chat. ``max_rounds`` is the copilot budget.
+    A catalog website uses ``write_beer_config`` and the smaller catalog budget.
+    Neither shape writes a jobs block or orchestrator and advisor roles.
+    """
+    from zeus_dev_helper_mcp.surface import COPILOT_MAX_ROUNDS
     auth_mode = (cfg.zeus_auth_mode or "none").strip().lower()
     if auth_mode not in {"none", "basic", "bearer", "session", "certificate"}:
         auth_mode = "none"
@@ -518,7 +532,7 @@ def runtime_config_dict(cfg: HelperConfig) -> dict[str, Any]:
         },
         "settings": {
             "ai_process_result": False,
-            "max_rounds": 8,
+            "max_rounds": COPILOT_MAX_ROUNDS,
             "force_trace": False,
             "mode": cfg.default_mode or "analytics",
             "durable_sessions": False,

@@ -141,6 +141,14 @@ def recommend_motion(cfg: HelperConfig, *, user_job: str) -> dict[str, Any]:
         cfg,
         intent="nl_question" if best not in ("custom",) else "single_verb",
     )
+    question = next(
+        (
+            row
+            for row in (surface.get("inputs") or [])
+            if isinstance(row, dict) and row.get("input") == "question"
+        ),
+        None,
+    )
     out: dict[str, Any] = {
         "ok": True,
         "motion": best,
@@ -155,8 +163,9 @@ def recommend_motion(cfg: HelperConfig, *, user_job: str) -> dict[str, Any]:
         ),
         "surface_hint": {
             "intent": surface.get("intent"),
-            "surface": surface.get("surface"),
-            "trace_class": surface.get("trace_class"),
+            "inputs": surface.get("inputs"),
+            "surface": (question or {}).get("surface") or surface.get("surface"),
+            "trace_class": (question or {}).get("trace_class") or surface.get("trace_class"),
         },
         "chat_request": None,
         "docs": {

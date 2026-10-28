@@ -27,7 +27,7 @@ MCP prompts: `first_green`, `smoke_question`, `support_pack`. Resources: `zeus-h
 
 Copy-paste prompts for someone who only has a public Zeus URL and a sample name. They will not say Helper tool names. The agent should stay on the coach path (see [`docs/DESIGN-zdm-1-beer-first-green.md`](../docs/DESIGN-zdm-1-beer-first-green.md)).
 
-**Plane reminder (ZDM-9):** TravelPlan / `demo_travel_sample` = **agent-plane** (LLM + `run_turn`; pipeline recovery stays in the SDK). `demo_beer_sample` = **beer-sample catalog UI**. Its search follows travel: `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. An LLM key is required in the Helper process and in the app `.env`. `config.json` `llm.api_key_env` stays that variable name. `has_llm_key=true` does not count. The BFF does not build a pipeline body. Docs: [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client). Copy TravelPlan’s BFF/same-origin/config shape. Beer / website **never clones** `demo_travel_sample`. Do not switch the beer app back to bare Direct verbs.
+**Plane reminder (ZDM-9, ZDM-46):** TravelPlan / `demo_travel_sample` = **agent-plane** (LLM + `run_turn`; pipeline recovery stays in the SDK). `demo_beer_sample` = **beer-sample catalog UI**, One chat paired with Direct. Lists, chips, and detail are Direct and need no LLM key. Pour is `rt.agent.run_turn` with `chat_request` omitted so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA. `max_rounds` is 4. Pour stays off until `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is in the app `.env`. `config.json` `llm.api_key_env` stays that variable name. `has_llm_key=true` does not count. The BFF does not build a pipeline body. Docs: [Using Zeus Client](https://docs.koten.ai/zeus-client/using-zeus-client). Copy TravelPlan’s BFF/same-origin/config shape. Beer / website **never clones** `demo_travel_sample`. Do not send list calls through `run_turn`. Do not write a job for this one-scope page.
 
 ### Make a website from beer-sample
 
@@ -131,7 +131,7 @@ Store non-secret prereqs for readiness. Does not store password or token values.
 
 ### `validate_env`
 
-Validate Helper env + stored prereqs shape (presence only — no secret values). A missing `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is an error (`llm_key_missing`) when the path calls `run_turn` (travel, beer, API, yelp demo). Beer still errors when `has_llm_key=false`. A stored `has_llm_key=true` does not count. A non-beer Direct opt-out warns instead of failing.
+Validate Helper env + stored prereqs shape (presence only — no secret values). A missing `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is an error (`llm_key_missing`) when the path calls `run_turn` (travel, API, yelp demo). Beer lists warn: Pour stays off until the key is in the app `.env`. A stored `has_llm_key=true` does not count. A travel Direct opt-out warns instead of failing.
 
 1. Validate my Helper environment. Flag Hub `:9091`, missing `ZEUS_URL`, missing LLM key, and catalog template problems.
 2. Is env ready for `readiness_check`? Check presence of Zeus URL, bucket/scope, the process LLM key, and catalog templates without printing secrets.
@@ -302,11 +302,11 @@ Map error signals to `failure_class` + `errors.md` anchor (ErrorCode + 0.7 class
 
 ### `recommend_surface`
 
-Pick Direct vs agent surface + Trace-Class. Does not call Zeus.
+Name each website input, or one surface for a single box. Does not call Zeus.
 
 1. I need as-you-type hotel name suggestions. Recommend the surface (`typeahead` vs `run_turn`).
-2. Recommend a surface for a natural-language question that needs an LLM. Include the do-not list (no `:9091`, no invented hash, no pipeline on Direct).
-3. We will run a multi-step DAG of verbs. Recommend `multi_step` / agent-for-pipeline — not `rt.data.verb`.
+2. Recommend inputs for a beer catalog page: Direct lists and a One chat question box. Include the do-not list (no `:9091`, no invented hash, no pipeline on Direct, no job for one scope).
+3. We will run a multi-step DAG of verbs on one scope. Recommend `multi_step` / agent-for-pipeline. Keep it One chat.
 
 ### `explain_verb`
 
@@ -448,11 +448,11 @@ Leave `enabled=false`; optional `GET /v2/agent_memory/status`. Direct/typeahead 
 
 ### `handoff_to_multi`
 
-Graduate to multi-agent guidance after single-agent green (or `force`).
+Job hint after single-agent green. One scope does not write `jobs.host_url`.
 
 1. Hand off to multi-agent. If 5.1/5.2 are not green, block and tell me to smoke first.
-2. Force the multi-agent handoff even if smokes are incomplete (`force=true`). Remind me jobs live in ZJA, not this MCP.
-3. After first green, graduate me: orchestrator / workers / advisor — but do not start a ZJA job.
+2. Force the multi-agent handoff even if smokes are incomplete (`force=true`). Remind me jobs live in ZJA, not this MCP, and smoke-green does not write `jobs.host_url`.
+3. Compare beer-sample on this Zeus with yelp-demo on another Zeus. Pass `url_count=2` and wait for a yes before `confirm=true`.
 
 ### `recommend_data_plane_mcp`
 

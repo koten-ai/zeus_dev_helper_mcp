@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from zeus_dev_helper_mcp.checklist import load_checklist, save_checklist, set_item_status
+from zeus_dev_helper_mcp.checklist import (
+    load_checklist,
+    save_checklist,
+    set_item_status,
+)
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.explain import TOPICS, explain_topic
 from zeus_dev_helper_mcp.handoff import (
@@ -98,10 +102,12 @@ def test_handoff_blocks_until_green(tmp_path: Path) -> None:
     blocked = handoff_to_multi(cfg, force=False)
     assert blocked["blocked"] is True
     assert blocked["ok"] is False
+    assert blocked["job_write"] is False
 
     forced = handoff_to_multi(cfg, force=True)
     assert forced["ok"] is True
     assert forced.get("forced") is True
+    assert forced["job_write"] is False
     assert "three_tier" in forced["concept"]
 
 
@@ -113,6 +119,9 @@ def test_handoff_opens_after_smokes(tmp_path: Path) -> None:
     out = handoff_to_multi(cfg, force=False)
     assert out["ok"] is True
     assert out["blocked"] is False
+    assert out["job_write"] is False
+    assert out["job"]["hard_stop"] == "one_scope"
+    assert "jobs.host_url" in out["next_action"]
 
 
 def test_data_plane_emit_scope_bound(tmp_path: Path) -> None:
@@ -157,3 +166,74 @@ def test_next_step_post_green_hints(tmp_path: Path) -> None:
     assert "recommend_data_plane_mcp" in tools or "handoff_to_multi" in (
         nxt["post_green"].get("suggested_tools") or []
     )
+
+
+def _green(cfg: HelperConfig) -> None:
+    load_checklist(cfg)
+    set_item_status(cfg, "5.1", "done", evidence="test")
+    set_item_status(cfg, "5.2", "done", evidence="test")
+
+
+def test_one_scope_confirm_does_not_write_a_job(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    _green(cfg)
+    out = handoff_to_multi(cfg, confirm=True)
+    assert out["ok"] is True
+    assert out["job_write"] is False
+    assert out["confirm_required"] is False
+    assert out["job"]["hard_stop"] == "one_scope"
+    assert out["job"]["write"] is False
+
+
+def test_two_urls_stay_a_hint_until_confirm(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    _green(cfg)
+    hinted = handoff_to_multi(cfg, url_count=2)
+    assert hinted["job"]["hint"] is True
+    assert hinted["job_write"] is False
+    assert hinted["confirm_required"] is True
+    assert hinted["job"]["wall_ms"] == 120000
+    assert "wait for a yes" in hinted["next_action"]
+
+    confirmed = handoff_to_multi(cfg, confirm=True, url_count=2)
+    assert confirmed["job_write"] is True
+    assert confirmed["confirm_required"] is False
+    assert confirmed["job"]["write"] is True
+    assert confirmed["job"]["wall_ms"] == 120000
+    assert "operator confirmed" in confirmed["next_action"]
+
+
+def test_confirm_cannot_override_a_hard_stop(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    _green(cfg)
+    types = handoff_to_multi(cfg, confirm=True, source_type_count=2)
+    assert types["job_write"] is False
+    assert types["job"]["hard_stop"] == "two_source_types"
+    page = handoff_to_multi(cfg, confirm=True, page_interaction=True)
+    assert page["job_write"] is False
+    assert page["job"]["hard_stop"] == "page_interaction"
+    two_minutes = handoff_to_multi(cfg, confirm=True, report_wait_s=120)
+    assert two_minutes["job_write"] is True
+    assert two_minutes["job"]["wall_ms"] == 120000
+    long = handoff_to_multi(cfg, confirm=True, report_wait_s=300)
+    assert long["job_write"] is True
+    assert long["job"]["wall_ms"] == 300000
+    page_long = handoff_to_multi(
+        cfg, confirm=True, page_interaction=True, report_wait_s=300, url_count=2
+    )
+    assert page_long["job_write"] is False
+    assert page_long["job"]["hard_stop"] == "page_interaction"
+
+
+def test_beer_post_green_omits_handoff(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    data = load_checklist(cfg)
+    data["meta"] = {"sample": "beer"}
+    for phase in data.get("phases") or []:
+        for item in phase.get("items") or []:
+            item["status"] = "done"
+    save_checklist(cfg, data)
+    nxt = enriched_next_step(cfg)
+    assert "handoff_to_multi" not in (nxt.get("recommended_tools") or [])
+    assert "handoff_to_multi" not in (nxt["post_green"].get("suggested_tools") or [])
+    assert "Smoke-green does not make this page a job" in nxt["post_green"]["note"]

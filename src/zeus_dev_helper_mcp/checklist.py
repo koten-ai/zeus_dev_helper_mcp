@@ -179,8 +179,11 @@ def _hint_for(item_id: str, cfg: HelperConfig) -> str:
         "1.2": (
             "Set ZEUS_URL with set_prereq. The form does not collect a password or an "
             "API key. LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY must be set in this "
-            "process. has_llm_key=true does not count. Then validate_env. Beer, travel, "
-            "and API turns keep 1.2 open until that variable is set."
+            "process when the path calls the model. has_llm_key=true does not count. "
+            "Then validate_env. Beer lists do not keep 1.2 open. Pour stays off until "
+            "the key is in the app .env. smoke_test_agent and verify_local_setup "
+            "still require it for that question box. Travel and API turns keep 1.2 "
+            "open until that variable is set."
         ),
         "3.2": (
             "Copy .env.example to .env and set LLM_API_KEY there. Leave config.json "
