@@ -53,7 +53,29 @@ BEER_ALIASES = frozenset(
 
 BEER_BUCKET_HINTS = frozenset({"beer-sample", "beer_sample", "beersample", "beer"})
 
-_CARD_DISPLAY_KEYS = ("style", "category", "abv", "ibu", "srm", "brewery", "description")
+_CARD_DISPLAY_KEYS = (
+    "style",
+    "category",
+    "abv",
+    "ibu",
+    "srm",
+    "brewery",
+    "description",
+    "city",
+    "state",
+    "country",
+)
+_CARD_SCORE_KEYS = (
+    "style",
+    "category",
+    "abv",
+    "ibu",
+    "brewery",
+    "description",
+    "city",
+    "state",
+    "country",
+)
 _HOP_TITLES = frozenset(
     {
         "find",
@@ -120,8 +142,75 @@ def _parse_blob(payload: Any) -> Any:
     return payload
 
 
+def _text_value(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bool) or value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return str(value)
+    return ""
+
+
+def _object_value(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    parsed = _parse_blob(value)
+    if isinstance(parsed, dict):
+        return parsed
+    return None
+
+
+def _fill_missing(merged: dict[str, Any], extra: Any) -> None:
+    if not isinstance(extra, dict):
+        return
+    for key, val in extra.items():
+        if merged.get(key) in (None, ""):
+            merged[key] = val
+
+
+def _joined_brewery(row: dict[str, Any]) -> tuple[str, str, str, str]:
+    """Brewery name and place from the row or a joined brewery object.
+
+    A string ``brewery`` is the name. A string ``brewery_id`` is a doc key.
+    An object on either key can carry ``name`` plus ``city``, ``state``, and
+    ``country``. Flat place fields on the row stay when they are set.
+    """
+    place = {"city": "", "state": "", "country": ""}
+
+    def take_place(source: dict[str, Any]) -> None:
+        for key in ("city", "state", "country"):
+            if place[key]:
+                continue
+            text = _text_value(source.get(key))
+            if text:
+                place[key] = text
+
+    take_place(row)
+    brewery_name = ""
+    brewery_text = row.get("brewery")
+    if isinstance(brewery_text, str):
+        brewery_name = brewery_text.strip()
+    for key in ("brewery", "brewery_id"):
+        obj = _object_value(row.get(key))
+        if obj is None:
+            continue
+        if not brewery_name:
+            brewery_name = _text_value(obj.get("name")) or _text_value(obj.get("title"))
+        take_place(obj)
+    if not brewery_name:
+        raw_id = row.get("brewery_id")
+        if isinstance(raw_id, str):
+            brewery_name = _pretty_label(raw_id)
+    return brewery_name, place["city"], place["state"], place["country"]
+
+
 def _card_from_row(row: dict[str, Any]) -> dict[str, Any] | None:
-    """Beer card from a find/get row. A where-bag is not a product row."""
+    """Card from a find/get row. A where-bag is not a product row.
+
+    City, state, and country stay on the card when the row or a joined
+    brewery object already has them.
+    """
     body = row.get("body")
     merged = dict(row)
     if isinstance(body, dict):
@@ -129,16 +218,38 @@ def _card_from_row(row: dict[str, Any]) -> dict[str, Any] | None:
         for key in ("id", "node_id", "doc_key"):
             if row.get(key) and not merged.get(key):
                 merged[key] = row[key]
+    raw_snippet = merged.get("snippet")
+    _fill_missing(merged, merged.get("metadata"))
+    parsed_snippet = _parse_blob(raw_snippet)
+    _fill_missing(merged, parsed_snippet)
     name = merged.get("name") or merged.get("title")
     if not isinstance(name, str) or not name.strip() or _is_hop_title(name):
         return None
     if set(merged) <= _CARD_FILTER_KEYS:
         return None
-    if not any(k in merged and merged.get(k) not in (None, "") for k in _CARD_DISPLAY_KEYS):
+    brewery, city, state, country = _joined_brewery(merged)
+    signals = dict(merged)
+    if brewery:
+        signals["brewery"] = brewery
+    if city:
+        signals["city"] = city
+    if state:
+        signals["state"] = state
+    if country:
+        signals["country"] = country
+    if not any(
+        key in signals and signals.get(key) not in (None, "") for key in _CARD_DISPLAY_KEYS
+    ):
         return None
-    description = merged.get("description") or merged.get("snippet") or ""
+    description = merged.get("description") or ""
     if not isinstance(description, str):
         description = ""
+    if (
+        not description
+        and isinstance(raw_snippet, str)
+        and not isinstance(parsed_snippet, dict)
+    ):
+        description = raw_snippet.strip()
     return {
         "id": str(merged.get("id") or merged.get("node_id") or ""),
         "name": name.strip(),
@@ -146,17 +257,30 @@ def _card_from_row(row: dict[str, Any]) -> dict[str, Any] | None:
         "category": merged.get("category") or "",
         "abv": merged.get("abv"),
         "ibu": merged.get("ibu"),
-        "brewery": merged.get("brewery") or "",
+        "brewery": brewery,
         "description": description,
+        "city": city,
+        "state": state,
+        "country": country,
     }
 
 
 def _card_score(card: dict[str, Any]) -> int:
-    return sum(
-        1
-        for key in ("style", "category", "abv", "ibu", "brewery", "description")
-        if card.get(key) not in (None, "")
-    )
+    return sum(1 for key in _CARD_SCORE_KEYS if card.get(key) not in (None, ""))
+
+
+def _merge_cards(prev: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
+    """Keep the richer card and fill place fields the other hop already had."""
+    if _card_score(new) > _card_score(prev):
+        base, extra = dict(new), prev
+    else:
+        base, extra = dict(prev), new
+    if not base.get("id") and extra.get("id"):
+        base["id"] = extra["id"]
+    for key in _CARD_SCORE_KEYS:
+        if base.get(key) in (None, "") and extra.get(key) not in (None, ""):
+            base[key] = extra[key]
+    return base
 
 
 def _matching_card_index(found: list[dict[str, Any]], card: dict[str, Any]) -> int | None:
@@ -187,14 +311,13 @@ def collect_beer_cards(blobs: list[Any], *, limit: int = 50) -> list[dict[str, A
             return
         card = _card_from_row(payload)
         if card is not None:
-            score = _card_score(card)
             prev_at = _matching_card_index(found, card)
             if prev_at is None:
                 found.append(card)
-            elif score > _card_score(found[prev_at]):
-                found[prev_at] = card
+            else:
+                found[prev_at] = _merge_cards(found[prev_at], card)
         for key, val in payload.items():
-            if key in _CARD_SKIP_KEYS:
+            if key in _CARD_SKIP_KEYS or key in {"brewery", "brewery_id"}:
                 continue
             if (
                 key in _CARD_LIST_KEYS
@@ -242,7 +365,12 @@ def _catalog_card(item: dict[str, Any]) -> dict[str, Any] | None:
     description = pick("description") or ""
     if not isinstance(description, str):
         description = ""
-    brewery = pick("brewery") or _pretty_label(str(pick("brewery_id") or ""))
+    assembled: dict[str, Any] = {}
+    for source in (extra, meta, item):
+        for key, val in source.items():
+            if val not in (None, ""):
+                assembled[key] = val
+    brewery, city, state, country = _joined_brewery(assembled)
     return {
         "id": str(pick("id", "node_id") or ""),
         "name": name.strip(),
@@ -250,11 +378,11 @@ def _catalog_card(item: dict[str, Any]) -> dict[str, Any] | None:
         "category": pick("category") or "",
         "abv": pick("abv"),
         "ibu": pick("ibu"),
-        "brewery": brewery or "",
+        "brewery": brewery,
         "description": description,
-        "city": pick("city") or "",
-        "state": pick("state") or "",
-        "country": pick("country") or "",
+        "city": city,
+        "state": state,
+        "country": country,
     }
 
 
@@ -1003,14 +1131,9 @@ async def api_config() -> dict[str, Any]:
 async def api_search(
     q: str = Query("", max_length=500),
     limit: int = Query(PAGE_CAP, ge=1, le=PAGE_CAP),
-    entity: str = Query(""),
 ) -> dict[str, Any]:
-    '''Catalog search. Raw question goes to run_turn; the catalog supplies MINI-SCHEMA.'''
-    message = (q or "").strip()
-    kind = (entity or "").strip()
-    if message and kind and kind.lower() not in {"beer", "beers"}:
-        message = message + "\nEntity type: " + kind
-    return await _run_search(message, limit=limit)
+    '''Catalog search. The question text goes to run_turn. The tab does not add an entity.'''
+    return await _run_search((q or "").strip(), limit=limit)
 
 
 @app.get("/api/beers")
@@ -1074,6 +1197,7 @@ def _embedded_card_source() -> str:
 
     chunks = [
         f"_CARD_DISPLAY_KEYS = {_CARD_DISPLAY_KEYS!r}",
+        f"_CARD_SCORE_KEYS = {_CARD_SCORE_KEYS!r}",
         f"_CARD_SKIP_KEYS = frozenset({set(_CARD_SKIP_KEYS)!r})",
         f"_CARD_LIST_KEYS = {_CARD_LIST_KEYS!r}",
         f"_CARD_FILTER_KEYS = frozenset({set(_CARD_FILTER_KEYS)!r})",
@@ -1082,8 +1206,13 @@ def _embedded_card_source() -> str:
     for fn in (
         _parse_blob,
         _is_hop_title,
+        _text_value,
+        _object_value,
+        _fill_missing,
+        _joined_brewery,
         _card_from_row,
         _card_score,
+        _merge_cards,
         _matching_card_index,
         collect_beer_cards,
         _pretty_label,
@@ -1468,9 +1597,16 @@ _INDEX_HTML = """\
       return `<span class="abv">${n.toFixed(1)}% ABV</span>`;
     }
 
-    function subline(card) {
+    function subline(card, searching) {
+      const place = [card.city, card.state, card.country].filter(Boolean).join(", ");
+      if (searching) {
+        const bits = [];
+        if (card.style) bits.push(card.style);
+        if (card.brewery) bits.push(card.brewery);
+        if (place) bits.push(place);
+        return bits.join(" · ");
+      }
       if (mode === "breweries") {
-        const place = [card.city, card.state, card.country].filter(Boolean).join(", ");
         return place || card.category || card.style || "";
       }
       return [card.style, card.brewery].filter(Boolean).join(" · ");
@@ -1566,6 +1702,7 @@ _INDEX_HTML = """\
         loadList(true);
         return;
       }
+      const searching = !(data && data.paged);
       const cards = data.items || data.cards || [];
       const named = cards.filter((c) => c && String(c.name || "").trim());
       const rawPath = data.path || [];
@@ -1585,7 +1722,7 @@ _INDEX_HTML = """\
         return;
       }
       cardsEl.innerHTML = named.map((c) => {
-        const line = subline(c);
+        const line = subline(c, searching);
         const badge = abvBadge(c.abv);
         return `<article class="card"><div class="card-top"><div class="mark">${markSvg(c)}</div><div class="card-copy"><h3>${escapeHtml(String(c.name))}</h3>${line ? `<p class="subline">${escapeHtml(String(line))}</p>` : ""}${badge}</div></div></article>`;
       }).join("");
@@ -1650,8 +1787,6 @@ _INDEX_HTML = """\
       const params = new URLSearchParams();
       params.set("q", query);
       params.set("limit", pageParams.get("limit") || "24");
-      if (mode === "breweries") params.set("entity", "Brewery");
-      else if (pageParams.get("entity")) params.set("entity", pageParams.get("entity"));
       const match = CHIPS.find((label) => label.toLowerCase() === query.toLowerCase());
       setChip(match || "");
       return run("/api/search?" + params.toString());
@@ -1817,8 +1952,12 @@ runtime target and settings. `chat_request` is not passed and `base_id` is
 not passed. Startup `catalog.sync()` writes
 `data/chat_requests/<bucket>__<scope>/chat_request_analytics_v2.json` from
 the live Zeus pin. The seeded file is the brief-free analytics template at
-that same path. A missing catalog is HTTP 502. Cards on the page are beer
-rows taken from the turn's tool results.
+that same path. A missing catalog is HTTP 502. Cards come from the turn's
+tool results. A Pour result shows the fields the question asked for,
+including fields from a joined entity, while the current tab stays
+selected. The Beers and Breweries controls stay the Direct lists
+(`GET /api/beers` and `GET /api/breweries`). Search sends the question
+text and does not add an entity type.
 
 `GET /api/beers` and `GET /api/breweries` list the catalog. `limit` defaults to 24. The displayed `find` omits `offset`. A probe `find` sends `offset` equal to that limit, and Next appears only when those page 2 ids differ from page 1 (`/api/beers?limit=24&offset=24` is page 2 after the probe says the server honored it). A missing total renders `1–N shown`. Each page is a Direct `find` ordered by id, then `get` for the card fields. List results stay uncached until that probe finishes, then for at most 30 seconds. Pour search stays on `run_turn`. A doc_key-only search hit is an empty state. The id routes use that same turn.
 

@@ -384,6 +384,10 @@ def test_written_main_uses_travel_search(tmp_path: Path) -> None:
     assert "goPage" in html
     assert 'params.set("offset"' in html
     assert "Breweries" in html
+    assert "function subline(card, searching)" in html
+    assert 'params.set("entity"' not in html
+    assert "Entity type:" not in main
+    assert "joined entity" in readme
     assert "IPA, Portland, Duvel, chocolate stout" in html
     assert (root / "static" / "hero.jpg").is_file()
     assert "MINI-SCHEMA" in main
@@ -457,3 +461,84 @@ def test_collect_beer_cards_from_turn_hops() -> None:
     assert cards[0]["name"] == "Duvel"
     assert cards[0]["brewery"] == "Duvel Moortgat"
     assert cards[0]["description"] == "Golden ale"
+    assert cards[0]["city"] == ""
+
+
+def test_search_card_keeps_joined_brewery_city() -> None:
+    hops = [
+        {
+            "name": "pipeline",
+            "result_json": {
+                "data": {
+                    "beer_rows": {
+                        "rows": [
+                            {
+                                "id": "n_peach",
+                                "name": "Arizona Peach",
+                                "style": "Belgian-Style Fruit Lambic",
+                                "abv": 4.0,
+                                "brewery_id": {
+                                    "name": "four peaks brewing",
+                                    "city": "Tempe",
+                                    "state": "Arizona",
+                                },
+                            }
+                        ]
+                    }
+                }
+            },
+        }
+    ]
+    cards = collect_beer_cards(hops)
+    assert len(cards) == 1
+    assert cards[0]["name"] == "Arizona Peach"
+    assert cards[0]["brewery"] == "four peaks brewing"
+    assert cards[0]["city"] == "Tempe"
+    assert cards[0]["state"] == "Arizona"
+
+
+def test_search_card_reads_brewery_id_and_flat_city() -> None:
+    hops = [
+        {
+            "name": "get",
+            "result_json": {
+                "items": [
+                    {
+                        "id": "n_99fed5ee7277c4",
+                        "name": "Arizona Peach",
+                        "metadata": {
+                            "abv": 4,
+                            "brewery_id": "four_peaks_brewing",
+                            "style": "Belgian-Style Fruit Lambic",
+                            "city": "Tempe",
+                            "state": "Arizona",
+                        },
+                    }
+                ]
+            },
+        }
+    ]
+    cards = collect_beer_cards(hops)
+    assert len(cards) == 1
+    assert cards[0]["brewery"] == "four peaks brewing"
+    assert cards[0]["city"] == "Tempe"
+    assert cards[0]["state"] == "Arizona"
+
+
+def test_catalog_card_reads_joined_brewery_place() -> None:
+    card = _catalog_card(
+        {
+            "id": "n_peach",
+            "name": "Arizona Peach",
+            "style": "Belgian-Style Fruit Lambic",
+            "brewery_id": {
+                "name": "four peaks brewing",
+                "city": "Tempe",
+                "state": "Arizona",
+            },
+        }
+    )
+    assert card is not None
+    assert card["brewery"] == "four peaks brewing"
+    assert card["city"] == "Tempe"
+    assert card["state"] == "Arizona"
