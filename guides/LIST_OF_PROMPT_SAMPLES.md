@@ -41,7 +41,7 @@ Copy-paste prompts for someone who only has a public Zeus URL and a sample name.
 
 3. What beers are made from fruit?
 
-**Expected tool sequence:** Only after the catalog site exists. The page sends the raw question to `rt.agent.run_turn` (`chat_request` omitted; the client merges MINI-SCHEMA). Do not plan `where.style` in the BFF. On failure, `diagnose_error`.
+**Expected tool sequence:** Only after the catalog site exists. The page sends the raw question to `rt.agent.run_turn` (`chat_request` omitted; the client merges MINI-SCHEMA). A Pour result shows the fields the question asked for, including fields from a joined entity, while the current tab stays selected. The Beers and Breweries controls stay the Direct lists. Search does not add an entity type. Do not plan `where.style` in the BFF. On failure, `diagnose_error`.
 
 ---
 
