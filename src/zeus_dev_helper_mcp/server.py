@@ -156,17 +156,21 @@ INSTRUCTIONS = (
     "or hand-roll curl for first green; use readiness_check / smoke_test_zeus / zeus-helper://. "
     "If the user did not name a Zeus URL, leave zeus_url empty and wait for the form. "
     "Do not copy the host ZEUS_URL into set_prereq. "
-    "Call recommend_surface before choosing Travel LLM vs Direct UI vs FastAPI. "
+    "Call recommend_surface before choosing Travel LLM vs the beer catalog pair vs FastAPI. "
+    "A website returns inputs: Direct list, chips, typeahead, paging, and detail, plus "
+    "One chat for the question box. It does not return one mode for the whole app. "
     "If has_llm_key=false, do not offer smoke_test_agent / travel as the only path. "
     "Hard constraints: public API is :8080 not Hub :9091; never invent contract_hash; "
     "fetch_chat_request / catalog resources are TEMPLATE ONLY (prefer a live Zeus stamp); "
     "no secrets in results or checklist evidence; semantic cache stays off. "
     "scaffold_app / smoke_test_agent emit ZeusRuntime + run_turn, not V1 ZeusClient / run_agent. "
     "TravelPlan / demo_travel_sample is the agent-plane (LLM chat UI) example; "
-    "demo_beer_sample is the beer-sample catalog UI. Its search follows travel: "
-    "rt.agent.run_turn with chat_request omitted so catalog.load_for_turn merges "
-    "SCOPE BRIEF + MINI-SCHEMA. An LLM key is required: set LLM_API_KEY in this process "
-    "and in the app .env. config.json llm.api_key_env stays the name LLM_API_KEY. "
+    "demo_beer_sample is the beer-sample catalog UI: Direct lists plus One chat Pour. "
+    "Lists, chips, and detail are find and get and need no LLM key. "
+    "Pour is rt.agent.run_turn with chat_request omitted so catalog.load_for_turn merges "
+    "SCOPE BRIEF + MINI-SCHEMA. max_rounds is 4. Pour stays off until LLM_API_KEY, "
+    "XAI_API_KEY, or OPENAI_API_KEY is in the app .env. Checklist 1.2 does not block "
+    "the lists. config.json llm.api_key_env stays the name LLM_API_KEY. "
     "has_llm_key=true is not the key. verify_local_setup before Pour or smoke_test_agent. "
     "verify_local_setup imports zeus_client in this Helper process. The app .venv does not "
     "satisfy that check. Install the agent extra "
@@ -187,7 +191,9 @@ INSTRUCTIONS = (
     "LLM_MODEL together. Copy OPENAI_API_KEY or XAI_API_KEY only when the base "
     "URL and model match that provider. The clone keeps LLM_MODEL=grok-4.5-latest. "
     "Do not copy .env.example over a .env that already has values. "
-    "python main.py binds 127.0.0.1:8090. Same run_turn search as travel; do not clone demo_travel_sample. "
+    "python main.py binds 127.0.0.1:8090. Lists are Direct. Pour is the same run_turn "
+    "shape as travel, with max_rounds 4, and it stays off until an LLM key is in .env. "
+    "Do not clone demo_travel_sample. Do not write jobs.host_url for this one-scope page. "
     "A Pour result shows the fields the question asked for, including fields from a joined entity, "
     "while the current tab stays selected. The Beers and Breweries controls stay the Direct lists. "
     "Search sends the question text and does not add an entity type. "
@@ -228,7 +234,11 @@ INSTRUCTIONS = (
     "sample_support_pack(sample=beer|travel|demo_yelp) pastes the support journal "
     "for a red beer, travel, or yelp-demo gate. It writes nothing and calls no "
     "Zeus API. Session ids stay in support_pack_from_turn. "
-    "After 5.1+5.2 green: data-plane and multi-agent are handoffs only."
+    "After 5.1+5.2 green: data-plane and multi-agent are handoffs only. "
+    "A one-scope catalog page does not take handoff_to_multi as the next build step. "
+    "A job hint is two or more Zeus URLs, two or more scopes, or a report wait of "
+    "20 seconds to 5 minutes, and only after the operator confirms. "
+    "Smoke-green does not write jobs.host_url."
 )
 
 
@@ -583,9 +593,13 @@ def _start_project_body(
             "use_sample merges .env from .env.example and does not say to copy the "
             "template over a file that already has values. python3 -m venv is used only when python3 is 3.11 "
             "or newer. "
-            "Search is rt.agent.run_turn with chat_request omitted so "
-            "catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA (same as travel). "
-            "Put LLM_API_KEY in .env. The BFF does not build a pipeline body. "
+            "Lists are Direct find and get and need no LLM key. "
+            "Pour is rt.agent.run_turn with chat_request omitted so "
+            "catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA. "
+            "Pour stays off until LLM_API_KEY is in .env. "
+            "max_rounds on that catalog page is 4. "
+            "Do not write jobs.host_url for this one-scope page. "
+            "The BFF does not build a pipeline body. "
             "When that checkout has both a Dockerfile and a compose file, ask the user "
             "to choose Python or Docker before starting either command."
         )
@@ -615,8 +629,12 @@ def _start_project_body(
         out["recommended_tools"] = list(nxt.get("recommended_tools") or [])
     elif wants_multi:
         out["track"] = "multi-agent"
-        out["handoff_to_multi"] = handoff_to_multi_impl(cfg, force=True)
-        out["note"] = "Multi track is graduation guidance only — jobs live in ZJA."
+        out["handoff_to_multi"] = handoff_to_multi_impl(cfg, force=True, entry="multi")
+        out["note"] = (
+            "Multi track is graduation guidance only — jobs live in ZJA. "
+            "Name two or more Zeus URLs, two or more scopes, or a report wait "
+            "of 20 seconds to 5 minutes, then confirm before writing jobs.host_url."
+        )
     else:
         out["track"] = "ui"
         out["app_kind"] = "ui"
@@ -688,19 +706,32 @@ def validate_env() -> dict[str, Any]:
                 "message": "Looks like Hub :9091 — app path must use public :8080.",
             }
         )
-    from zeus_dev_helper_mcp.llm_key import path_needs_llm_key
+    from zeus_dev_helper_mcp.llm_key import (
+        path_needs_llm_key,
+        question_box_needs_llm_key,
+    )
 
     needs_llm_key = path_needs_llm_key(cfg)
+    question_needs_key = question_box_needs_llm_key(cfg)
     if not cfg.has_llm_key:
+        if question_needs_key and not needs_llm_key:
+            llm_message = (
+                "Direct lists do not need an LLM key. Pour stays off until "
+                "LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY is in the app .env. "
+                "smoke_test_agent and verify_local_setup still require that key "
+                "for the question box. A stored has_llm_key flag is not the key."
+            )
+        else:
+            llm_message = (
+                "No LLM key in this process. Set LLM_API_KEY, XAI_API_KEY, or "
+                "OPENAI_API_KEY. A stored has_llm_key flag is not the key."
+            )
         issues.append(
             {
                 "field": "LLM_API_KEY",
                 "level": "error" if needs_llm_key else "warn",
                 "failure_class": "llm_key_missing",
-                "message": (
-                    "No LLM key in this process. Set LLM_API_KEY, XAI_API_KEY, or "
-                    "OPENAI_API_KEY. A stored has_llm_key flag is not the key."
-                ),
+                "message": llm_message,
             }
         )
     if not cfg.default_bucket or not cfg.default_scope:
@@ -749,6 +780,12 @@ def validate_env() -> dict[str, Any]:
         parts.append("Set ZEUS_URL, then validate_env")
     elif needs_llm_key and not cfg.has_llm_key:
         parts.append(llm_ask_text())
+    elif question_needs_key and not cfg.has_llm_key:
+        parts.append(
+            "Direct lists do not wait on an LLM key. "
+            "Pour stays off until the key is in the app .env. "
+            "Run readiness_check after ZEUS_URL is set."
+        )
     else:
         parts.append("Run readiness_check after ZEUS_URL is set")
     result = {
@@ -1045,7 +1082,7 @@ def use_sample(
     """UI sample: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
     sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
-    sample=beer — shallow-clone https://github.com/koten-ai/demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR. Start with python main.py after a Python 3.11+ virtualenv (python3 -m venv only when python3 is 3.11 or newer) and pip install -r requirements.txt. use_sample writes mode 600 .env from .env.example, keeps populated values, and adds missing template keys. LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL are resolved together. The clone keeps LLM_MODEL=grok-4.5-latest. Do not copy .env.example over a .env that already has values. Search is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA). LLM key required. No pipeline body. Clone success is not website_green. When the checkout has both a Dockerfile and a compose file, serve_choice_required is true, serve_options lists Python and Docker, and run is empty until serve_with is python or docker. Ask the user and wait. The helper does not run Docker. Pass serve_with on a later use_sample or website_green call. An already-serving checkout does not ask.
+    sample=beer — shallow-clone https://github.com/koten-ai/demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR. Start with python main.py after a Python 3.11+ virtualenv (python3 -m venv only when python3 is 3.11 or newer) and pip install -r requirements.txt. use_sample writes mode 600 .env from .env.example, keeps populated values, and adds missing template keys. LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL are resolved together. The clone keeps LLM_MODEL=grok-4.5-latest. Do not copy .env.example over a .env that already has values. Lists are Direct and need no LLM key. Pour is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA) and max_rounds 4. Pour stays off until an LLM key is in the app .env. No pipeline body. Do not write a job for this one-scope page. Clone success is not website_green. When the checkout has both a Dockerfile and a compose file, serve_choice_required is true, serve_options lists Python and Docker, and run is empty until serve_with is python or docker. Ask the user and wait. The helper does not run Docker. Pass serve_with on a later use_sample or website_green call. An already-serving checkout does not ask.
     sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
     sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: pip install -e . && python -m local_guide on http://127.0.0.1:5000, and cd frontend && npm install && npm run dev on http://localhost:5173 (the SPA proxies /api to port 5000). Writes gitignored mode-600 config.json from this process. llm.api_key_env stays the name LLM_API_KEY. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. A 401 stays red. Search cards get latitude and longitude from biz:yelp:<id> when the project step omits them, including a cached business page. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample / demo_yelp).
@@ -1201,13 +1238,33 @@ def recommend_surface(
     intent: str,
     qps: float = 0,
     needs_llm: bool | None = None,
+    url_count: int = 0,
+    scope_count: int = 0,
+    report_wait_s: float = 0,
+    source_type_count: int = 0,
+    page: str = "",
+    settings_mode: str = "",
+    page_interaction: bool = False,
 ) -> dict[str, Any]:
-    """Pick Direct vs agent surface + Trace-Class (ZDH-18). Does not call Zeus."""
+    """Name each website input. One box still returns one surface. Does not call Zeus.
+
+    A website (intent=nl_question) returns inputs: Direct list, chips, typeahead,
+    paging, and detail, plus a One chat question box. url_count, scope_count, or
+    report_wait_s of 20 seconds or more is a Job hint. The tool does not write
+    jobs.host_url. Zero counts mean one URL and one scope.
+    """
     return recommend_surface_impl(
         _cfg(),
         intent=intent,
         qps=qps if qps else None,
         needs_llm=needs_llm,
+        url_count=url_count or None,
+        scope_count=scope_count or None,
+        report_wait_s=report_wait_s or None,
+        source_type_count=source_type_count or None,
+        page=page or None,
+        settings_mode=settings_mode or None,
+        page_interaction=page_interaction,
     )
 
 
@@ -1349,9 +1406,31 @@ def semantic_cache_status(zeus_url: str = "") -> dict[str, Any]:
     return semantic_cache_status_impl(_cfg(), zeus_url=zeus_url)
 
 
-def handoff_to_multi(force: bool = False) -> dict[str, Any]:
-    """ZDH-11: graduate to multi-agent guidance after single-agent green (or force)."""
-    return handoff_to_multi_impl(_cfg(), force=force)
+def handoff_to_multi(
+    force: bool = False,
+    confirm: bool = False,
+    url_count: int = 0,
+    scope_count: int = 0,
+    report_wait_s: float = 0,
+    source_type_count: int = 0,
+    page_interaction: bool = False,
+) -> dict[str, Any]:
+    """Job hint after single-agent green. Does not write jobs.host_url.
+
+    confirm=true writes the hint only for two or more Zeus URLs, two or more
+    scopes, or a report wait of 20 seconds or more. One scope, two source
+    types, and a page interaction stay off that row. Smoke-green is not confirm.
+    """
+    return handoff_to_multi_impl(
+        _cfg(),
+        force=force,
+        confirm=confirm,
+        url_count=url_count or None,
+        scope_count=scope_count or None,
+        report_wait_s=report_wait_s or None,
+        source_type_count=source_type_count or None,
+        page_interaction=page_interaction,
+    )
 
 
 def recommend_data_plane_mcp() -> dict[str, Any]:

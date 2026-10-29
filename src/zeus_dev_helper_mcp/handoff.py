@@ -8,6 +8,7 @@ from typing import Any
 from zeus_dev_helper_mcp.checklist import load_checklist
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.docs_links import docs_url
+from zeus_dev_helper_mcp.surface import job_decision
 from zeus_dev_helper_mcp.walkthrough import build_gap_report
 
 
@@ -24,13 +25,30 @@ def _single_agent_green(cfg: HelperConfig) -> tuple[bool, dict[str, Any]]:
     return green, flags
 
 
-def handoff_to_multi(cfg: HelperConfig, *, force: bool = False) -> dict[str, Any]:
-    """ZDH-11: graduate to multi-agent only after single-agent green (or force)."""
+def handoff_to_multi(
+    cfg: HelperConfig,
+    *,
+    force: bool = False,
+    confirm: bool = False,
+    url_count: int | None = None,
+    scope_count: int | None = None,
+    report_wait_s: float | None = None,
+    source_type_count: int | None = None,
+    page_interaction: bool = False,
+    entry: str = "",
+) -> dict[str, Any]:
+    """Job hint after single-agent green. Smoke-green does not write a job.
+
+    ``entry="multi"`` is the bare ``sample=yelp`` handoff. With no URL, scope,
+    or wait yet, it asks for those facts and does not treat the call as a
+    one-scope catalog page.
+    """
     green, flags = _single_agent_green(cfg)
     if not green and not force:
         return {
             "ok": False,
             "blocked": True,
+            "job_write": False,
             "reason": "Single-agent path not green (need smoke_test_zeus + smoke_test_agent done).",
             "checklist_flags": flags,
             "next_action": "Run smoke_test_zeus and smoke_test_agent, or pass force=true to override.",
@@ -40,9 +58,66 @@ def handoff_to_multi(cfg: HelperConfig, *, force: bool = False) -> dict[str, Any
             },
         }
 
+    facts_supplied = any(
+        value is not None
+        for value in (url_count, scope_count, report_wait_s, source_type_count)
+    ) or page_interaction
+    if entry == "multi" and not facts_supplied:
+        decision = {
+            "hint": False,
+            "hard_stop": None,
+            "write": False,
+            "wall_ms": None,
+            "reason": "facts_required",
+            "settings_mode": None,
+            "url_count": None,
+            "scope_count": None,
+            "source_type_count": None,
+        }
+        next_action = (
+            "This is the multi-agent handoff. Name two or more Zeus URLs, "
+            "two or more scopes, or a report wait of 20 seconds to 5 minutes, "
+            "then confirm before writing jobs.host_url or orchestrator and advisor roles. "
+            "Helper does not run the job."
+        )
+        job_write = False
+    else:
+        decision = job_decision(
+            url_count=url_count,
+            scope_count=scope_count,
+            report_wait_s=report_wait_s,
+            source_type_count=source_type_count,
+            page_interaction=page_interaction,
+        )
+        job_write = bool(confirm and decision.get("hint") and not decision.get("hard_stop"))
+        decision["write"] = job_write
+        if job_write:
+            next_action = (
+                "The operator confirmed a job. Name one unit per scope. "
+                f"wall_ms is {decision.get('wall_ms')}. "
+                "A pure data unit is zeus_direct. "
+                "Write jobs.host_url and orchestrator or advisor roles for this confirmed job only. "
+                "Helper does not run the job."
+            )
+        elif decision.get("hint"):
+            next_action = (
+                "This is a Job hint. Name the units and wait for a yes "
+                "before writing jobs.host_url or orchestrator and advisor roles. "
+                "Helper does not run the job."
+            )
+        else:
+            next_action = (
+                "Smoke-green is not a job. One Zeus URL and one scope stay One chat "
+                "paired with Direct. Do not write jobs.host_url, orchestrator or advisor "
+                "roles, or a job wall. Helper does not run jobs."
+            )
+
     return {
         "ok": True,
         "blocked": False,
+        "job_write": job_write,
+        "confirm_required": bool(decision.get("hint") and not job_write),
+        "job": decision,
         "forced": force and not green,
         "checklist_flags": flags,
         "track": "multi-agent",
@@ -73,10 +148,7 @@ def handoff_to_multi(cfg: HelperConfig, *, force: bool = False) -> dict[str, Any
             {"id": "m.3", "title": "Clone multi sample when available (Yelp)", "status": "todo"},
             {"id": "m.4", "title": "Map to ZJA jobs / orchestrator patterns", "status": "todo"},
         ],
-        "next_action": (
-            "Stay on single-agent until product samples land; explore Zeus_Job_Agents docs; "
-            "do not reimplement job coordination inside Helper."
-        ),
+        "next_action": next_action,
         "docs": {
             "turbo": docs_url("zeus-client/crawl-walk-run-turbo.md"),
             "platform": docs_url(""),

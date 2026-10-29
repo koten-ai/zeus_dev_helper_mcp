@@ -83,21 +83,30 @@ def test_inspect_requires_dotenv_value_for_the_configured_name(tmp_path: Path) -
     assert ready["evidence"] == "api_key_env=LLM_API_KEY present in .env"
 
 
-def test_readiness_keeps_12_open_until_process_key(
+def test_readiness_closes_12_for_beer_lists_without_a_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from zeus_dev_helper_mcp.llm_key import (
+        path_needs_llm_key,
+        question_box_needs_llm_key,
+    )
+
     _clear_llm(monkeypatch)
     cfg = HelperConfig(zeus_url="http://127.0.0.1:8080", state_dir=tmp_path / "state")
     data = load_checklist(cfg)
     data["meta"] = {"sample": "beer"}
     save_checklist(cfg, data)
     save_prereqs(cfg, {"has_llm_key": False, "bucket": "beer-sample"})
+    assert path_needs_llm_key(cfg) is False
+    assert question_box_needs_llm_key(cfg) is True
     _finish(cfg, [], update_checklist=True)
-    assert _item(cfg, "1.2")["status"] == "todo"
+    item = _item(cfg, "1.2")
+    assert item["status"] == "done"
+    assert "not required" in item["evidence"]
 
     set_item_status(cfg, "1.2", "done", evidence="ZEUS_URL set")
     _finish(cfg, [], update_checklist=True)
-    assert _item(cfg, "1.2")["status"] == "todo"
+    assert "not required" in _item(cfg, "1.2")["evidence"]
 
     monkeypatch.setenv("LLM_API_KEY", SECRET)
     _finish(cfg, [], update_checklist=True)
@@ -155,6 +164,60 @@ def test_validate_env_errors_when_the_path_calls_the_model(
     flagged = validate_env()
     assert flagged["ok"] is False
     assert flagged["config"]["has_llm_key"] is False
+
+
+def test_validate_env_warns_for_beer_lists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_llm(monkeypatch)
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("ZEUS_URL", "http://127.0.0.1:8080")
+    monkeypatch.setattr(
+        "zeus_dev_helper_mcp.server.list_modes",
+        lambda cfg: {"modes": [{"mode": "analytics"}]},
+    )
+    from zeus_dev_helper_mcp.server import validate_env
+
+    cfg = reload_config()
+    data = load_checklist(cfg)
+    data["meta"] = {"sample": "beer"}
+    save_checklist(cfg, data)
+    save_prereqs(
+        cfg,
+        {
+            "has_llm_key": False,
+            "zeus_url": "http://127.0.0.1:8080",
+            "bucket": "beer-sample",
+            "scope": "_default",
+        },
+    )
+    out = validate_env()
+    issue = next(i for i in out["issues"] if i["field"] == "LLM_API_KEY")
+    assert issue["level"] == "warn"
+    assert "Direct lists do not need an LLM key" in issue["message"]
+    assert out["ok"] is True
+    assert "ask_user" not in out
+    assert "Direct lists do not wait" in out["next_action"]
+    assert "has_llm_key=true" not in out["next_action"]
+
+
+def test_next_step_12_does_not_ask_for_a_beer_list_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_llm(monkeypatch)
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    from zeus_dev_helper_mcp.walkthrough import enriched_next_step
+
+    cfg = reload_config()
+    data = load_checklist(cfg)
+    data["meta"] = {"sample": "beer"}
+    save_checklist(cfg, data)
+    for item_id in ("0.1", "0.2", "1.1"):
+        set_item_status(cfg, item_id, "done", evidence="test")
+    nxt = enriched_next_step(cfg)
+    assert nxt["item"]["id"] == "1.2"
+    assert "1.2 does not block" in nxt["note"]
+    assert "ask_user" not in nxt
 
 
 def test_validate_env_warns_on_direct_opt_out(

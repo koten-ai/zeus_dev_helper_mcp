@@ -520,11 +520,13 @@ SAMPLE_BEER = {
         "https://github.com/koten-ai/demo_beer_sample when the directory is missing "
         "and sets DEMO_BEER_SAMPLE_DIR. The checkout is the app. "
         "Start it with python main.py, as that README describes. "
-        "Set LLM_API_KEY in .env. "
+        "Lists are Direct and need no LLM key. "
+        "Pour stays off until LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY is in .env. "
         "config.json llm.api_key_env stays the name LLM_API_KEY. "
         "Search is rt.agent.run_turn with chat_request omitted "
         "(catalog.load_for_turn merges SCOPE BRIEF + MINI-SCHEMA). "
-        "Do not clone demo_travel_sample."
+        "max_rounds on that question box is 4. "
+        "Do not clone demo_travel_sample. Do not write a job for this page."
     ),
     "clone": f"git clone --depth 1 {BEER_REPO_GIT}",
     "related": [
@@ -1112,7 +1114,7 @@ async def api_config() -> dict[str, Any]:
         "scope": cfg.target.scope,
         "collection": cfg.target.collection,
         "mode": cfg.settings.mode,
-        "llm_required": True,
+        "llm_required": False,
         "pour_enabled": _pour_enabled(),
         "pour_reason": _pour_reason(),
         "page_cap": PAGE_CAP,
@@ -1881,9 +1883,13 @@ loads the analytics catalog and merges the live **SCOPE BRIEF** and
 **MINI-SCHEMA** into the system message on the model request. The BFF does
 not build a pipeline body; tool calls stay inside the client turn.
 
-An **LLM key is required** for search. Put it in `.env` as `LLM_API_KEY`.
+Lists, chips, and detail are Direct and run with no LLM key. Pour is One
+chat (`rt.agent.run_turn`, `chat_request` omitted) and stays off until
+`LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is in `.env`.
 `config.json` `llm.api_key_env` stays the name `LLM_API_KEY`. Do not paste
-the secret into that field. `client_floor` is `client-floor-6.1`.
+the secret into that field. The question box uses `max_rounds` 4.
+`client_floor` is `client-floor-6.1`. There is no `jobs` block and no
+orchestrator or advisor role.
 The semantic cache stays off.
 
 `settings.durable_sessions` is false. Session trace calls `post_trace`.
@@ -1938,7 +1944,7 @@ docker compose up --build
 | `HOST` | `127.0.0.1` | Bind address. Compose sets `0.0.0.0` |
 | `PORT` | `8090` | BFF listen port |
 | `CELLAR_CACHE_TTL` | `600` | Seconds to cache a successful search turn. The list cache stays off until the offset probe finishes, then at most 30 seconds |
-| `LLM_API_KEY` | — | Required. The secret lives here. `config.json` `llm.api_key_env` names this variable |
+| `LLM_API_KEY` | — | Pour only. Lists run with no key. Pour stays off until this variable, `XAI_API_KEY`, or `OPENAI_API_KEY` is set. `config.json` `llm.api_key_env` names `LLM_API_KEY` |
 | `LLM_BASE_URL` | `https://api.x.ai/v1` | |
 | `LLM_MODEL` | `grok-4-1-fast-non-reasoning` | |
 | `ZEUS_USERNAME` | `tester_beer` | Application user. An empty name falls back to `tester` |
@@ -2192,8 +2198,18 @@ ZEUS_PASSWORD=
     return {"ok": True, "path": str(path), "note": "No secrets written — placeholders only"}
 
 
+def _pair_flags() -> dict[str, Any]:
+    """Lists need no key. The question box does. The page is not a job."""
+    return {
+        "llm_required": False,
+        "lists_llm_required": False,
+        "question_llm_required": True,
+    }
+
+
 def write_beer_config(cfg: HelperConfig, target_dir: str | Path) -> dict[str, Any]:
-    """Runtime pin for a travel-style turn. Floor matches live base-6.1."""
+    """Runtime pin for the catalog question box. Floor matches live base-6.1."""
+    from zeus_dev_helper_mcp.surface import CATALOG_MAX_ROUNDS
     root = Path(target_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     path = root / "config.json"
@@ -2233,7 +2249,7 @@ def write_beer_config(cfg: HelperConfig, target_dir: str | Path) -> dict[str, An
             "mode": "analytics",
             "durable_sessions": False,
             "ai_process_result": False,
-            "max_rounds": 12,
+            "max_rounds": CATALOG_MAX_ROUNDS,
             "ignore_user_tool_path_hints": True,
         },
         "session": {"semantic_cache": {"enabled": False}},
@@ -2757,7 +2773,7 @@ def write_beer_sample(
                     "env": {ENV_BEER_DIR: env_path},
                     "run": f"cd {root} && {beer_quick_start()}",
                     "repo": BEER_REPO,
-                    "llm_required": True,
+                    **_pair_flags(),
                     "next_action": _beer_start_action(root),
                 },
                 serve_with=serve_with,
@@ -2828,7 +2844,7 @@ def write_beer_sample(
         "sample": "beer",
         "app_kind": "ui",
         "track": "ui-direct",
-        "llm_required": True,
+        **_pair_flags(),
         "zeus_url": cfg.zeus_url or "http://localhost:8080",
         "bucket": cfg.default_bucket or "beer-sample",
         "scope": cfg.default_scope or "_default",
@@ -2866,7 +2882,7 @@ def write_beer_sample(
         "env": {ENV_BEER_DIR: env_path},
         "run": run_cmd,
         "repo": BEER_REPO,
-        "llm_required": True,
+        **_pair_flags(),
         "next_action": _beer_start_action(root),
         "docs": {
             "using": docs_url("zeus-client/using-zeus-client.md"),
@@ -2884,7 +2900,7 @@ def _beer_start_action(root: Path) -> str:
     start = (
         f"The app is {BEER_REPO} at {root}. "
         f"From that directory: {beer_quick_start()}. "
-        "Set LLM_API_KEY in .env. This step is required. "
+        "Lists render with no LLM key. Pour stays off until LLM_API_KEY is in .env. "
         "Leave config.json llm.api_key_env as the name LLM_API_KEY. "
         "python main.py binds 127.0.0.1 and port 8090 "
         "(HOST and PORT change the bind). "
@@ -3004,7 +3020,7 @@ def _finish_cloned_beer(
         "env": {ENV_BEER_DIR: env_path},
         "run": f"cd {root} && {beer_quick_start()}",
         "repo": BEER_REPO,
-        "llm_required": True,
+        **_pair_flags(),
         "next_action": _beer_start_action(root),
         "docs": {
             "using": docs_url("zeus-client/using-zeus-client.md"),

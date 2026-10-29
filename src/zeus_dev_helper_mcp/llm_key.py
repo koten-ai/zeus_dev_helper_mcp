@@ -17,22 +17,45 @@ __all__ = [
     "inspect_app_llm_key",
     "llm_key_in_process_env",
     "path_needs_llm_key",
+    "question_box_needs_llm_key",
     "sync_checklist_llm_prereq",
 ]
 
 
-def path_needs_llm_key(cfg: HelperConfig) -> bool:
-    """True when this checklist path calls the model before first green.
-
-    Beer search calls ``run_turn`` even when the stored flag is false.
-    ``has_llm_key=false`` on a non-beer travel path is the Direct opt-out.
-    """
-    from zeus_dev_helper_mcp.beer import prereqs_prefer_beer_direct
+def _sample_and_prefs(cfg: HelperConfig) -> tuple[str, dict[str, Any]]:
     from zeus_dev_helper_mcp.prereqs import load_prereqs
     from zeus_dev_helper_mcp.walkthrough import _checklist_sample
 
-    sample = _checklist_sample(cfg)
-    prefs = load_prereqs(cfg)
+    return _checklist_sample(cfg), load_prereqs(cfg)
+
+
+def path_needs_llm_key(cfg: HelperConfig) -> bool:
+    """True when checklist 1.2 and validate_env block on a process key.
+
+    Beer lists are Direct, so a beer path does not block those gates.
+    The question box still requires a key at smoke_test_agent and
+    verify_local_setup. ``has_llm_key=false`` on travel is the Direct opt-out.
+    """
+    from zeus_dev_helper_mcp.beer import prereqs_prefer_beer_direct
+
+    sample, prefs = _sample_and_prefs(cfg)
+    if sample == "beer" or prereqs_prefer_beer_direct(prefs):
+        return False
+    if sample == "travel" and prefs.get("has_llm_key") is False:
+        return False
+    if sample in {"travel", "api", "demo_yelp"}:
+        return True
+    return prefs.get("has_llm_key") is not False
+
+
+def question_box_needs_llm_key(cfg: HelperConfig) -> bool:
+    """True when Pour or another One chat box calls the model.
+
+    Beer lists do not use this gate. Pour stays off until the key exists.
+    """
+    from zeus_dev_helper_mcp.beer import prereqs_prefer_beer_direct
+
+    sample, prefs = _sample_and_prefs(cfg)
     if sample == "beer" or prereqs_prefer_beer_direct(prefs):
         return True
     if sample == "travel" and prefs.get("has_llm_key") is False:
