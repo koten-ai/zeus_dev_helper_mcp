@@ -120,6 +120,36 @@ def test_loads_llm_endpoint_without_a_login(
     assert "gpt-5.6-sol" not in blob
 
 
+def test_loads_auth_mode_with_the_bearer_token(
+    tmp_path: Path, clean_login: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = "zdm48-bearer-sentinel"
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    path = tmp_path / "login.env"
+    _write(path, f"ZEUS_AUTH_MODE=bearer\nZEUS_BEARER_TOKEN={token}\n")
+    out = load_process_login(str(path))
+    blob = json.dumps(out)
+    assert out["ok"] is True
+    assert out["failure_class"] is None
+    assert "ZEUS_AUTH_MODE" in out["loaded"]
+    assert "ZEUS_BEARER_TOKEN" in out["loaded"]
+    assert os.environ["ZEUS_AUTH_MODE"] == "bearer"
+    assert os.environ["ZEUS_BEARER_TOKEN"] == token
+    assert token not in blob
+
+
+def test_rejects_an_auth_mode_that_is_not_a_choice(
+    tmp_path: Path, clean_login: None
+) -> None:
+    path = tmp_path / "login.env"
+    _write(path, "ZEUS_AUTH_MODE=zdm48-not-a-mode\n")
+    out = load_process_login(str(path))
+    blob = json.dumps(out)
+    assert "ZEUS_AUTH_MODE" not in out["loaded"]
+    assert os.environ.get("ZEUS_AUTH_MODE") in (None, "")
+    assert "zdm48-not-a-mode" not in blob
+
+
 def test_incomplete_file_stays_red(tmp_path: Path, clean_login: None) -> None:
     path = tmp_path / "login.env"
     _write(path, f"ZEUS_USERNAME={USER}\n")

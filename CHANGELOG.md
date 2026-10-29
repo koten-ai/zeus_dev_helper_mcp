@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **[ZDM-48](https://kotenai.atlassian.net/browse/ZDM-48)** `use_sample` for beer, travel, and demo_yelp, and `scaffold_app` for the API sample, include `ask_user` on every build, including a second build when the env file already has values. The order is `ZEUS_AUTH_MODE` (`none`, `basic`, `bearer`), then basic `ZEUS_USERNAME` (text, beer default `tester_beer`) and `ZEUS_PASSWORD` (password), or bearer `ZEUS_BEARER_TOKEN` (password). `none` skips those. The LLM choice is Grok, OpenAI, Anthropic, Gemini, or Other. Other asks for the provider name and `LLM_BASE_URL`. A named provider sets `LLM_BASE_URL` from that entry and offers its model as the `LLM_MODEL` default. `LLM_API_KEY` is a password field. Text fields are prefilled from the current value. The agent writes a mode-600 env file, calls `load_process_login`, and writes the same names in the app `.env`. `load_process_login` applies `ZEUS_AUTH_MODE`. `config.json` `llm.api_key_env` stays `LLM_API_KEY`. `set_prereq` stores `auth_mode` and presence flags only. The password, bearer token, and API key stay out of tool results, checklist evidence, creation logs, and support journals. `validate_env`, `next_step`, `readiness_check`, `smoke_test_agent`, `verify_local_setup`, and a `load_process_login` that is still missing a name keep the shorter missing-name questions.
+
 ## 0.7.9
 
 ### Added

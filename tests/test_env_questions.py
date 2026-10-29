@@ -190,3 +190,83 @@ def test_verify_local_setup_asks_when_the_app_key_is_missing(tmp_path: Path) -> 
     assert by_id["anthropic"]["model"] == "claude-opus-5-5"
     assert by_id["gemini"]["model"] == "gemini-3.8-flash"
     assert SECRET not in json.dumps(out)
+
+
+def test_sample_build_questions_prefill_text_and_hide_secrets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zeus_dev_helper_mcp.env_questions import sample_build_questions
+
+    password = "zdm48-password-sentinel"
+    bearer = "zdm48-bearer-sentinel"
+    monkeypatch.setenv("ZEUS_USERNAME", "tap-user")
+    monkeypatch.setenv("ZEUS_PASSWORD", password)
+    monkeypatch.setenv("ZEUS_BEARER_TOKEN", bearer)
+    monkeypatch.setenv("LLM_API_KEY", SECRET)
+    monkeypatch.setenv("LLM_MODEL", "grok-custom")
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("ZEUS_AUTH_MODE", raising=False)
+    root = tmp_path / "app"
+    root.mkdir()
+    (root / ".env").write_text(
+        "ZEUS_USERNAME=from-app\nZEUS_PASSWORD=from-app-secret\n",
+        encoding="utf-8",
+    )
+    rows = sample_build_questions("travel", root=root, cfg=None)
+    blob = json.dumps(rows)
+    envs = [row["env"] for row in rows if row.get("env")]
+    assert envs[0] == "ZEUS_AUTH_MODE"
+    assert envs[-1] == "LLM_API_KEY"
+    by_env = {row["env"]: row for row in rows if row.get("env")}
+    assert by_env["ZEUS_USERNAME"]["kind"] == "text"
+    assert by_env["ZEUS_USERNAME"]["default"] == "tap-user"
+    assert by_env["ZEUS_USERNAME"]["when"] == {"env": "ZEUS_AUTH_MODE", "equals": "basic"}
+    assert by_env["ZEUS_PASSWORD"]["kind"] == "password"
+    assert "default" not in by_env["ZEUS_PASSWORD"]
+    assert by_env["ZEUS_PASSWORD"]["when"]["equals"] == "basic"
+    assert by_env["ZEUS_BEARER_TOKEN"]["kind"] == "password"
+    assert by_env["ZEUS_BEARER_TOKEN"]["when"]["equals"] == "bearer"
+    assert "default" not in by_env["ZEUS_BEARER_TOKEN"]
+    assert by_env["LLM_BASE_URL"]["when"] == {"id": "llm_provider", "equals": "other"}
+    assert "default" not in by_env["LLM_BASE_URL"]
+    assert by_env["LLM_MODEL"]["kind"] == "text"
+    assert by_env["LLM_MODEL"]["default"] == "grok-custom"
+    assert by_env["LLM_API_KEY"]["kind"] == "password"
+    assert "default" not in by_env["LLM_API_KEY"]
+    provider = next(row for row in rows if row.get("id") == "llm_provider")
+    assert provider["choices"] == ["grok", "openai", "anthropic", "gemini", "other"]
+    other_name = next(row for row in rows if row.get("id") == "provider_name")
+    assert other_name["kind"] == "text"
+    assert "env" not in other_name
+    assert other_name["when"]["equals"] == "other"
+    assert password not in blob
+    assert bearer not in blob
+    assert SECRET not in blob
+    assert "from-app-secret" not in blob
+
+
+def test_beer_username_defaults_to_tester_beer_when_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from zeus_dev_helper_mcp.env_questions import sample_build_questions
+
+    monkeypatch.delenv("ZEUS_USERNAME", raising=False)
+    monkeypatch.delenv("ZEUS_USER", raising=False)
+    rows = sample_build_questions("beer")
+    username = next(row for row in rows if row.get("env") == "ZEUS_USERNAME")
+    assert username["default"] == "tester_beer"
+
+
+def test_sample_username_comes_from_the_app_env_example(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zeus_dev_helper_mcp.env_questions import sample_build_questions
+
+    monkeypatch.delenv("ZEUS_USERNAME", raising=False)
+    monkeypatch.delenv("ZEUS_USER", raising=False)
+    root = tmp_path / "travel"
+    root.mkdir()
+    (root / ".env.example").write_text("ZEUS_USERNAME=from-example\n", encoding="utf-8")
+    rows = sample_build_questions("travel", root=root)
+    username = next(row for row in rows if row.get("env") == "ZEUS_USERNAME")
+    assert username["default"] == "from-example"
