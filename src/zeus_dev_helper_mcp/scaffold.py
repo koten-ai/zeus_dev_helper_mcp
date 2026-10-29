@@ -227,6 +227,19 @@ SAMPLE_TRAVEL = {
 }
 
 
+def _with_sample_build(
+    cfg: HelperConfig,
+    payload: dict[str, Any],
+    sample: str,
+) -> dict[str, Any]:
+    """Attach the full auth and LLM question set. No secret values."""
+    from zeus_dev_helper_mcp.env_questions import attach_sample_build_ask
+
+    root = payload.get("local_dir") or payload.get("target_dir")
+    path = Path(str(root)) if isinstance(root, str) and root.strip() else None
+    return attach_sample_build_ask(payload, sample=sample, root=path, cfg=cfg)
+
+
 def use_sample(
     cfg: HelperConfig,
     sample: str = "travel",
@@ -276,30 +289,34 @@ def use_sample(
         info["sample"] = "travel"
         info["app_kind"] = "ui"
         info["private"] = False
-        return {
-            "ok": bool(golden.get("ok")),
-            "sample": info,
-            "app_kind": "ui",
-            "golden_path": golden,
-            "local_dir": golden.get("local_dir"),
-            "cloned": golden.get("cloned"),
-            "project_name": golden.get("project_name"),
-            "layout": golden.get("layout"),
-            "docker": golden.get("docker"),
-            "docker_setup": golden.get("docker_setup"),
-            "env": golden.get("env"),
-            "run": golden.get("run"),
-            "serve_choice_required": golden.get("serve_choice_required"),
-            "serve_options": golden.get("serve_options"),
-            "serve_with": golden.get("serve_with"),
-            "next_action": golden.get("next_action")
-            or (
-                "Set DEMO_TRAVEL_SAMPLE_DIR after clone, or scaffold_app "
-                "for a minimal middle-man without the full demo UI."
-            ),
-            "checklist_hint": "Mark 3.1 done after clone/scaffold succeeds",
-            "sample_readme_snippet": golden.get("sample_readme_snippet"),
-        }
+        return _with_sample_build(
+            cfg,
+            {
+                "ok": bool(golden.get("ok")),
+                "sample": info,
+                "app_kind": "ui",
+                "golden_path": golden,
+                "local_dir": golden.get("local_dir"),
+                "cloned": golden.get("cloned"),
+                "project_name": golden.get("project_name"),
+                "layout": golden.get("layout"),
+                "docker": golden.get("docker"),
+                "docker_setup": golden.get("docker_setup"),
+                "env": golden.get("env"),
+                "run": golden.get("run"),
+                "serve_choice_required": golden.get("serve_choice_required"),
+                "serve_options": golden.get("serve_options"),
+                "serve_with": golden.get("serve_with"),
+                "next_action": golden.get("next_action")
+                or (
+                    "Set DEMO_TRAVEL_SAMPLE_DIR after clone, or scaffold_app "
+                    "for a minimal middle-man without the full demo UI."
+                ),
+                "checklist_hint": "Mark 3.1 done after clone/scaffold succeeds",
+                "sample_readme_snippet": golden.get("sample_readme_snippet"),
+            },
+            "travel",
+        )
     from zeus_dev_helper_mcp.beer import SAMPLE_BEER, ensure_beer_sample, is_beer_sample
 
     if is_beer_sample(sample):
@@ -376,7 +393,7 @@ def use_sample(
         ):
             if ensured.get(key) is not None:
                 payload[key] = ensured[key]
-        return payload
+        return _with_sample_build(cfg, payload, "beer")
     from zeus_dev_helper_mcp.yelp import (
         YELP_REPO,
         YELP_REPO_GIT,
@@ -441,13 +458,13 @@ def use_sample(
         if payload.get("ok") and local:
             from zeus_dev_helper_mcp.serve_choice import annotate_serve_choice
 
-            return annotate_serve_choice(
+            payload = annotate_serve_choice(
                 payload,
                 Path(str(local)),
                 cfg=cfg,
                 serve_with=serve_with,
             )
-        return payload
+        return _with_sample_build(cfg, payload, "demo_yelp")
     if sample in ("api", "rest", "api_only", "api-only"):
         return {
             "ok": False,
@@ -644,6 +661,8 @@ def scaffold_app(
         blocked["app_kind"] = kind
         blocked["coding_language"] = lang
         blocked["target_dir"] = str(root)
+        if kind == "api":
+            return _with_sample_build(cfg, blocked, "api")
         return blocked
     if root.exists() and any(root.iterdir()) and not force:
         existing = list(root.iterdir())
@@ -862,7 +881,7 @@ dependencies = [
     if llm_key.get("applies") and not llm_key.get("ok") and llm_key.get("message"):
         next_action = f"{llm_key['message']} {next_action}"
 
-    return annotate_pour({
+    result = annotate_pour({
         "ok": True,
         "target_dir": str(root),
         "app_kind": kind,
@@ -880,6 +899,9 @@ dependencies = [
         "next_action": next_action,
         "docs": docs,
     }, catalog_ui=False)
+    if kind == "api":
+        return _with_sample_build(cfg, result, "api")
+    return result
 
 
 def missing_zeus_client_action() -> str:

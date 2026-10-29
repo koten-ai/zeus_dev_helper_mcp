@@ -1,7 +1,8 @@
-"""Tell the agent which missing env names to ask for.
+"""Tell the agent which env names to ask for.
 
-The password and the API key are never form fields and never tool arguments.
-The agent asks, writes a mode-600 env file, and calls ``load_process_login``.
+Missing-name questions stay on the model and login gates. A sample build asks
+the full auth and LLM set every time. Password fields carry no values.
+The agent writes a mode-600 env file and calls ``load_process_login``.
 """
 
 from __future__ import annotations
@@ -235,4 +236,230 @@ def attach_llm_ask(
         payload["ask_user"] = [*existing, *questions]
     else:
         payload["ask_user"] = questions
+    return payload
+
+
+_AUTH_CHOICES = ("none", "basic", "bearer")
+_BEER_USERNAME = "tester_beer"
+_TEXT_PREFILL = ("ZEUS_USERNAME", "LLM_BASE_URL", "LLM_MODEL")
+_ASSIGN_RE = re.compile(
+    r"^(?:export\s+)?(?P<key>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>.*)$"
+)
+
+
+def sample_build_ask_text() -> str:
+    """Instructions for the sample-build form. No secret values."""
+    return (
+        "This sample build shows ask_user every time, including when values "
+        "are already set. Ask each row in order and wait. Skip a row whose "
+        "when does not match the answers so far. ZEUS_AUTH_MODE is a choice "
+        "of none, basic, or bearer. basic asks ZEUS_USERNAME as text and "
+        "ZEUS_PASSWORD as a password. bearer asks ZEUS_BEARER_TOKEN as a "
+        "password. none skips username, password, and the bearer token. "
+        "Choose one llm_options entry. A named provider sets LLM_BASE_URL "
+        "from that entry. Other asks for the provider name and LLM_BASE_URL. "
+        "Ask LLM_MODEL and offer that entry's model as the default. Other "
+        "has no model default. Ask LLM_API_KEY as a password. Write the "
+        "names to a mode-600 env file and call load_process_login with that "
+        "path. Write the same names in the app .env. Leave config.json "
+        "llm.api_key_env as the name LLM_API_KEY. Call set_prereq with "
+        "auth_mode and the presence flags has_username, has_password, "
+        "has_bearer, and has_llm_key. Do not pass the password, bearer "
+        "token, or API key as a tool argument."
+    )
+
+
+def _auth_default(cfg: Any) -> str:
+    if cfg is not None:
+        raw = str(getattr(cfg, "zeus_auth_mode", "") or "").strip().lower()
+        if raw in _AUTH_CHOICES:
+            return raw
+    raw = (os.environ.get("ZEUS_AUTH_MODE") or "").strip().lower()
+    if raw in _AUTH_CHOICES:
+        return raw
+    return ""
+
+
+def _unquote_env(value: str) -> str:
+    text = value.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
+        text = text[1:-1]
+    return text.strip()
+
+
+def _file_value(path: Path, key: str) -> str:
+    if not path.is_file() or path.is_symlink():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        match = _ASSIGN_RE.match(line.strip())
+        if match is None or match.group("key") != key:
+            continue
+        return _unquote_env(match.group("value"))
+    return ""
+
+
+def _text_prefill(key: str, root: Path | None) -> str:
+    """Current text value. Password, token, and API key stay out."""
+    if key not in _TEXT_PREFILL:
+        return ""
+    if key == "ZEUS_USERNAME":
+        current = _username()
+    else:
+        current = (os.environ.get(key) or "").strip()
+    if current:
+        return current
+    if root is None:
+        return ""
+    for name in (".env", ".env.example"):
+        found = _file_value(root / name, key)
+        if found:
+            return found
+    return ""
+
+
+def _with_default(row: dict[str, Any], default: str) -> dict[str, Any]:
+    if default:
+        row["default"] = default
+    return row
+
+
+def sample_build_questions(
+    sample: str,
+    *,
+    root: Path | None = None,
+    cfg: Any = None,
+    example_text: str | None = None,
+) -> list[dict[str, Any]]:
+    """One hint per field. Text defaults only. No secret values."""
+    if example_text is not None:
+        options = llm_options(example_text)
+    else:
+        options = llm_options_for_dir(root)
+    username = _text_prefill("ZEUS_USERNAME", root)
+    if not username and (sample or "").strip().lower() == "beer":
+        username = _BEER_USERNAME
+    provider_ids = [row["id"] for row in options]
+    questions = [
+        _with_default(
+            {
+                "env": "ZEUS_AUTH_MODE",
+                "kind": "choice",
+                "choices": list(_AUTH_CHOICES),
+                "prompt": (
+                    "Ask for ZEUS_AUTH_MODE. Choices are none, basic, or bearer. "
+                    "Wait for the answer."
+                ),
+            },
+            _auth_default(cfg),
+        ),
+        _with_default(
+            {
+                "env": "ZEUS_USERNAME",
+                "kind": "text",
+                "when": {"env": "ZEUS_AUTH_MODE", "equals": "basic"},
+                "prompt": (
+                    "Ask for ZEUS_USERNAME. This is a text field. "
+                    "Wait for the answer."
+                ),
+            },
+            username,
+        ),
+        {
+            "env": "ZEUS_PASSWORD",
+            "kind": "password",
+            "when": {"env": "ZEUS_AUTH_MODE", "equals": "basic"},
+            "prompt": (
+                "Ask for ZEUS_PASSWORD. This is a password field. "
+                "Wait for the answer."
+            ),
+        },
+        {
+            "env": "ZEUS_BEARER_TOKEN",
+            "kind": "password",
+            "when": {"env": "ZEUS_AUTH_MODE", "equals": "bearer"},
+            "prompt": (
+                "Ask for ZEUS_BEARER_TOKEN. This is a password field. "
+                "Wait for the answer."
+            ),
+        },
+        {
+            "id": "llm_provider",
+            "kind": "choice",
+            "choices": provider_ids,
+            "prompt": (
+                "Ask the user to choose one entry in llm_options. "
+                "Wait for the answer. This choice has no env var."
+            ),
+        },
+        {
+            "id": "provider_name",
+            "kind": "text",
+            "when": {"id": "llm_provider", "equals": "other"},
+            "prompt": (
+                "Ask for the provider name. This is a text field. "
+                "It has no env var. Wait for the answer."
+            ),
+        },
+        _with_default(
+            {
+                "env": "LLM_BASE_URL",
+                "kind": "text",
+                "when": {"id": "llm_provider", "equals": "other"},
+                "prompt": (
+                    "Ask for LLM_BASE_URL. This is a text field. "
+                    "A named provider sets LLM_BASE_URL from llm_options "
+                    "and is not asked. Wait for the answer."
+                ),
+            },
+            _text_prefill("LLM_BASE_URL", root),
+        ),
+        _with_default(
+            {
+                "env": "LLM_MODEL",
+                "kind": "text",
+                "prompt": (
+                    "Ask for LLM_MODEL. This is a text field. Offer the chosen "
+                    "option's model as the default. Other has no default. "
+                    "Wait for the answer."
+                ),
+            },
+            _text_prefill("LLM_MODEL", root),
+        ),
+        {
+            "env": "LLM_API_KEY",
+            "kind": "password",
+            "prompt": (
+                "Ask for LLM_API_KEY. This is a password field. "
+                "Wait for the answer."
+            ),
+        },
+    ]
+    return questions
+
+
+def attach_sample_build_ask(
+    payload: dict[str, Any],
+    *,
+    sample: str,
+    root: Path | None = None,
+    cfg: Any = None,
+) -> dict[str, Any]:
+    """Replace ask_user with the sample-build form. Values stay out."""
+    payload["sample_build_form"] = True
+    payload["llm_choice_required"] = True
+    payload["llm_options"] = llm_options_for_dir(root)
+    payload["ask_user"] = sample_build_questions(sample, root=root, cfg=cfg)
+    nested = payload.get("app_config")
+    if isinstance(nested, dict) and "ask_user" in nested:
+        kept = dict(nested)
+        kept.pop("ask_user", None)
+        payload["app_config"] = kept
+    text = sample_build_ask_text()
+    prior = str(payload.get("next_action") or "").strip()
+    if text not in prior:
+        payload["next_action"] = f"{text} {prior}".strip()
     return payload

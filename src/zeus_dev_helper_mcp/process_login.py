@@ -12,7 +12,9 @@ import stat
 from pathlib import Path
 from typing import Any
 
+_AUTH_MODES = {"none", "basic", "bearer"}
 _LOGIN_KEYS = (
+    "ZEUS_AUTH_MODE",
     "ZEUS_USERNAME",
     "ZEUS_USER",
     "ZEUS_PASSWORD",
@@ -48,6 +50,10 @@ def _parse_env(text: str) -> dict[str, str]:
         value = raw.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
             value = value[1:-1]
+        if key == "ZEUS_AUTH_MODE":
+            value = value.strip().lower()
+            if value not in _AUTH_MODES:
+                continue
         if value:
             found[key] = value
     return found
@@ -64,9 +70,10 @@ def _private_file(path: Path) -> bool:
 def load_process_login(env_file: str) -> dict[str, Any]:
     """Load login from ``env_file`` into this process.
 
-    The file must be mode 600. Allowed keys are ``ZEUS_USERNAME``,
-    ``ZEUS_PASSWORD``, ``ZEUS_BEARER_TOKEN``, the LLM key names,
-    ``LLM_BASE_URL``, and ``LLM_MODEL``. The result lists names only.
+    The file must be mode 600. Allowed keys are ``ZEUS_AUTH_MODE``,
+    ``ZEUS_USERNAME``, ``ZEUS_PASSWORD``, ``ZEUS_BEARER_TOKEN``, the LLM
+    key names, ``LLM_BASE_URL``, and ``LLM_MODEL``. ``ZEUS_AUTH_MODE`` is
+    ``none``, ``basic``, or ``bearer``. The result lists names only.
     """
     raw = (env_file or "").strip()
     if not raw:

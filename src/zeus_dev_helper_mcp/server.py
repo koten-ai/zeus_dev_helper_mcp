@@ -221,14 +221,27 @@ INSTRUCTIONS = (
     "API-only: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python) "
     "(FastAPI POST /turn). Other coding languages are not scaffolded yet. "
     "Never pass username/password/token into MCP tools — env + set_prereq presence flags only. "
-    "When auth is basic, write ZEUS_USERNAME and ZEUS_PASSWORD to a mode-600 env file "
-    "and call load_process_login with that path. The password is not a tool argument. "
-    "When a result includes ask_user, ask for each env name in order and wait. "
+    "When auth is basic and a name is missing, write ZEUS_USERNAME and ZEUS_PASSWORD "
+    "to a mode-600 env file and call load_process_login with that path. The password "
+    "is not a tool argument. When a result includes ask_user, ask for each row in "
+    "order and wait. Skip a row whose when does not match. "
     "llm_options lists Grok, OpenAI, Anthropic, Gemini, and Other. "
-    "Set LLM_BASE_URL from the chosen base_url. For Other, ask for the base URL. "
-    "Then ask LLM_MODEL and offer that option's model as the default. "
+    "Set LLM_BASE_URL from the chosen base_url. For Other, ask for the provider name "
+    "and the base URL. Then ask LLM_MODEL and offer that option's model as the default. "
     "Then ask LLM_API_KEY. Write LLM_BASE_URL, LLM_MODEL, and LLM_API_KEY to the "
     "same mode-600 file. Do not pass the password or the API key as a tool argument. "
+    "use_sample for beer, travel, and demo_yelp, and scaffold_app for the API sample, "
+    "include that full ask_user set on every build, including a second build when "
+    "the env file already has values. ZEUS_AUTH_MODE is none, basic, or bearer. "
+    "basic asks ZEUS_USERNAME as text (beer default tester_beer) and ZEUS_PASSWORD "
+    "as a password. bearer asks ZEUS_BEARER_TOKEN as a password. none skips those. "
+    "Prefill text fields from the current value. Password, bearer token, and API key "
+    "have no value in the result. Also write the same names in the app .env. "
+    "config.json llm.api_key_env stays LLM_API_KEY. set_prereq stores auth_mode and "
+    "presence flags only. Those secrets stay out of checklist evidence, creation logs, "
+    "and support journals. validate_env, next_step, readiness_check, smoke_test_agent, "
+    "verify_local_setup, and a load_process_login that is still missing a name keep "
+    "the shorter missing-name questions. "
     "Knowledge is resources under zeus-helper:// (checklist, glossary, verbs, policies, catalog modes). "
     "Walkthroughs are prompts: first_green, smoke_question, support_pack. "
     "sample_support_pack(sample=beer|travel|demo_yelp) pastes the support journal "
@@ -926,9 +939,10 @@ def load_process_login(env_file: str) -> dict[str, Any]:
 
     Write ZEUS_USERNAME and ZEUS_PASSWORD to a file outside the repo or
     gitignored, chmod 600, then pass that path. The password is not an
-    argument. The same file may set LLM_BASE_URL, LLM_MODEL, and LLM_API_KEY.
-    set_prereq stores presence flags only. The result lists loaded names
-    and never values. Then readiness_check.
+    argument. The same file may set ZEUS_AUTH_MODE (none, basic, or bearer),
+    LLM_BASE_URL, LLM_MODEL, and LLM_API_KEY. set_prereq stores presence
+    flags only. The result lists loaded names and never values. Then
+    readiness_check.
     """
     return load_process_login_impl(env_file)
 
