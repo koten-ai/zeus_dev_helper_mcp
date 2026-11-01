@@ -242,6 +242,73 @@ def attach_llm_ask(
 _AUTH_CHOICES = ("none", "basic", "bearer")
 _BEER_USERNAME = "tester_beer"
 _TEXT_PREFILL = ("ZEUS_USERNAME", "LLM_BASE_URL", "LLM_MODEL")
+_NONSECRET_KEYS = frozenset(_TEXT_PREFILL) | {"ZEUS_URL"}
+_PRESENCE_KEYS = frozenset(
+    {
+        "ZEUS_PASSWORD",
+        "ZEUS_BEARER_TOKEN",
+        "LLM_API_KEY",
+        "XAI_API_KEY",
+        "OPENAI_API_KEY",
+    }
+)
+
+
+def beer_username_default() -> str:
+    return _BEER_USERNAME
+
+
+def provider_for_base_url(base_url: str) -> str:
+    """Match a base URL to a provider id. An empty URL is Grok."""
+    raw = (base_url or "").strip().rstrip("/")
+    if not raw:
+        return "grok"
+    for row in _DEFAULTS:
+        if row["base_url"].rstrip("/") == raw:
+            return row["id"]
+    return "other"
+
+
+def base_url_for_provider(provider_id: str) -> str:
+    ident = (provider_id or "").strip().lower()
+    for row in _DEFAULTS:
+        if row["id"] == ident:
+            return row["base_url"]
+    return ""
+
+
+def default_model_for_provider(provider_id: str) -> str:
+    ident = (provider_id or "").strip().lower()
+    for row in _DEFAULTS:
+        if row["id"] == ident:
+            return row["model"]
+    return ""
+
+
+def llm_base_and_model(provider_id: str, model: str, current_base: str) -> tuple[str, str]:
+    """Base URL and model for an accepted provider. ``other`` keeps the current URL."""
+    ident = (provider_id or "").strip().lower()
+    chosen = (model or "").strip()
+    if ident == "other":
+        return (current_base or "").strip(), chosen
+    for row in _DEFAULTS:
+        if row["id"] == ident:
+            return row["base_url"], chosen or row["model"]
+    return (current_base or "").strip(), chosen
+
+
+def dotenv_nonsecret(root: Path | None, key: str) -> str:
+    """Text value from the app ``.env``. Password, token, and API key stay out."""
+    if root is None or key not in _NONSECRET_KEYS:
+        return ""
+    return _file_value(Path(root) / ".env", key).strip()
+
+
+def dotenv_present(root: Path | None, key: str) -> bool:
+    """True when the app ``.env`` has a non-empty value. The value is not returned."""
+    if root is None or key not in _PRESENCE_KEYS | _NONSECRET_KEYS:
+        return False
+    return bool(_file_value(Path(root) / ".env", key).strip())
 _ASSIGN_RE = re.compile(
     r"^(?:export\s+)?(?P<key>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>.*)$"
 )

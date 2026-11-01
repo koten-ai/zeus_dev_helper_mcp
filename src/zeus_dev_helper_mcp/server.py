@@ -221,6 +221,14 @@ INSTRUCTIONS = (
     "API-only: start_project(sample=api) → scaffold_app(app_kind=api, coding_language=python) "
     "(FastAPI POST /turn). Other coding languages are not scaffolded yet. "
     "Never pass username/password/token into MCP tools — env + set_prereq presence flags only. "
+    "On the first create, before that sample's creation log exists, use_sample and "
+    "scaffold_app(app_kind=api) show an elicitation card for ZEUS_URL and ZEUS_USERNAME. "
+    "The card names the app .env. Put ZEUS_PASSWORD there. Do not type the password "
+    "into the card. When the checklist needs an LLM, a second card asks LLM_PROVIDER "
+    "and LLM_MODEL. Put LLM_API_KEY in the same .env. Do not type the key into the card. "
+    "Existing values are prefilled and can be changed. Decline or cancel does not create "
+    "the app. A sealed creation log does not open these cards. When the client cannot "
+    "show a card, keep the ask_user text. "
     "When auth is basic and a name is missing, write ZEUS_USERNAME and ZEUS_PASSWORD "
     "to a mode-600 env file and call load_process_login with that path. The password "
     "is not a tool argument. When a result includes ask_user, ask for each row in "
@@ -231,8 +239,9 @@ INSTRUCTIONS = (
     "Then ask LLM_API_KEY. Write LLM_BASE_URL, LLM_MODEL, and LLM_API_KEY to the "
     "same mode-600 file. Do not pass the password or the API key as a tool argument. "
     "use_sample for beer, travel, and demo_yelp, and scaffold_app for the API sample, "
-    "include that full ask_user set on every build, including a second build when "
-    "the env file already has values. ZEUS_AUTH_MODE is none, basic, or bearer. "
+    "include that full ask_user set when the first-create cards were not shown, "
+    "including a second build after the creation log is sealed. "
+    "ZEUS_AUTH_MODE is none, basic, or bearer. "
     "basic asks ZEUS_USERNAME as text (beer default tester_beer) and ZEUS_PASSWORD "
     "as a password. bearer asks ZEUS_BEARER_TOKEN as a password. none skips those. "
     "Prefill text fields from the current value. Password, bearer token, and API key "
@@ -270,6 +279,7 @@ def _apply_gate(outcome: Any, *, kind: str) -> tuple[Any, dict[str, Any] | None]
         or gate.has_username is not None
         or gate.has_password is not None
         or gate.has_bearer is not None
+        or gate.cards_accepted
     ):
         persist_gate(gate)
     if gate.proceed:
@@ -1072,16 +1082,21 @@ def _scaffold_app_body(
     coding_language: str = "python",
     gate_outcome: Any = UNASKED,
 ) -> dict[str, Any]:
-    _gate, blocked = _apply_gate(gate_outcome, kind="scaffold")
+    gate, blocked = _apply_gate(gate_outcome, kind="scaffold")
     if blocked is not None:
         return blocked
-    return scaffold_app_impl(
-        _cfg(),
-        target_dir,
-        project_name=project_name,
-        force=force,
-        app_kind=app_kind,
-        coding_language=coding_language,
+    from zeus_dev_helper_mcp.scaffold import apply_create_answers
+
+    return apply_create_answers(
+        scaffold_app_impl(
+            _cfg(),
+            target_dir,
+            project_name=project_name,
+            force=force,
+            app_kind=app_kind,
+            coding_language=coding_language,
+        ),
+        gate,
     )
 
 
@@ -1123,17 +1138,22 @@ def _use_sample_body(
     serve_with: str = "",
     gate_outcome: Any = UNASKED,
 ) -> dict[str, Any]:
-    _gate, blocked = _apply_gate(gate_outcome, kind="sample")
+    gate, blocked = _apply_gate(gate_outcome, kind="sample")
     if blocked is not None:
         return blocked
-    return use_sample_impl(
-        _cfg(),
-        sample=sample,
-        sample_dir=sample_dir,
-        project_name=project_name,
-        parent_dir=parent_dir,
-        clone_if_missing=clone_if_missing,
-        serve_with=serve_with,
+    from zeus_dev_helper_mcp.scaffold import apply_create_answers
+
+    return apply_create_answers(
+        use_sample_impl(
+            _cfg(),
+            sample=sample,
+            sample_dir=sample_dir,
+            project_name=project_name,
+            parent_dir=parent_dir,
+            clone_if_missing=clone_if_missing,
+            serve_with=serve_with,
+        ),
+        gate,
     )
 
 
@@ -1521,6 +1541,7 @@ def _wrap_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
             )
         except Exception:  # noqa: BLE001, S110 — the creation log must not break tools
             pass
+        _seal_finished_create(fn, kwargs, payload)
         _journal_sample_support(fn, args, kwargs, payload, None)
         if is_execution_failure(fn.__name__, payload):
             log_tool_failure(fn, payload)
@@ -1528,6 +1549,35 @@ def _wrap_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
         return payload
 
     return wrapped
+
+
+def _seal_finished_create(
+    fn: Callable[..., Any],
+    kwargs: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    """Seal a first create that the transcript writer left open.
+
+    An existing directory that is already serving does not seal the creation
+    log. Without this marker the setup card would open on every later call.
+    """
+    if payload.get("ok") is not True:
+        return
+    gate = interpret_gate(kwargs.get("clarification", UNASKED))
+    if not gate.cards_accepted:
+        return
+    from zeus_dev_helper_mcp.sample_log import seal_creation_marker
+
+    if fn.__name__ == "use_sample":
+        seal_creation_marker(_cfg(), str(kwargs.get("sample") or "travel"))
+        return
+    if fn.__name__ != "scaffold_app":
+        return
+    from zeus_dev_helper_mcp.clarify import _is_api_kind
+
+    kind = str(kwargs.get("app_kind") or "")
+    if _is_api_kind(kind):
+        seal_creation_marker(_cfg(), kind, api=True)
 
 
 def _journal_sample_support(
@@ -1558,8 +1608,9 @@ if _HAS_ELICIT:
 
     from zeus_dev_helper_mcp.clarify import (
         Clarification,
+        clarify_api_llm,
         clarify_project,
-        clarify_scaffold,
+        clarify_sample_llm,
         clarify_url_argument,
     )
 
@@ -1614,7 +1665,7 @@ if _HAS_ELICIT:
         parent_dir: str = "",
         clone_if_missing: bool = True,
         serve_with: str = "",
-        clarification: Annotated[ElicitationResult[Clarification], Resolve(clarify_project)] = UNASKED,
+        clarification: Annotated[ElicitationResult[Clarification], Resolve(clarify_sample_llm)] = UNASKED,
     ) -> dict[str, Any]:
         return _use_sample_body(
             sample=sample,
@@ -1632,7 +1683,7 @@ if _HAS_ELICIT:
         force: bool = False,
         app_kind: str = "cli",
         coding_language: str = "python",
-        clarification: Annotated[ElicitationResult[Clarification], Resolve(clarify_scaffold)] = UNASKED,
+        clarification: Annotated[ElicitationResult[Clarification], Resolve(clarify_api_llm)] = UNASKED,
     ) -> dict[str, Any]:
         return _scaffold_app_body(
             target_dir,

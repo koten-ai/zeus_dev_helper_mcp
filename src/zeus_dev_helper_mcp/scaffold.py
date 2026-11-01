@@ -240,6 +240,39 @@ def _with_sample_build(
     return attach_sample_build_ask(payload, sample=sample, root=path, cfg=cfg)
 
 
+def apply_create_answers(payload: dict[str, Any], gate: Any) -> dict[str, Any]:
+    """Merge accepted non-secrets into an existing or just-written app ``.env``.
+
+    An existing beer directory still reaches this path. ``ZEUS_PASSWORD`` and
+    ``LLM_API_KEY`` are left unchanged. After the cards are accepted, the chat
+    ``ask_user`` list is dropped so the model does not ask those names again.
+    """
+    if not getattr(gate, "cards_accepted", False) or not isinstance(payload, dict):
+        return payload
+    root = payload.get("local_dir") or payload.get("target_dir")
+    if isinstance(root, str) and root.strip() and Path(root).is_dir():
+        from zeus_dev_helper_mcp.app_env import overlay_nonsecret_env
+
+        updates: dict[str, str] = {}
+        url = str(getattr(gate, "zeus_url", "") or "").strip()
+        if url:
+            updates["ZEUS_URL"] = url
+        updates["ZEUS_USERNAME"] = str(getattr(gate, "zeus_username", "") or "")
+        if str(getattr(gate, "llm_provider", "") or "").strip():
+            base = str(getattr(gate, "llm_base_url", "") or "").strip()
+            model = str(getattr(gate, "llm_model", "") or "").strip()
+            if base:
+                updates["LLM_BASE_URL"] = base
+            if model:
+                updates["LLM_MODEL"] = model
+        overlay_nonsecret_env(root, updates)
+    if payload.get("ok") is True:
+        payload.pop("ask_user", None)
+        payload.pop("sample_build_form", None)
+        payload.pop("llm_choice_required", None)
+    return payload
+
+
 def use_sample(
     cfg: HelperConfig,
     sample: str = "travel",
