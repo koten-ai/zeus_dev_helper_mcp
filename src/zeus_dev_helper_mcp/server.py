@@ -9,6 +9,9 @@ from typing import Annotated, Any
 
 from zeus_dev_helper_mcp import __version__
 from zeus_dev_helper_mcp.bootstrap import bootstrap_scope as bootstrap_scope_impl
+from zeus_dev_helper_mcp.business_rules import (
+    inject_business_rules as inject_business_rules_impl,
+)
 from zeus_dev_helper_mcp.cache import (
     semantic_cache_status as semantic_cache_status_impl,
 )
@@ -257,6 +260,9 @@ INSTRUCTIONS = (
     "sample_support_pack(sample=beer|travel|demo_yelp) pastes the support journal "
     "for a red beer, travel, or yelp-demo gate. It writes nothing and calls no "
     "Zeus API. Session ids stay in support_pack_from_turn. "
+    "When the user asks to add or inject a business rule and does not name an app, "
+    "call inject_business_rules. When the result has ask_user, ask and wait, then "
+    "call again with app_dir or sample. "
     "After 5.1+5.2 green: data-plane and multi-agent are handoffs only. "
     "A one-scope catalog page does not take handoff_to_multi as the next build step. "
     "A job hint is two or more Zeus URLs, two or more scopes, or a report wait of "
@@ -1398,6 +1404,30 @@ def explain_req_id_policy() -> dict[str, Any]:
 def detective_links(req_id: str = "", chat_id: str = "", zeus_url: str = "") -> dict[str, Any]:
     """Hub Detective URL templates only — no scrape (ZDH-23)."""
     return detective_links_impl(_cfg(), req_id=req_id, chat_id=chat_id, zeus_url=zeus_url)
+
+
+def inject_business_rules(
+    app_dir: str = "",
+    sample: str = "",
+    rules: dict[str, str] | None = None,
+    remove: list[str] | None = None,
+    replace: bool = False,
+) -> dict[str, Any]:
+    """Write named business rules into the current Zeus app.
+
+    Omit app_dir and sample to use the current directory when it is a Zeus app,
+    otherwise the checklist sample (the beer app just created). ask_user means
+    ask and wait, then call again. An explicit path that is not a Zeus app
+    returns not_a_zeus_app and does not write.
+    """
+    return inject_business_rules_impl(
+        _cfg(),
+        app_dir=app_dir,
+        sample=sample,
+        rules=rules,
+        remove=remove,
+        replace=replace,
+    )
 
 
 def sample_support_pack(sample: str = "") -> dict[str, Any]:

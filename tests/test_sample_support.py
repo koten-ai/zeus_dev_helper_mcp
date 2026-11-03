@@ -450,7 +450,7 @@ def test_wrapper_ignores_a_journal_failure(
 
 def test_support_pack_is_a_read_only_core_tool() -> None:
     assert "sample_support_pack" in DEFAULT_CORE_TOOLS
-    assert default_core_count() == 16
+    assert default_core_count() == 17
     assert default_core_count() <= CORE_CAP
     meta = TOOL_META_BY_NAME["sample_support_pack"]
     assert meta.read_only is True

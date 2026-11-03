@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 _ROOT = Path(__file__).resolve().parent
 load_dotenv(_ROOT / ".env")
 
-from zeus_client import ClientSettings, ZeusRuntime  # noqa: E402
+from zeus_client import ZeusRuntime  # noqa: E402
 from zeus_client.adapters.catalog_fs.store import FsCatalogStore  # noqa: E402
 from zeus_client.adapters.llm_openai_compatible import OpenAICompatibleLlmClient  # noqa: E402
 from zeus_client.adapters.zeus_http import HttpxZeusPort  # noqa: E402
@@ -65,7 +65,7 @@ async def main() -> None:
 
         result = await rt.agent.run_turn(
             question,
-            settings=ClientSettings(ai_process_result=False),
+            settings=rt.config.settings,
             chat_request=chat_request,
         )
         print("Answer:", result.answer)
@@ -108,7 +108,7 @@ from pydantic import BaseModel, Field
 _ROOT = Path(__file__).resolve().parent
 load_dotenv(_ROOT / ".env")
 
-from zeus_client import ClientSettings, ZeusRuntime  # noqa: E402
+from zeus_client import ZeusRuntime  # noqa: E402
 from zeus_client.adapters.catalog_fs.store import FsCatalogStore  # noqa: E402
 from zeus_client.adapters.llm_openai_compatible import OpenAICompatibleLlmClient  # noqa: E402
 from zeus_client.adapters.zeus_http import HttpxZeusPort  # noqa: E402
@@ -179,7 +179,7 @@ async def turn(body: TurnRequest) -> TurnResponse:
         chat_request = None
     result = await _runtime.agent.run_turn(
         body.question,
-        settings=ClientSettings(ai_process_result=False),
+        settings=_runtime.config.settings,
         chat_request=chat_request,
     )
     session = result.session
