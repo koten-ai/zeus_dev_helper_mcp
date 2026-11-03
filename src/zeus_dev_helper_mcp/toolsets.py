@@ -17,7 +17,7 @@ HANDOFF = "handoff"
 ALL = "all"
 
 NAMED_TOOLSETS = frozenset({CORE, CATALOG, LINT, TRAVEL, SUPPORT, HANDOFF})
-CORE_CAP = 16
+CORE_CAP = 17
 
 # name, toolsets (comma), read_only, destructive, idempotent, open_world
 _ROWS: tuple[tuple[str, str, bool, bool, bool, bool], ...] = (
@@ -39,6 +39,7 @@ _ROWS: tuple[tuple[str, str, bool, bool, bool, bool], ...] = (
     ("bootstrap_scope", CATALOG, False, False, True, True),
     ("scaffold_app", CORE, False, True, False, True),
     ("use_sample", CORE, False, False, True, True),
+    ("inject_business_rules", CORE, False, False, True, False),
     ("travel_golden_path", TRAVEL, False, False, True, False),
     ("write_env", SUPPORT, False, False, True, False),
     ("verify_local_setup", SUPPORT, True, False, True, False),

@@ -2,7 +2,7 @@
 
 Coach map for the Developer Helper MCP: **when** to call each tool, **args that matter**, **side effects**, and **do-not**.
 
-Default `tools/list` is the **`core`** toolset (≤16). Extra tools are static opt-in via `ZEUS_DEV_HELPER_TOOLSETS` (`catalog`, `lint`, `travel`, `support`, `handoff`, or `all`). This file still documents the full catalog.
+Default `tools/list` is the **`core`** toolset (≤17). Extra tools are static opt-in via `ZEUS_DEV_HELPER_TOOLSETS` (`catalog`, `lint`, `travel`, `support`, `handoff`, or `all`). This file still documents the full catalog.
 
 Knowledge (glossary, verbs, checklist, policies, catalog modes) is MCP **resources** under `zeus-helper://`. Walkthroughs are MCP **prompts** (`first_green`, `smoke_question`, `support_pack`).
 
@@ -173,8 +173,9 @@ Prefer a **live Zeus stamp**. `zeus_chat_request` is min templates only.
 | `verify_local_setup` | `zeus_client` import + Python 3.11+ + scaffold files + app LLM key presence | `target_dir` | `state` when the app key check or the Python check applies | After files exist, before smokes. Pass the sample directory. The `zeus_client` import runs in this Helper process. A failure names that interpreter and says the app `.venv` does not satisfy the check. `next_action` installs the `agent` extra into the Helper environment and says to restart the MCP server. That line is the support-journal message. Probes `<app>/.venv/bin/python` when that file exists, otherwise `python3` on PATH. Marks checklist 1.1 done when that interpreter is Python 3.11 or newer, and blocked when it is older. Checks that `.env` has the variable named by `config.json` `llm.api_key_env` (presence only) and that the name is `LLM_API_KEY` or another env-var name. A missing key includes the same `llm_options` list. Marks checklist 3.2 done only when that passes. |
 | `lint_runtime_config` | Lint `config.json`: `:8080`, `auth_mode`, env **names**, cheap path, cache off | `path` | none (redacts secrets) | Before agent smoke and before Pour. Hub port is an error. `llm.api_key_env` must be an env-var name such as `LLM_API_KEY`; a secret in that field is `llm_key_missing`. |
 | `lint_app_code` | Anti-example scan of `main.py` / Dockerfiles (stale V1, hash literals, `:9091`) | `path` (file or dir) | none | Before calling the path “production-ish”. |
+| `inject_business_rules` | Merge named business rules into the app `config.json` `settings.rules` | optional `app_dir`, optional `sample=beer\|travel\|demo_yelp\|api`, `rules` object of id to one sentence, optional `remove`, `replace=false` | `disk` | When the user asks to add or inject a business rule. Resolution stops at the first hit: explicit `app_dir`, explicit `sample`, the current directory when it is a Zeus app, then the checklist sample (the beer app just created). A miss returns `app_required` and `ask_user`. Ask, wait, and call again with `app_dir` or `sample`. An explicit path that is not a Zeus app returns `not_a_zeus_app` and the message `app is not a Zeus enabled app`, with no further search and no `ask_user`. Empty `rules` and empty `remove` reads the current map and writes nothing. The same id is replaced. Other ids stay. `replace=true` replaces the map. Jailbreak ids (`ignore_system`, `no_prompt_dump`, `no_unrestricted_agent`, `no_invent_data`, `no_secrets`, `stay_in_company_context`) return `jailbreak_rule_protected` and leave the file unchanged. A bad id or a secret-shaped sentence returns `rule_invalid` and leaves the file unchanged. The tool writes `config.json` only. `injected` is true when the app passes loaded settings (`settings=cfg.settings`, `settings=rt.config.settings`, or `settings=_runtime.config.settings`) and does not build `ClientSettings`. A hand-built `ClientSettings`, including travel and yelp, returns `wire_required` and the Python stays unchanged. The agent passes `settings.rules` into that constructor. The result lists ids and actions. It does not return the config body. Restart the app after a write. The tool does not start it. |
 
-**Do not:** commit `.env`. Do not paste the API key into `llm.api_key_env` or into a tool argument. Do not emit V1 `ZeusClient` / `run_agent` from `scaffold_app`. Do not treat Helper as an existing-app integrator — point users at `demo_travel_sample`.
+**Do not:** commit `.env`. Do not paste the API key into `llm.api_key_env` or into a tool argument. Do not emit V1 `ZeusClient` / `run_agent` from `scaffold_app`. Do not treat Helper as an existing-app integrator — point users at `demo_travel_sample`. Do not write jailbreak ids or a config body from `inject_business_rules`. Do not parse the user’s sentence inside that tool. The agent turns it into an id and one sentence first.
 
 ---
 
@@ -309,6 +310,8 @@ Returned on red paths (`failure_class` + `next_action`). Do not invent new ones 
 **ZDM-4 (beer Direct lab):** `session_force_closed`, `empty_find_get`, `fts_doc_key_only`.
 
 **ZDM-44 (serve choice):** `serve_choice_required` (both a Dockerfile and a compose file are present, the app is not listening, and `serve_with` is empty — Python was not started), `docker_not_started` (the user chose Docker — Compose was not run), `serve_choice_unavailable` (`serve_with` is not `python` or `docker`, or Docker was chosen and the checkout has no Dockerfile and compose file).
+
+**Business rules:** `app_required` (no app was named and neither the current directory nor the checklist sample is a Zeus app), `not_a_zeus_app` (the named path is not a Zeus app — message `app is not a Zeus enabled app`), `jailbreak_rule_protected`, `rule_invalid`.
 
 `diagnose_error` also maps well-known client ErrorCode strings (`030005`, `060010`, `060004`, `050010`, …) without importing the SDK on the default extra.
 

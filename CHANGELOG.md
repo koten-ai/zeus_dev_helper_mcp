@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- `inject_business_rules` writes named business rules into the current Zeus app `config.json` `settings.rules` and does not edit application Python. An omitted app uses the current directory when that directory is a Zeus app, otherwise the checklist sample, so a beer app just created receives the rule. When neither is a Zeus app, the result is `app_required` and `ask_user`. An explicit path that is not a Zeus app returns `not_a_zeus_app` and the message `app is not a Zeus enabled app`. Jailbreak ids and secret-shaped sentences are refused and the file stays unchanged. `injected` is true when the app passes loaded settings (`settings=cfg.settings`, `settings=rt.config.settings`, or `settings=_runtime.config.settings`) and does not build `ClientSettings`. A hand-built `ClientSettings`, including travel and yelp, returns `wire_required` and leaves the Python unchanged. New CLI and API scaffolds pass the loaded settings. The core tool cap is 17.
+
 ### Changed
 - The host-tool names live once, on `next_action`. An LLM provider option label is the display name and the id, for example `Grok (grok)`. First-create cards use the directory beer, travel, yelp, or `scaffold_app` will write.
 
