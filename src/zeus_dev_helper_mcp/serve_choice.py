@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from zeus_dev_helper_mcp.config import HelperConfig
+from zeus_dev_helper_mcp.env_questions import HOST_FORM
 
 _COMPOSE_NAMES = (
     "docker-compose.yml",
@@ -25,9 +26,12 @@ _PORT_RE = re.compile(r"(\d{2,5})\s*:\s*\d{2,5}")
 _STATE_NAME = "serve_choice.json"
 
 ASK = (
-    "Ask the user whether to serve this app with Python or Docker. "
-    "Wait for the answer. Do not start either command until they choose. "
-    "Pass serve_with=python or serve_with=docker to use_sample or website_green. "
+    f"{HOST_FORM} "
+    "Pass host_question. "
+    "The selected label Python is serve_with=python. "
+    "The selected label Docker is serve_with=docker. "
+    "Pass that value to use_sample or website_green. "
+    "Do not start either command until they choose. "
     "The commands are in serve_options. The helper does not run Docker."
 )
 
@@ -159,6 +163,52 @@ def python_serve_command(root: Path) -> tuple[str, str]:
     if pyproject.is_file():
         return f"cd {root} && {setup} && pip install -e .", "http://127.0.0.1:8000/"
     return f"cd {root} && {setup}", "http://127.0.0.1:8000/"
+
+
+SERVE_CHOICE_FIELDS = (
+    "serve_choice_required",
+    "serve_options",
+    "serve_with",
+    "host_question",
+)
+
+
+def open_serve_choice(
+    options: list[dict[str, str]],
+    *,
+    next_action: str | None = None,
+) -> dict[str, Any]:
+    """The open Python-or-Docker result. Callers do not build this shape themselves."""
+    return {
+        "serve_choice_required": True,
+        "serve_with": "",
+        "run": "",
+        "serve_options": options,
+        "host_question": host_question_for(options),
+        "next_action": ASK if next_action is None else next_action,
+    }
+
+
+def copy_serve_choice(src: dict[str, Any], dest: dict[str, Any]) -> None:
+    """Copy the serve-choice fields that are present. Absent means leave dest alone."""
+    for key in SERVE_CHOICE_FIELDS:
+        if src.get(key) is not None:
+            dest[key] = src[key]
+
+
+def host_question_for(options: list[dict[str, str]]) -> dict[str, Any]:
+    """One host-form question. Labels are Python and Docker. No secrets."""
+    rows: list[dict[str, str]] = []
+    for item in options:
+        parts = [item["run"], f"Open {item['url']}."]
+        notes = item.get("notes")
+        if notes:
+            parts.append(notes)
+        rows.append({"label": item["label"], "description": " ".join(parts)})
+    return {
+        "question": "Serve this app with Python or Docker?",
+        "options": rows,
+    }
 
 
 def serve_options(root: Path) -> list[dict[str, str]]:
@@ -299,7 +349,8 @@ def annotate_serve_choice(
     if isinstance(docker_hint, dict):
         docker_hint = dict(docker_hint)
         docker_hint["next_action"] = (
-            "Choose Python or Docker. Commands are in serve_options."
+            "Follow host_question on this result and wait. "
+            "Commands are in serve_options."
         )
         result["docker"] = docker_hint
     if not valid:
@@ -310,6 +361,7 @@ def annotate_serve_choice(
         if cfg is not None:
             remember_serve_with(cfg, root, parsed)
         result["serve_choice_required"] = False
+        result.pop("host_question", None)
         result["serve_with"] = parsed
         result["run"] = picked["run"]
         result["next_action"] = (
@@ -321,8 +373,5 @@ def annotate_serve_choice(
         ).strip()
         return result
 
-    result["serve_choice_required"] = True
-    result["serve_with"] = ""
-    result["run"] = ""
-    result["next_action"] = f"{ASK} {tail}".strip()
+    result.update(open_serve_choice(options, next_action=f"{ASK} {tail}".strip()))
     return result

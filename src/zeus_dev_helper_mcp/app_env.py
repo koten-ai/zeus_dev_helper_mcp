@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -392,6 +393,54 @@ def _ensure_gitignore(root: Path) -> bool:
         suffix = "" if existing.endswith("\n") else "\n"
         path.write_text(existing + suffix + ".env\n", encoding="utf-8")
     return True
+
+
+_OVERLAY_KEYS = ("ZEUS_URL", "ZEUS_USERNAME", "LLM_BASE_URL", "LLM_MODEL")
+
+
+def overlay_nonsecret_env(root: str | Path, updates: Mapping[str, str]) -> None:
+    """Replace accepted non-secret keys. Leave every other line unchanged.
+
+    ``ZEUS_PASSWORD`` and ``LLM_API_KEY`` stay as they are, including an
+    empty or quoted value. A missing ``.env`` is created with only the
+    accepted keys.
+    """
+    chosen = {
+        key: updates[key]
+        for key in _OVERLAY_KEYS
+        if key in updates
+    }
+    if not chosen:
+        return
+    path = Path(root).expanduser().resolve() / ".env"
+    if path.is_symlink():
+        return
+    existing = ""
+    if path.is_file():
+        try:
+            existing = path.read_text(encoding="utf-8")
+        except OSError:
+            existing = ""
+    seen: set[str] = set()
+    out_lines: list[str] = []
+    for raw in existing.splitlines():
+        match = _ASSIGN_RE.match(raw.strip())
+        if match is not None and match.group("key") in chosen:
+            key = match.group("key")
+            seen.add(key)
+            prefix = "export " if match.group("export") else ""
+            out_lines.append(f"{prefix}{key}={_format_value(chosen[key])}")
+            continue
+        out_lines.append(raw)
+    for key in _OVERLAY_KEYS:
+        if key in chosen and key not in seen:
+            out_lines.append(f"{key}={_format_value(chosen[key])}")
+    text = "\n".join(out_lines)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    if not path.parent.is_dir():
+        return
+    _write_private(path, text)
 
 
 def ensure_app_env(cfg: HelperConfig, target_dir: str | Path) -> dict[str, Any]:

@@ -611,8 +611,8 @@ def _serve_choice_block(
 ) -> dict[str, Any] | None:
     """Stop before Python starts when the user has not chosen, or chose Docker."""
     from zeus_dev_helper_mcp.serve_choice import (
-        ASK,
         has_serve_choice,
+        open_serve_choice,
         parse_serve_with,
         remember_serve_with,
         serve_options,
@@ -649,12 +649,8 @@ def _serve_choice_block(
     if chosen not in {"python", "docker"}:
         return _result(
             failure_class="serve_choice_required",
-            next_action=ASK,
-            serve_choice_required=True,
-            serve_options=options,
-            serve_with="",
-            run="",
             recommended_tools=[],
+            **open_serve_choice(options),
         )
     remember_serve_with(cfg, root, chosen)
     if chosen == "python":

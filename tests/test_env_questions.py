@@ -235,6 +235,14 @@ def test_sample_build_questions_prefill_text_and_hide_secrets(
     assert "default" not in by_env["LLM_API_KEY"]
     provider = next(row for row in rows if row.get("id") == "llm_provider")
     assert provider["choices"] == ["grok", "openai", "anthropic", "gemini", "other"]
+    assert next(item["label"] for item in provider["options"]) == "Grok (grok)"
+    assert "id=" not in provider["options"][0]["description"]
+    auth = by_env["ZEUS_AUTH_MODE"]
+    assert [item["label"] for item in auth["options"]] == ["none", "basic", "bearer"]
+    assert "options" not in by_env["ZEUS_PASSWORD"]
+    assert "options" not in by_env["LLM_API_KEY"]
+    assert "ask_user_question" not in auth["prompt"]
+    assert "ZEUS_AUTH_MODE" in auth["prompt"]
     other_name = next(row for row in rows if row.get("id") == "provider_name")
     assert other_name["kind"] == "text"
     assert "env" not in other_name

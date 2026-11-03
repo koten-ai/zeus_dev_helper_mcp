@@ -332,6 +332,24 @@ def _resolve_clone_dest(
     return parent / sanitize_travel_dir_name(project_name)
 
 
+def travel_destination(
+    cfg: HelperConfig | None,
+    *,
+    sample_dir: str = "",
+    project_name: str = "",
+    parent_dir: str = "",
+) -> Path:
+    """Directory ``ensure_travel_sample`` will read, or clone into when missing."""
+    found = _find_travel_dir(sample_dir, cfg=cfg)
+    if found is not None:
+        return found
+    return _resolve_clone_dest(
+        sample_dir=sample_dir,
+        project_name=project_name,
+        parent_dir=parent_dir,
+    )
+
+
 def ensure_travel_sample(
     cfg: HelperConfig,
     *,
@@ -348,34 +366,32 @@ def ensure_travel_sample(
     - On success, sets process env DEMO_TRAVEL_SAMPLE_DIR and persists state.
     """
     dir_name = sanitize_travel_dir_name(project_name)
-    found = _find_travel_dir(sample_dir, cfg=cfg)
+    dest = travel_destination(
+        cfg,
+        sample_dir=sample_dir,
+        project_name=project_name,
+        parent_dir=parent_dir,
+    )
     clone_info: dict[str, Any] | None = None
+    found = dest if dest.is_dir() else None
 
     if found is None and clone_if_missing:
-        dest = _resolve_clone_dest(
-            sample_dir=sample_dir,
-            project_name=project_name,
-            parent_dir=parent_dir,
-        )
-        if dest.is_dir():
+        clone_info = clone_travel_sample(dest=dest)
+        if clone_info.get("ok"):
             found = dest
         else:
-            clone_info = clone_travel_sample(dest=dest)
-            if clone_info.get("ok"):
-                found = dest
-            else:
-                return {
-                    "ok": False,
-                    "local_dir": None,
-                    "cloned": False,
-                    "project_name": dir_name,
-                    "clone": clone_info,
-                    "env": {ENV_TRAVEL_DIR: None},
-                    "next_action": clone_info.get("next_action")
-                    or "Clone manually and set DEMO_TRAVEL_SAMPLE_DIR, or scaffold_app",
-                    "repo": TRAVEL_REPO,
-                    "private": False,
-                }
+            return {
+                "ok": False,
+                "local_dir": None,
+                "cloned": False,
+                "project_name": dir_name,
+                "clone": clone_info,
+                "env": {ENV_TRAVEL_DIR: None},
+                "next_action": clone_info.get("next_action")
+                or "Clone manually and set DEMO_TRAVEL_SAMPLE_DIR, or scaffold_app",
+                "repo": TRAVEL_REPO,
+                "private": False,
+            }
 
     if found is None:
         return {
@@ -809,9 +825,11 @@ def travel_golden_path(
 
     if root is not None and has_serve_choice(root):
         phase5 = (
-            "Ask the user to choose Python or Docker before starting the UI. "
-            'Python is pip install -e ".[dev]" && python -m travel_planner. '
-            "Docker is docker compose up --build. Then smoke_test_zeus."
+            "Follow host_question on this result and wait. "
+            "Python is serve_with=python. Docker is serve_with=docker. "
+            "The Python command is "
+            'pip install -e ".[dev]" && python -m travel_planner. '
+            "The Docker command is docker compose up --build. Then smoke_test_zeus."
         )
     elif docker and docker.get("ok"):
         phase5 = (
