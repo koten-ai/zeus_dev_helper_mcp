@@ -262,7 +262,9 @@ INSTRUCTIONS = (
     "Zeus API. Session ids stay in support_pack_from_turn. "
     "When the user asks to add or inject a business rule and does not name an app, "
     "call inject_business_rules. When the result has ask_user, ask and wait, then "
-    "call again with app_dir or sample. "
+    "call again with app_dir or sample. wire_required means the app builds "
+    "ClientSettings itself. Pass settings.rules into that constructor. The tool "
+    "writes config.json only. "
     "After 5.1+5.2 green: data-plane and multi-agent are handoffs only. "
     "A one-scope catalog page does not take handoff_to_multi as the next build step. "
     "A job hint is two or more Zeus URLs, two or more scopes, or a report wait of "
@@ -1418,7 +1420,9 @@ def inject_business_rules(
     Omit app_dir and sample to use the current directory when it is a Zeus app,
     otherwise the checklist sample (the beer app just created). ask_user means
     ask and wait, then call again. An explicit path that is not a Zeus app
-    returns not_a_zeus_app and does not write.
+    returns not_a_zeus_app and does not write. wire_required means the app
+    builds ClientSettings itself. Pass settings.rules into that constructor.
+    This tool writes config.json only.
     """
     return inject_business_rules_impl(
         _cfg(),

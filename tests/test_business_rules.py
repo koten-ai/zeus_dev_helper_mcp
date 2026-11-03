@@ -249,31 +249,101 @@ def test_jailbreak_id_and_secret_leave_the_file(cfg: HelperConfig, tmp_path: Pat
     assert (app / "config.json").read_bytes() == before
 
 
-def test_scaffold_call_is_patched(cfg: HelperConfig, tmp_path: Path) -> None:
+def test_hand_built_client_settings_stays_unpatched(
+    cfg: HelperConfig, tmp_path: Path
+) -> None:
     app = _zeus(tmp_path / "api", _SCAFFOLD_MAIN)
+    before = (app / "main.py").read_bytes()
     out = _inject(cfg, app_dir=str(app), rules=_COUPON)
-    text = (app / "main.py").read_text(encoding="utf-8")
-    assert "settings=rt.config.settings" in text
-    assert "ClientSettings(ai_process_result=False)" not in text
-    assert out["injected"] is True
+    assert (app / "main.py").read_bytes() == before
+    assert out["injected"] is False
+    assert out["wire_required"] is True
+    assert out["written"] is True
+    assert "patched" not in out
+    assert _rules(app) == _COUPON
     api = _zeus(tmp_path / "fast", _API_MAIN)
-    _inject(cfg, app_dir=str(api), rules=_COUPON)
-    api_text = (api / "main.py").read_text(encoding="utf-8")
-    assert "settings=_runtime.config.settings" in api_text
+    api_before = (api / "main.py").read_bytes()
+    api_out = _inject(cfg, app_dir=str(api), rules=_COUPON)
+    assert (api / "main.py").read_bytes() == api_before
+    assert api_out["wire_required"] is True
 
 
-def test_travel_rules_kw_is_inserted_once(cfg: HelperConfig, tmp_path: Path) -> None:
+def test_travel_constructor_stays_unpatched(cfg: HelperConfig, tmp_path: Path) -> None:
     app = _zeus(tmp_path / "travel", "")
     factory = app / "src" / "travel_planner" / "runtime_factory.py"
     factory.parent.mkdir(parents=True)
     factory.write_text(_TRAVEL_FACTORY, encoding="utf-8")
-    first = _inject(cfg, app_dir=str(app), rules=_COUPON)
-    text = factory.read_text(encoding="utf-8")
-    assert text.count("rules=") == 1
-    assert 'isinstance(settings_raw.get("rules"), dict)' in text
-    assert first["injected"] is True
-    _inject(cfg, app_dir=str(app), rules=_FREEBIE)
-    assert factory.read_text(encoding="utf-8") == text
+    out = _inject(cfg, app_dir=str(app), rules=_COUPON)
+    assert factory.read_text(encoding="utf-8") == _TRAVEL_FACTORY
+    assert out["injected"] is False
+    assert out["wire_required"] is True
+    assert _rules(app) == _COUPON
+
+
+def test_yelp_constructors_stay_unpatched(cfg: HelperConfig, tmp_path: Path) -> None:
+    app = _zeus(tmp_path / "yelp", "")
+    live = app / "src" / "local_guide" / "live_search.py"
+    search = app / "src" / "local_guide" / "search.py"
+    live.parent.mkdir(parents=True)
+    live_text = "def _runtime_config(cfg):\n    return ClientSettings(mode='analytics')\n"
+    search_text = "def search():\n    settings = ClientSettings(ai_process_result=False)\n"
+    live.write_text(live_text, encoding="utf-8")
+    search.write_text(search_text, encoding="utf-8")
+    out = _inject(cfg, app_dir=str(app), rules=_COUPON)
+    assert live.read_text(encoding="utf-8") == live_text
+    assert search.read_text(encoding="utf-8") == search_text
+    assert out["injected"] is False
+    assert out["wire_required"] is True
+    assert _rules(app) == _COUPON
+
+
+def test_loaded_settings_without_client_settings_is_injected(
+    cfg: HelperConfig, tmp_path: Path
+) -> None:
+    app = _zeus(
+        tmp_path / "cli",
+        "await rt.agent.run_turn(question, settings=rt.config.settings)\n",
+    )
+    out = _inject(cfg, app_dir=str(app), rules=_COUPON)
+    assert out["injected"] is True
+    assert out["wire_required"] is False
+    api = _zeus(
+        tmp_path / "api",
+        "await _runtime.agent.run_turn(question, settings=_runtime.config.settings)\n",
+    )
+    assert _inject(cfg, app_dir=str(api), rules=_COUPON)["injected"] is True
+
+
+def test_client_settings_blocks_loaded_settings(
+    cfg: HelperConfig, tmp_path: Path
+) -> None:
+    app = _zeus(tmp_path / "app", _BEER_MAIN)
+    extra = app / "src" / "extra.py"
+    extra.parent.mkdir(parents=True)
+    extra_text = "settings = ClientSettings(mode='analytics')\n"
+    extra.write_text(extra_text, encoding="utf-8")
+    out = _inject(cfg, app_dir=str(app), rules=_COUPON)
+    assert out["injected"] is False
+    assert out["wire_required"] is True
+    assert (app / "main.py").read_text(encoding="utf-8") == _BEER_MAIN
+    assert extra.read_text(encoding="utf-8") == extra_text
+
+
+def test_replace_and_remove_lists_every_dropped_id(
+    cfg: HelperConfig, tmp_path: Path
+) -> None:
+    app = _zeus(tmp_path / "app", _BEER_MAIN)
+    _inject(cfg, app_dir=str(app), rules={**_COUPON, **_FREEBIE})
+    out = _inject(
+        cfg,
+        app_dir=str(app),
+        rules=_COUPON,
+        remove=["no_invent_promos"],
+        replace=True,
+    )
+    assert out["rules"] == _COUPON
+    assert {"id": "coupon_presented", "action": "unchanged"} in out["changes"]
+    assert {"id": "no_invent_promos", "action": "removed"} in out["changes"]
 
 
 def test_unknown_client_settings_is_wire_required(cfg: HelperConfig, tmp_path: Path) -> None:
