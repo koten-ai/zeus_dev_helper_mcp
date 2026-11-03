@@ -62,8 +62,17 @@ def test_written_beer_app_asks_before_starting(tmp_path: Path) -> None:
     assert out["serve_choice_required"] is True
     assert out["run"] == ""
     action = out["next_action"]
-    assert "Ask the user whether to serve" in action
+    assert "ask_user_question" in action
+    assert "AskUserQuestion" in action
+    assert "request_user_input" in action
+    assert "Wait" in action
+    assert "serve_with=python" in action
     assert "python main.py" not in action
+    question = out["host_question"]
+    assert question["question"]
+    labels = [item["label"] for item in question["options"]]
+    assert labels == ["Python", "Docker"]
+    assert all(item["description"] for item in question["options"])
     assert "docker compose up --build" not in action
     assert "Do not clone demo_travel_sample." in action
     options = {item["id"]: item for item in out["serve_options"]}
@@ -98,6 +107,7 @@ def test_serve_with_docker_records_one_command(tmp_path: Path) -> None:
     assert chosen["serve_choice_required"] is False
     assert chosen["serve_with"] == "docker"
     assert chosen["run"].endswith("docker compose up --build")
+    assert "host_question" not in chosen
     assert "The user chose Docker." in chosen["next_action"]
     assert "python main.py" not in chosen["next_action"]
     saved = json.loads(
@@ -145,15 +155,20 @@ def test_travel_with_both_files_asks(tmp_path: Path, monkeypatch) -> None:
     assert out["ok"] is True
     assert out["serve_choice_required"] is True
     assert out["run"] == ""
-    assert "Ask the user whether to serve" in out["next_action"]
+    assert "ask_user_question" in out["next_action"]
     assert "docker compose up --build" not in out["next_action"]
-    assert "Choose Python or Docker" in out["docker"]["next_action"]
+    assert "host_question" in out["docker"]["next_action"]
+    assert [item["label"] for item in out["host_question"]["options"]] == [
+        "Python",
+        "Docker",
+    ]
     options = {item["id"]: item for item in out["serve_options"]}
     assert "python -m travel_planner" in options["python"]["run"]
     assert options["python"]["url"] == "http://127.0.0.1:5000/"
     assert options["docker"]["url"] == "http://127.0.0.1:5050/"
     phase5 = next(item for item in out["helper_phases"] if item["phase"] == "5")
-    assert "Ask the user" in phase5["action"]
+    assert "host_question" in phase5["action"]
+    assert "ask_user_question" not in phase5["action"]
     assert "docker compose up --build" in phase5["action"]
 
 
@@ -202,7 +217,13 @@ def test_website_green_asks_and_does_not_start(tmp_path: Path, monkeypatch) -> N
     assert out["ok"] is False
     assert out["failure_class"] == "serve_choice_required"
     assert out["run"] == ""
-    assert "Ask the user whether to serve" in out["next_action"]
+    assert "ask_user_question" in out["next_action"]
+    assert "AskUserQuestion" in out["next_action"]
+    assert "request_user_input" in out["next_action"]
+    assert [item["label"] for item in out["host_question"]["options"]] == [
+        "Python",
+        "Docker",
+    ]
     assert out["recommended_tools"] == []
 
 

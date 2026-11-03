@@ -353,6 +353,31 @@ def _unbound(
     }
 
 
+def yelp_destination(
+    cfg: HelperConfig | None,
+    *,
+    sample_dir: str = "",
+    project_name: str = "",
+    parent_dir: str = "",
+) -> Path:
+    """Directory ``ensure_yelp_sample`` will read, or clone into when missing.
+
+    ``parent_dir`` without ``sample_dir`` stays inside that parent. A checkout
+    outside it is not this create.
+    """
+    pin_parent = bool(parent_dir.strip()) and not sample_dir.strip()
+    if pin_parent:
+        return _resolve_clone_dest(project_name=project_name, parent_dir=parent_dir)
+    found = _find_yelp_dir(sample_dir, cfg=cfg)
+    if found is not None:
+        return found
+    return _resolve_clone_dest(
+        sample_dir=sample_dir,
+        project_name=project_name,
+        parent_dir=parent_dir,
+    )
+
+
 def ensure_yelp_sample(
     cfg: HelperConfig,
     *,
@@ -376,12 +401,15 @@ def ensure_yelp_sample(
     # parent_dir is the caller's workspace. A sibling checkout outside it is
     # not the app they asked to create.
     pin_parent = bool(parent_dir.strip()) and not sample_dir.strip()
+    dest = yelp_destination(
+        cfg,
+        sample_dir=sample_dir,
+        project_name=project_name,
+        parent_dir=parent_dir,
+    )
     if pin_parent:
-        found = None
-        dest = _resolve_clone_dest(project_name=project_name, parent_dir=parent_dir)
-        if dest.is_dir():
-            found = dest
-        elif clone_if_missing:
+        found = dest if dest.is_dir() else None
+        if found is None and clone_if_missing:
             clone_info = clone_yelp_sample(dest=dest)
             if clone_info.get("ok"):
                 found = dest
@@ -412,26 +440,18 @@ def ensure_yelp_sample(
                 ),
             )
     else:
-        found = _find_yelp_dir(sample_dir, cfg=cfg)
+        found = dest if dest.is_dir() else None
         if found is None and clone_if_missing:
-            dest = _resolve_clone_dest(
-                sample_dir=sample_dir,
-                project_name=project_name,
-                parent_dir=parent_dir,
-            )
-            if dest.is_dir():
+            clone_info = clone_yelp_sample(dest=dest)
+            if clone_info.get("ok"):
                 found = dest
             else:
-                clone_info = clone_yelp_sample(dest=dest)
-                if clone_info.get("ok"):
-                    found = dest
-                else:
-                    return _unbound(
-                        dir_name=dir_name,
-                        clone_info=clone_info,
-                        next_action=clone_info.get("next_action")
-                        or f"Clone manually and set {ENV_YELP_DIR}",
-                    )
+                return _unbound(
+                    dir_name=dir_name,
+                    clone_info=clone_info,
+                    next_action=clone_info.get("next_action")
+                    or f"Clone manually and set {ENV_YELP_DIR}",
+                )
         if found is None:
             return _unbound(
                 dir_name=dir_name,

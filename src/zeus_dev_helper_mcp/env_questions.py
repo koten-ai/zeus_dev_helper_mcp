@@ -309,30 +309,91 @@ def dotenv_present(root: Path | None, key: str) -> bool:
     if root is None or key not in _PRESENCE_KEYS | _NONSECRET_KEYS:
         return False
     return bool(_file_value(Path(root) / ".env", key).strip())
+
+
 _ASSIGN_RE = re.compile(
     r"^(?:export\s+)?(?P<key>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>.*)$"
 )
+
+
+HOST_FORM = (
+    "Call the host question tool and pass this question. Wait for its answer. "
+    "Grok calls ask_user_question. Claude Code calls AskUserQuestion. "
+    "Codex calls request_user_input. A chat sentence is not the answer."
+)
+
+_AUTH_OPTIONS: tuple[tuple[str, str], ...] = (
+    (
+        "none",
+        (
+            "Write ZEUS_AUTH_MODE=none. Skip ZEUS_USERNAME, ZEUS_PASSWORD, "
+            "and ZEUS_BEARER_TOKEN."
+        ),
+    ),
+    (
+        "basic",
+        (
+            "Write ZEUS_AUTH_MODE=basic. Then ask ZEUS_USERNAME as text and "
+            "ZEUS_PASSWORD as a password."
+        ),
+    ),
+    (
+        "bearer",
+        "Write ZEUS_AUTH_MODE=bearer. Then ask ZEUS_BEARER_TOKEN as a password.",
+    ),
+)
+
+
+def _provider_option(row: dict[str, str]) -> dict[str, str]:
+    """Label carries the id. The host option shape has no separate id field."""
+    label = f"{row['label']} ({row['id']})"
+    if row["id"] == "other":
+        description = (
+            "Ask for the provider name and LLM_BASE_URL. This choice has no env var."
+        )
+    else:
+        description = (
+            f"Set LLM_BASE_URL to {row['base_url']}. "
+            f"The model default is {row['model']}."
+        )
+    return {"label": label, "description": description}
+
+
+def _choice_options(
+    pairs: tuple[tuple[str, str], ...] | list[tuple[str, str]],
+) -> list[dict[str, str]]:
+    return [
+        {"label": label, "description": description} for label, description in pairs
+    ]
 
 
 def sample_build_ask_text() -> str:
     """Instructions for the sample-build form. No secret values."""
     return (
         "This sample build shows ask_user every time, including when values "
-        "are already set. Ask each row in order and wait. Skip a row whose "
-        "when does not match the answers so far. ZEUS_AUTH_MODE is a choice "
-        "of none, basic, or bearer. basic asks ZEUS_USERNAME as text and "
-        "ZEUS_PASSWORD as a password. bearer asks ZEUS_BEARER_TOKEN as a "
-        "password. none skips username, password, and the bearer token. "
-        "Choose one llm_options entry. A named provider sets LLM_BASE_URL "
-        "from that entry. Other asks for the provider name and LLM_BASE_URL. "
-        "Ask LLM_MODEL and offer that entry's model as the default. Other "
-        "has no model default. Ask LLM_API_KEY as a password. Write the "
-        "names to a mode-600 env file and call load_process_login with that "
-        "path. Write the same names in the app .env. Leave config.json "
-        "llm.api_key_env as the name LLM_API_KEY. Call set_prereq with "
-        "auth_mode and the presence flags has_username, has_password, "
-        "has_bearer, and has_llm_key. Do not pass the password, bearer "
-        "token, or API key as a tool argument."
+        "are already set. "
+        f"{HOST_FORM} "
+        "Call that tool once per ask_user row, in order. "
+        "Skip a row whose when does not match the answers so far. "
+        "A choice row has question and options. Pass that row. "
+        "The selected ZEUS_AUTH_MODE label is none, basic, or bearer. "
+        "basic then asks ZEUS_USERNAME as text and ZEUS_PASSWORD as a password. "
+        "bearer asks ZEUS_BEARER_TOKEN as a password. "
+        "none skips username, password, and the bearer token. "
+        "The selected llm_provider label is the display name and the id in "
+        "parentheses, for example Grok (grok). Write that id. "
+        "A named provider sets LLM_BASE_URL from llm_options. "
+        "Other asks for the provider name and LLM_BASE_URL as text. "
+        "Ask LLM_MODEL as text and offer that entry's model as the default. "
+        "Other has no model default. "
+        "Ask LLM_API_KEY as a password through the host question tool's text field. "
+        "Password, bearer token, and API key have no options and no value "
+        "in this result. Write the names to a mode-600 env file and call "
+        "load_process_login with that path. Write the same names in the app "
+        ".env. Leave config.json llm.api_key_env as the name LLM_API_KEY. "
+        "Call set_prereq with auth_mode and the presence flags has_username, "
+        "has_password, has_bearer, and has_llm_key. Do not pass the password, "
+        "bearer token, or API key as a tool argument."
     )
 
 
@@ -410,16 +471,16 @@ def sample_build_questions(
     if not username and (sample or "").strip().lower() == "beer":
         username = _BEER_USERNAME
     provider_ids = [row["id"] for row in options]
+    provider_options = [_provider_option(row) for row in options]
     questions = [
         _with_default(
             {
                 "env": "ZEUS_AUTH_MODE",
                 "kind": "choice",
                 "choices": list(_AUTH_CHOICES),
-                "prompt": (
-                    "Ask for ZEUS_AUTH_MODE. Choices are none, basic, or bearer. "
-                    "Wait for the answer."
-                ),
+                "question": "Which ZEUS_AUTH_MODE should this app use?",
+                "options": _choice_options(_AUTH_OPTIONS),
+                "prompt": "Pass this row. The selected label is ZEUS_AUTH_MODE.",
             },
             _auth_default(cfg),
         ),
@@ -429,8 +490,8 @@ def sample_build_questions(
                 "kind": "text",
                 "when": {"env": "ZEUS_AUTH_MODE", "equals": "basic"},
                 "prompt": (
-                    "Ask for ZEUS_USERNAME. This is a text field. "
-                    "Wait for the answer."
+                    "Ask for ZEUS_USERNAME through the host question tool's "
+                    "text field. This row has no options."
                 ),
             },
             username,
@@ -440,8 +501,8 @@ def sample_build_questions(
             "kind": "password",
             "when": {"env": "ZEUS_AUTH_MODE", "equals": "basic"},
             "prompt": (
-                "Ask for ZEUS_PASSWORD. This is a password field. "
-                "Wait for the answer."
+                "Ask for ZEUS_PASSWORD through the host question tool's "
+                "text field. This row has no options and no value."
             ),
         },
         {
@@ -449,17 +510,19 @@ def sample_build_questions(
             "kind": "password",
             "when": {"env": "ZEUS_AUTH_MODE", "equals": "bearer"},
             "prompt": (
-                "Ask for ZEUS_BEARER_TOKEN. This is a password field. "
-                "Wait for the answer."
+                "Ask for ZEUS_BEARER_TOKEN through the host question tool's "
+                "text field. This row has no options and no value."
             ),
         },
         {
             "id": "llm_provider",
             "kind": "choice",
             "choices": provider_ids,
+            "question": "Which LLM provider should this app use?",
+            "options": provider_options,
             "prompt": (
-                "Ask the user to choose one entry in llm_options. "
-                "Wait for the answer. This choice has no env var."
+                "Pass this row. The id is in parentheses on the selected label. "
+                "This choice has no env var."
             ),
         },
         {
@@ -467,8 +530,8 @@ def sample_build_questions(
             "kind": "text",
             "when": {"id": "llm_provider", "equals": "other"},
             "prompt": (
-                "Ask for the provider name. This is a text field. "
-                "It has no env var. Wait for the answer."
+                "Ask for the provider name through the host question tool's "
+                "text field. This row has no options and no env var."
             ),
         },
         _with_default(
@@ -477,9 +540,9 @@ def sample_build_questions(
                 "kind": "text",
                 "when": {"id": "llm_provider", "equals": "other"},
                 "prompt": (
-                    "Ask for LLM_BASE_URL. This is a text field. "
-                    "A named provider sets LLM_BASE_URL from llm_options "
-                    "and is not asked. Wait for the answer."
+                    "Ask for LLM_BASE_URL through the host question tool's "
+                    "text field. A named provider sets LLM_BASE_URL from "
+                    "llm_options and is not asked. This row has no options."
                 ),
             },
             _text_prefill("LLM_BASE_URL", root),
@@ -489,9 +552,9 @@ def sample_build_questions(
                 "env": "LLM_MODEL",
                 "kind": "text",
                 "prompt": (
-                    "Ask for LLM_MODEL. This is a text field. Offer the chosen "
-                    "option's model as the default. Other has no default. "
-                    "Wait for the answer."
+                    "Ask for LLM_MODEL through the host question tool's text "
+                    "field. Offer the chosen option's model as the default. "
+                    "Other has no default. This row has no options."
                 ),
             },
             _text_prefill("LLM_MODEL", root),
@@ -500,8 +563,8 @@ def sample_build_questions(
             "env": "LLM_API_KEY",
             "kind": "password",
             "prompt": (
-                "Ask for LLM_API_KEY. This is a password field. "
-                "Wait for the answer."
+                "Ask for LLM_API_KEY through the host question tool's text "
+                "field. This row has no options and no value."
             ),
         },
     ]

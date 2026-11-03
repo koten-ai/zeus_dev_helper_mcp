@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
+import pytest
 
 from zeus_dev_helper_mcp.clarify import (
     auth_form_schema,
@@ -94,7 +97,7 @@ def test_probe_tri_state(monkeypatch) -> None:
 def test_connection_schema_has_no_secret_fields() -> None:
     from mcp.server.elicitation import render_elicitation_schema
 
-    from zeus_dev_helper_mcp.clarify import _connection_form, _llm_form
+    from zeus_dev_helper_mcp.first_create import _connection_form, _llm_form
 
     connection = render_elicitation_schema(
         _connection_form("http://zeus-dev.local:8080", "pour-user", True)
@@ -197,6 +200,73 @@ def test_beer_needs_the_llm_card_and_travel_opt_out_does_not(tmp_path, monkeypat
     save_prereqs(reload_config(), {"has_llm_key": False})
     assert create_needs_llm_card("travel") is False
     assert create_needs_llm_card("beer") is True
+
+
+def test_beer_destination_skips_a_recorded_dir_that_is_not_serving(tmp_path: Path) -> None:
+    from zeus_dev_helper_mcp.beer import (
+        beer_destination,
+        looks_like_beer_sample,
+        save_beer_sample_dir,
+    )
+
+    cfg = HelperConfig(state_dir=tmp_path / "state")
+    recorded = tmp_path / "recorded"
+    (recorded / "static").mkdir(parents=True)
+    (recorded / "main.py").write_text("print('old')\n", encoding="utf-8")
+    (recorded / "README.md").write_text("readme\n", encoding="utf-8")
+    (recorded / "requirements.txt").write_text("fastapi\n", encoding="utf-8")
+    (recorded / "static" / "index.html").write_text("<html></html>\n", encoding="utf-8")
+    assert looks_like_beer_sample(recorded)
+    save_beer_sample_dir(cfg, recorded)
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    target = beer_destination(cfg, parent_dir=str(parent))
+    assert target.serving_verdict is None
+    assert target.root == (parent / "demo_beer_sample").resolve()
+    assert target.root != recorded.resolve()
+
+
+def test_beer_destination_moves_off_a_foreign_directory(tmp_path: Path) -> None:
+    from zeus_dev_helper_mcp.beer import beer_destination
+
+    cfg = HelperConfig(state_dir=tmp_path / "state")
+    parent = tmp_path / "parent"
+    foreign = parent / "demo_beer_sample"
+    foreign.mkdir(parents=True)
+    (foreign / "notes.txt").write_text("not beer\n", encoding="utf-8")
+    target = beer_destination(cfg, parent_dir=str(parent))
+    assert target.root == (parent / "demo_beer_sample-2").resolve()
+    assert target.relocated_from == str(foreign.resolve())
+    assert target.foreign_blocked is False
+
+
+def test_travel_destination_prefers_the_existing_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zeus_dev_helper_mcp.travel import _resolve_clone_dest, travel_destination
+
+    checkout = tmp_path / "already"
+    checkout.mkdir()
+    monkeypatch.setenv("DEMO_TRAVEL_SAMPLE_DIR", str(checkout))
+    cfg = HelperConfig(state_dir=tmp_path / "state")
+    found = travel_destination(cfg)
+    assert found == checkout.resolve()
+    assert found != _resolve_clone_dest()
+
+
+def test_yelp_destination_stays_inside_parent_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zeus_dev_helper_mcp.yelp import yelp_destination
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setenv("DEMO_YELP_SAMPLE_DIR", str(elsewhere))
+    parent = tmp_path / "work"
+    parent.mkdir()
+    cfg = HelperConfig(state_dir=tmp_path / "state")
+    dest = yelp_destination(cfg, parent_dir=str(parent))
+    assert dest == (parent / "demo_yelp").resolve()
 
 
 def test_doctor_url_confirmed_follows_stored_prereq(tmp_path, monkeypatch) -> None:

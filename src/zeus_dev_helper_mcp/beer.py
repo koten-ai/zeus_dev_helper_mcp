@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -3059,17 +3060,25 @@ def _next_open_beer_dir(parent: Path) -> Path | None:
     return None
 
 
-def ensure_beer_sample(
+@dataclass
+class BeerTarget:
+    """Directory ``ensure_beer_sample`` will read or write."""
+
+    root: Path
+    serving_verdict: dict[str, Any] | None = None
+    relocated_from: str = ""
+    foreign_blocked: bool = False
+
+
+def beer_destination(
     cfg: HelperConfig,
     *,
     sample_dir: str = "",
     project_name: str = "",
     parent_dir: str = "",
     force: bool = False,
-    serve_with: str = "",
-) -> dict[str, Any]:
-    """Locate an existing beer Direct UI or write a fresh template."""
-    dir_name = sanitize_beer_dir_name(project_name)
+) -> BeerTarget:
+    """The path ``ensure_beer_sample`` uses, including a live checkout or a move."""
     dest = resolve_beer_dest(
         sample_dir=sample_dir,
         project_name=project_name,
@@ -3083,29 +3092,62 @@ def ensure_beer_sample(
         recorded = load_recorded_beer_dir(cfg)
         if recorded is not None and recorded.is_dir() and looks_like_beer_sample(recorded):
             try:
-                recorded_text = (recorded / "main.py").read_text(encoding="utf-8", errors="replace")
+                recorded_text = (recorded / "main.py").read_text(
+                    encoding="utf-8", errors="replace"
+                )
             except OSError:
                 recorded_text = ""
             if beer_bff_is_current(recorded_text):
                 verdict = catalog_port_verdict(recorded, cfg)
                 if verdict is not None:
-                    return _attach_serving_verdict(cfg, recorded, verdict)
-    relocated_from = ""
-    if not explicit and not force and _foreign_beer_dir(dest) and dest.name == DEFAULT_BEER_DIR_NAME:
+                    return BeerTarget(root=recorded, serving_verdict=verdict)
+    if (
+        not explicit
+        and not force
+        and _foreign_beer_dir(dest)
+        and dest.name == DEFAULT_BEER_DIR_NAME
+    ):
         sibling = _next_open_beer_dir(dest.parent)
         if sibling is None:
-            return {
-                "ok": False,
-                "failure_class": "foreign_sample_dir",
-                "error": f"target_dir not empty and does not look like beer sample: {dest}",
-                "local_dir": str(dest),
-                "next_action": (
-                    "Pass project_name for an empty directory. "
-                    "The default demo_beer_sample path was not written."
-                ),
-            }
-        relocated_from = str(dest)
-        dest = sibling
+            return BeerTarget(root=dest, foreign_blocked=True)
+        return BeerTarget(root=sibling, relocated_from=str(dest))
+    return BeerTarget(root=dest)
+
+
+def ensure_beer_sample(
+    cfg: HelperConfig,
+    *,
+    sample_dir: str = "",
+    project_name: str = "",
+    parent_dir: str = "",
+    force: bool = False,
+    serve_with: str = "",
+) -> dict[str, Any]:
+    """Locate an existing beer Direct UI or write a fresh template."""
+    dir_name = sanitize_beer_dir_name(project_name)
+    target = beer_destination(
+        cfg,
+        sample_dir=sample_dir,
+        project_name=project_name,
+        parent_dir=parent_dir,
+        force=force,
+    )
+    if target.serving_verdict is not None:
+        return _attach_serving_verdict(cfg, target.root, target.serving_verdict)
+    dest = target.root
+    relocated_from = target.relocated_from
+    if target.foreign_blocked:
+        return {
+            "ok": False,
+            "failure_class": "foreign_sample_dir",
+            "error": f"target_dir not empty and does not look like beer sample: {dest}",
+            "local_dir": str(dest),
+            "next_action": (
+                "Pass project_name for an empty directory. "
+                "The default demo_beer_sample path was not written."
+            ),
+        }
+    if relocated_from:
         dir_name = dest.name
 
     if dest.is_dir() and not _nonempty(dest):

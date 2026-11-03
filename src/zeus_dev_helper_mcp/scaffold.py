@@ -227,6 +227,11 @@ SAMPLE_TRAVEL = {
 }
 
 
+def api_destination(target_dir: str = "") -> Path:
+    """Directory ``scaffold_app`` writes. The first-create card uses this path."""
+    return Path(target_dir).expanduser().resolve()
+
+
 def _with_sample_build(
     cfg: HelperConfig,
     payload: dict[str, Any],
@@ -288,8 +293,9 @@ def use_sample(
     beer: shallow-clone public demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR.
     Start that checkout with python main.py (README). Search is run_turn with chat_request omitted.
     When the checkout has both a Dockerfile and a compose file, serve_choice_required
-    is set, serve_options lists Python and Docker, and run stays empty until
-    serve_with is python or docker. The helper does not run Docker.
+    is set, serve_options lists Python and Docker, host_question is the selection,
+    and run stays empty until serve_with is python or docker. The helper does not
+    run Docker.
     catalog: write demo_catalog_sample from explain_scope. Beer bucket or Beer + Brewery
     still writes the beer catalog UI.
     demo_yelp: locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp; set DEMO_YELP_SAMPLE_DIR. Aliases include yelp-demo.
@@ -322,34 +328,31 @@ def use_sample(
         info["sample"] = "travel"
         info["app_kind"] = "ui"
         info["private"] = False
-        return _with_sample_build(
-            cfg,
-            {
-                "ok": bool(golden.get("ok")),
-                "sample": info,
-                "app_kind": "ui",
-                "golden_path": golden,
-                "local_dir": golden.get("local_dir"),
-                "cloned": golden.get("cloned"),
-                "project_name": golden.get("project_name"),
-                "layout": golden.get("layout"),
-                "docker": golden.get("docker"),
-                "docker_setup": golden.get("docker_setup"),
-                "env": golden.get("env"),
-                "run": golden.get("run"),
-                "serve_choice_required": golden.get("serve_choice_required"),
-                "serve_options": golden.get("serve_options"),
-                "serve_with": golden.get("serve_with"),
-                "next_action": golden.get("next_action")
-                or (
-                    "Set DEMO_TRAVEL_SAMPLE_DIR after clone, or scaffold_app "
-                    "for a minimal middle-man without the full demo UI."
-                ),
-                "checklist_hint": "Mark 3.1 done after clone/scaffold succeeds",
-                "sample_readme_snippet": golden.get("sample_readme_snippet"),
-            },
-            "travel",
-        )
+        payload: dict[str, Any] = {
+            "ok": bool(golden.get("ok")),
+            "sample": info,
+            "app_kind": "ui",
+            "golden_path": golden,
+            "local_dir": golden.get("local_dir"),
+            "cloned": golden.get("cloned"),
+            "project_name": golden.get("project_name"),
+            "layout": golden.get("layout"),
+            "docker": golden.get("docker"),
+            "docker_setup": golden.get("docker_setup"),
+            "env": golden.get("env"),
+            "run": golden.get("run"),
+            "next_action": golden.get("next_action")
+            or (
+                "Set DEMO_TRAVEL_SAMPLE_DIR after clone, or scaffold_app "
+                "for a minimal middle-man without the full demo UI."
+            ),
+            "checklist_hint": "Mark 3.1 done after clone/scaffold succeeds",
+            "sample_readme_snippet": golden.get("sample_readme_snippet"),
+        }
+        from zeus_dev_helper_mcp.serve_choice import copy_serve_choice
+
+        copy_serve_choice(golden, payload)
+        return _with_sample_build(cfg, payload, "travel")
     from zeus_dev_helper_mcp.beer import SAMPLE_BEER, ensure_beer_sample, is_beer_sample
 
     if is_beer_sample(sample):
@@ -420,12 +423,12 @@ def use_sample(
             "missing_process_settings",
             "verification",
             "skipped_llm_alias",
-            "serve_choice_required",
-            "serve_options",
-            "serve_with",
         ):
             if ensured.get(key) is not None:
                 payload[key] = ensured[key]
+        from zeus_dev_helper_mcp.serve_choice import copy_serve_choice
+
+        copy_serve_choice(ensured, payload)
         return _with_sample_build(cfg, payload, "beer")
     from zeus_dev_helper_mcp.yelp import (
         YELP_REPO,
@@ -682,7 +685,7 @@ def scaffold_app(
             "docs": docs,
         }
 
-    root = Path(target_dir).expanduser().resolve()
+    root = api_destination(target_dir)
     from zeus_dev_helper_mcp.python_runtime import launch_note, venv_setup_shell
 
     setup = venv_setup_shell()
