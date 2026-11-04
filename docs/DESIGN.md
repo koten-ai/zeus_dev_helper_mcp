@@ -86,7 +86,7 @@ Persisted under `~/.config/zeus_dev_helper/checklist.json` (override: `ZEUS_DEV_
 | `list_catalog_modes` | — | modes from zeus_chat_request | none / network |
 | `fetch_chat_request` | mode, detail | template + **TEMPLATE ONLY** warning | none / network |
 | `scaffold_app` | target_dir, project_name, force | files written | filesystem write |
-| `use_sample` | sample | clone URL / layout check | may update checklist |
+| `use_sample` | sample, sample_dir, parent_dir, project_name, serve_with | Beer and travel share placement. Travel starts with `python -m travel_planner` on port 5000 and does not rewrite Docker files. Writes a mode 600 `.env`. Includes `ask_user` on every build | may update checklist |
 | `write_env` | target_dir | .env.example | filesystem write |
 | `verify_local_setup` | target_dir | checks[]; a missing `zeus_client` import names this Helper interpreter and the `agent` extra | may update checklist 3.2 when the app `.env` key check applies |
 | `smoke_test_zeus` | update_checklist | describe + req_id | may update 5.1 |
@@ -154,11 +154,14 @@ Optional local metrics file under state dir (no network):
 ```text
 start_project → set_prereq → validate_env → readiness_check
   → use_sample | scaffold_app → bootstrap_scope / fetch_chat_request
-  → smoke_test_zeus → smoke_test_agent → gap_report
-  → (optional) recommend_data_plane_mcp | handoff_to_multi
+  → smoke_test_zeus → website_green → smoke_test_agent → gap_report
 ```
 
 A website is One chat paired with Direct. `recommend_surface` names each input. List, chips, typeahead, paging, and detail are Direct and need no LLM key. The question box is `rt.agent.run_turn` with `chat_request` omitted. A catalog page uses `max_rounds` 4. A copilot uses 8. `settings.mode=analytics` leaves the question box on One chat. `handoff_to_multi` writes `jobs.host_url` or orchestrator and advisor roles only after the operator confirms two or more Zeus URLs, two or more scopes, or a report wait of 20 seconds to 5 minutes. One scope, two source types, and a page interaction stay on the pair. Smoke-green is not that confirmation. The default job wall is `wall_ms` 120000. Use 300000 when the operator asked for up to 5 minutes.
+
+`use_sample(sample=travel)` follows the beer creation procedure for public `demo_travel_sample`. The destination is `sample_dir`, or `parent_dir` plus `project_name`. A blank parent is the directory next to the Helper checkout. A foreign default directory moves to the next open sibling. An explicit foreign `sample_dir` returns `foreign_sample_dir` and writes nothing. A recorded checkout that answers `GET /api/health` stays in place (`already_serving`). Basic auth with no process login returns `login_not_in_process` before git clone. The create path does not rewrite Docker files. The app listens with `python -m travel_planner` on port 5000 unless `PORT` is set. A mode 600 `.env` keeps populated values and fills empty Zeus and LLM names. `ZEUS_USERNAME` defaults to `demo_1`. Checklist 1.2 stays open because the page is search and has no Direct list. Checklist 3.2 stays open until `verify_local_setup` sees the key in the app `.env`. After the app is on disk, checklist 5.1, 5.2, and 6.1 recommend `website_green`. That check installs with `pip install -e ".[dev]"`, loads `.env`, and checks `GET /api/health`. Beer is a shallow clone of public `demo_beer_sample`, started with `python main.py`.
+
+Every beer, travel, yelp, and API build includes `ask_user` for `ZEUS_AUTH_MODE` and the LLM provider, including a second build when the env file already has values. Beer username default is `tester_beer`. Travel username default is `demo_1`. Password, bearer token, and API key stay out of tool arguments. The agent writes a mode-600 env file and calls `load_process_login`. When both a `Dockerfile` and a compose file exist, the result includes `host_question`. `next_action` names the host question tool: Grok `ask_user_question`, Claude Code `AskUserQuestion`, Codex `request_user_input`. The selected label is `serve_with` on the next `use_sample` or `website_green`. Docker stays guide-only. The first-create elicitation cards are unchanged.
 
 ---
 
