@@ -682,6 +682,154 @@ def test_yelp_401_does_not_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert "Do not try another password." in out["next_action"]
 
 
+def _travel_tree(tmp_path: Path) -> Path:
+    root = tmp_path / "demo_travel_sample"
+    root.mkdir()
+    (root / "README.md").write_text("# travel\n", encoding="utf-8")
+    (root / "requirements.txt").write_text("flask\n", encoding="utf-8")
+    (root / "pyproject.toml").write_text("[project]\nname='travel'\n", encoding="utf-8")
+    planner = root / "src" / "travel_planner"
+    planner.mkdir(parents=True)
+    (planner / "__init__.py").write_text("", encoding="utf-8")
+    return root
+
+
+def test_travel_health_uses_api_health_status_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    def get_json(url: str) -> tuple[int, dict[str, object], str]:
+        assert url.endswith("/api/health")
+        return 200, {"status": "ok"}, ""
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._get_json", get_json)
+    assert _health("http://127.0.0.1:5000", False, True) == "up"
+
+
+def test_travel_describe_200_is_not_health(monkeypatch: pytest.MonkeyPatch) -> None:
+    def get_json(url: str) -> tuple[int, dict[str, object], str]:
+        assert url.endswith("/api/health")
+        return 200, {"ok": True, "status": "degraded"}, ""
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._get_json", get_json)
+    assert _health("http://127.0.0.1:5000", False, True) == "busy"
+
+
+def test_travel_install_uses_dev_extra(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _travel_tree(tmp_path)
+    seen: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = list(cmd)
+        seen["cwd"] = kwargs["cwd"]
+        return type("Proc", (), {"returncode": 0})()
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.subprocess.run", fake_run)
+    out = install_app(root)
+    assert out["ok"] is True
+    assert out["installed"] is True
+    assert seen["cmd"][-5:] == ["-m", "pip", "install", "-e", ".[dev]"]
+    assert "requirements.txt" not in seen["cmd"]
+    assert seen["cwd"] == root
+
+
+def test_travel_start_is_travel_planner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _travel_tree(tmp_path)
+    secret = "fixture-travel-secret-value"
+    (root / ".env").write_text(
+        f"ZEUS_PASSWORD={secret}\nZEUS_USERNAME=demo_1\n",
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_popen(cmd, **kwargs):
+        seen["cmd"] = list(cmd)
+        seen["env"] = kwargs["env"]
+        seen["cwd"] = kwargs["cwd"]
+        return type("Proc", (), {"pid": 15})()
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.subprocess.Popen", fake_popen)
+    out = start_app(root, 5000)
+    assert out["ok"] is True
+    assert seen["cmd"][-2:] == ["-m", "travel_planner"]
+    assert "main.py" not in seen["cmd"]
+    assert seen["env"]["ZEUS_PASSWORD"] == secret
+    assert seen["env"]["PORT"] == "5000"
+    assert seen["cwd"] == root
+    assert secret not in json.dumps(out)
+
+
+def test_travel_green_starts_planner_and_skips_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _travel_tree(tmp_path)
+    secret = "fixture-travel-secret-value"
+    (root / ".env").write_text(f"ZEUS_PASSWORD={secret}\n", encoding="utf-8")
+    state = {"down": True}
+    seen: dict[str, object] = {}
+
+    def health(base: str, yelp: bool = False, travel: bool = False) -> str:
+        assert travel is True
+        assert yelp is False
+        assert base == "http://127.0.0.1:5000"
+        return "down" if state["down"] else "up"
+
+    def install(path: Path) -> dict[str, object]:
+        assert path == root
+        return {"ok": True, "installed": True}
+
+    def fake_popen(cmd, **kwargs):
+        seen["cmd"] = list(cmd)
+        seen["env"] = kwargs["env"]
+        state["down"] = False
+        return type("Proc", (), {"pid": 16})()
+
+    def probed(*_args: object, **_kwargs: object) -> tuple[int, dict[str, object], str]:
+        raise AssertionError("beer catalog probe on a travel checkout")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._health", health)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.install_app", install)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._get_json", probed)
+    out = website_green(_cfg(tmp_path), target_dir=str(root))
+    assert out["ok"] is True
+    assert out["search_skipped"] is True
+    assert seen["cmd"][-2:] == ["-m", "travel_planner"]
+    assert "main.py" not in seen["cmd"]
+    assert seen["env"]["ZEUS_PASSWORD"] == secret
+    assert seen["env"]["PORT"] == "5000"
+    assert "/api/beers" not in out["next_action"]
+    assert "Beer cards are not required" in out["next_action"]
+    assert "Search is off" in out["next_action"]
+    assert "A describe 200 is not this check" in out["next_action"]
+    assert secret not in json.dumps(out)
+
+
+def test_recorded_travel_dir_is_the_green_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("DEMO_BEER_SAMPLE_DIR", raising=False)
+    monkeypatch.delenv("DEMO_YELP_SAMPLE_DIR", raising=False)
+    monkeypatch.delenv("DEMO_TRAVEL_SAMPLE_DIR", raising=False)
+    root = _travel_tree(tmp_path)
+    from zeus_dev_helper_mcp.travel import save_travel_sample_dir
+
+    cfg = _cfg(tmp_path)
+    save_travel_sample_dir(cfg, root)
+
+    def health(base: str, yelp: bool = False, travel: bool = False) -> str:
+        assert travel is True
+        assert base == "http://127.0.0.1:5000"
+        return "up"
+
+    def fail_start(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise AssertionError("started a healthy travel checkout")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._health", health)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.start_app", fail_start)
+    out = website_green(cfg, target_dir="")
+    assert out["ok"] is True
+    assert out["url"] == "http://127.0.0.1:5000"
+    assert out["search_skipped"] is True
+
+
 def test_recorded_yelp_dir_is_the_green_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

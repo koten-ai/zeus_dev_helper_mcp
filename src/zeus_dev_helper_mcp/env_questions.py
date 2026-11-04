@@ -7,6 +7,7 @@ The agent writes a mode-600 env file and calls ``load_process_login``.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -241,6 +242,10 @@ def attach_llm_ask(
 
 _AUTH_CHOICES = ("none", "basic", "bearer")
 _BEER_USERNAME = "tester_beer"
+_TRAVEL_USERNAME = "demo_1"
+_TRAVEL_SAMPLES = frozenset(
+    {"travel", "demo_travel", "travel_sample", "demo_travel_sample", "ui"}
+)
 _TEXT_PREFILL = ("ZEUS_USERNAME", "LLM_BASE_URL", "LLM_MODEL")
 _NONSECRET_KEYS = frozenset(_TEXT_PREFILL) | {"ZEUS_URL"}
 _PRESENCE_KEYS = frozenset(
@@ -256,6 +261,24 @@ _PRESENCE_KEYS = frozenset(
 
 def beer_username_default() -> str:
     return _BEER_USERNAME
+
+
+def travel_username_default(root: Path | None = None) -> str:
+    """Username from ``config.example.json`` when that file names one."""
+    if root is not None:
+        example = root / "config.example.json"
+        if example.is_file() and not example.is_symlink():
+            try:
+                doc = json.loads(example.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                doc = None
+            if isinstance(doc, dict):
+                zeus = doc.get("zeus")
+                if isinstance(zeus, dict):
+                    name = str(zeus.get("username") or "").strip()
+                    if name:
+                        return name
+    return _TRAVEL_USERNAME
 
 
 def provider_for_base_url(base_url: str) -> str:
@@ -468,8 +491,11 @@ def sample_build_questions(
     else:
         options = llm_options_for_dir(root)
     username = _text_prefill("ZEUS_USERNAME", root)
-    if not username and (sample or "").strip().lower() == "beer":
+    sample_name = (sample or "").strip().lower()
+    if not username and sample_name == "beer":
         username = _BEER_USERNAME
+    if not username and sample_name in _TRAVEL_SAMPLES:
+        username = travel_username_default(root)
     provider_ids = [row["id"] for row in options]
     provider_options = [_provider_option(row) for row in options]
     questions = [

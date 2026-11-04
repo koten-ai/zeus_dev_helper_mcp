@@ -293,6 +293,26 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
                 "checks the list page. smoke_test_agent is not this check. "
                 "A describe 200 is not this check."
             )
+    elif sample == "travel" and item_id in ("5.1", "5.2", "6.1"):
+        if _website_green_failed(cfg):
+            tools = ["diagnose_error"]
+            base["note"] = (
+                "website_green failed on the running TravelPlan app. "
+                "diagnose_error maps the symptom. Do not scaffold another app."
+            )
+        else:
+            tools = ["website_green"]
+            base["note"] = (
+                "The travel sample is the demo_travel_sample checkout "
+                "(https://github.com/koten-ai/demo_travel_sample). "
+                "When that directory has both a Dockerfile and a compose file, ask the user "
+                "to choose Python or Docker and pass serve_with to website_green. "
+                'Otherwise website_green installs with pip install -e ".[dev]", '
+                "starts python -m travel_planner on port 5000 unless PORT is set, "
+                "and checks GET /api/health. Beer cards are not required. "
+                "Search stays off until an LLM key is in the app .env. "
+                "A describe 200 is not this check."
+            )
     elif sample == "demo_yelp" and item_id in ("0.2", "3.1"):
         tools = ["use_sample"]
         base["use_sample_args_hint"] = _yelp_use_sample_hint()
@@ -486,26 +506,34 @@ def enriched_next_step(cfg: HelperConfig) -> dict[str, Any]:
                 "data-plane MCP and multi-agent (ZJA) are handoffs only."
             ),
         }
-        catalog_page = sample == "beer"
-        if catalog_page:
+        one_scope_sample = sample in {"beer", "travel"}
+        if one_scope_sample:
             base["post_green"]["suggested_tools"] = [
                 "recommend_data_plane_mcp",
                 "emit_mcp_config",
                 "gap_report",
             ]
-            base["post_green"]["note"] = (
-                "Lists and detail are Direct. Pour is One chat on one URL and one scope. "
-                "Smoke-green does not make this page a job. "
-                "handoff_to_multi stays off the next build step."
-            )
+            if sample == "travel":
+                base["post_green"]["note"] = (
+                    "TravelPlan is one scope on one URL. "
+                    "Smoke-green does not make this page a job. "
+                    "handoff_to_multi stays off the next build step. "
+                    "jobs.host_url is not written."
+                )
+            else:
+                base["post_green"]["note"] = (
+                    "Lists and detail are Direct. Pour is One chat on one URL and one scope. "
+                    "Smoke-green does not make this page a job. "
+                    "handoff_to_multi stays off the next build step."
+                )
         if not item_id or item_id in ("6.1", "7.1") or base.get("complete"):
             extra_tools = ["recommend_data_plane_mcp"]
-            if not catalog_page:
+            if not one_scope_sample:
                 extra_tools.append("handoff_to_multi")
             for t in extra_tools:
                 if t not in base["recommended_tools"]:
                     base["recommended_tools"].append(t)
-            if catalog_page:
+            if one_scope_sample:
                 base["recommended_tools"] = [
                     t for t in base["recommended_tools"] if t != "handoff_to_multi"
                 ]

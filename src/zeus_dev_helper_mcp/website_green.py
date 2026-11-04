@@ -31,6 +31,11 @@ def _is_yelp_app(root: Path) -> bool:
     return (root / "src" / "local_guide" / "__main__.py").is_file()
 
 
+def _is_travel_app(root: Path) -> bool:
+    """TravelPlan entry is ``python -m travel_planner``."""
+    return (root / "src" / "travel_planner").is_dir()
+
+
 def _is_beer_app(root: Path) -> bool:
     """demo_beer_sample README starts the page with ``python main.py``."""
     main = root / "main.py"
@@ -114,10 +119,28 @@ def _install_editable(root: Path) -> dict[str, Any]:
     )
 
 
+def _install_travel(root: Path) -> dict[str, Any]:
+    """``pip install -e ".[dev]"`` for the travel repo's own extra."""
+    if not (root / "pyproject.toml").is_file():
+        return {"ok": True, "installed": False}
+    return _pip(
+        root,
+        ["-m", "pip", "install", "-e", ".[dev]"],
+        fail_timeout=(
+            'pip install -e ".[dev]" did not finish. Then call website_green again.'
+        ),
+        fail_exit=(
+            'pip install -e ".[dev]" failed. Fix the travel checkout, then retry website_green.'
+        ),
+    )
+
+
 def install_app(root: Path) -> dict[str, Any]:
     """Install the app. Yelp uses ``pip install -e .``. Stdout stays out of the result."""
     if _is_yelp_app(root):
         return _install_editable(root)
+    if _is_travel_app(root):
+        return _install_travel(root)
     req = root / "requirements.txt"
     if not req.is_file():
         return {"ok": True, "installed": False}
@@ -129,14 +152,35 @@ def install_app(root: Path) -> dict[str, Any]:
     )
 
 
+def _child_env(root: Path, port: int) -> dict[str, str]:
+    """Process environment plus the app ``.env``. TravelPlan does not load that file."""
+    from zeus_dev_helper_mcp.app_env import _dotenv_map
+
+    env = os.environ.copy()
+    path = root / ".env"
+    if path.is_file() and not path.is_symlink():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        for key, value in _dotenv_map(text).items():
+            env[key] = value
+    env["PORT"] = str(port)
+    return env
+
+
 def start_app(root: Path, port: int) -> dict[str, Any]:
     """Start the app. Yelp is ``python -m local_guide``. Beer is ``python main.py``."""
     python = root / ".venv" / "bin" / "python"
     exe = str(python) if python.is_file() else sys.executable
     yelp = _is_yelp_app(root)
+    travel = _is_travel_app(root)
     beer = _is_beer_app(root)
     child_env = None
-    if yelp:
+    if travel:
+        cmd = [exe, "-m", "travel_planner"]
+        child_env = _child_env(root, port)
+    elif yelp:
         cmd = [exe, "-m", "local_guide"]
         child_env = os.environ.copy()
         child_env["PORT"] = str(port)
@@ -271,6 +315,10 @@ def _named_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
 def _listen_port(root: Path) -> int:
     if _is_yelp_app(root):
         return _YELP_PORT
+    if _is_travel_app(root):
+        from zeus_dev_helper_mcp.travel import travel_listen_port
+
+        return travel_listen_port(root)
     from zeus_dev_helper_mcp.beer import beer_listen_port
 
     for name in (".env", ".env.example"):
@@ -328,6 +376,11 @@ def _resolve_root(cfg: HelperConfig, target_dir: str) -> Path | None:
     yelp = recorded_yelp_sample_dir(cfg)
     if yelp is not None and yelp.is_dir():
         return yelp
+    from zeus_dev_helper_mcp.travel import recorded_travel_dir
+
+    travel = recorded_travel_dir(cfg)
+    if travel is not None and travel.is_dir():
+        return travel
     return None
 
 
@@ -362,29 +415,39 @@ def _remember(ids: list[str], header: str, body: dict[str, Any]) -> None:
             ids.append(item.strip())
 
 
-def _health(base: str, yelp: bool = False) -> str:
-    path = "/api/health" if yelp else "/healthz"
+def _health(base: str, yelp: bool = False, travel: bool = False) -> str:
+    if travel or yelp:
+        path = "/api/health"
+    else:
+        path = "/healthz"
     code, body, _header = _get_json(base + path)
     if code == 0:
         return "down"
+    if travel and code == 200 and str(body.get("status") or "") == "ok":
+        return "up"
     if yelp and code == 200 and body.get("ok") is True:
         return "up"
-    if not yelp and code == 200 and str(body.get("status") or "") == "ok":
+    if not yelp and not travel and code == 200 and str(body.get("status") or "") == "ok":
         return "up"
     return "busy"
 
 
-def _probe_health(base: str, *, yelp: bool) -> str:
-    """One-arg ``_health`` for the beer path so existing test doubles stay valid."""
+def _probe_health(base: str, *, yelp: bool, travel: bool = False) -> str:
+    """Beer callers pass ``yelp`` only so existing test doubles stay valid."""
+    if travel:
+        return _health(base, False, True)
     if yelp:
         return _health(base, True)
     return _health(base)
 
 
-def _poll_health(base: str, *, yelp: bool = False) -> str:
+def _poll_health(base: str, *, yelp: bool = False, travel: bool = False) -> str:
     state = "down"
     for attempt in range(POLL_TRIES):
-        state = _probe_health(base, yelp=yelp)
+        if travel:
+            state = _probe_health(base, yelp=False, travel=True)
+        else:
+            state = _probe_health(base, yelp=yelp)
         if state != "down":
             return state
         if attempt + 1 < POLL_TRIES:
@@ -691,10 +754,17 @@ def _run_website_green(
             ),
         )
     yelp = _is_yelp_app(root)
+    travel = _is_travel_app(root)
     port = _listen_port(root)
     base = f"http://127.0.0.1:{port}"
-    probe = "/api/health" if yelp else "/healthz"
-    state = _probe_health(base, yelp=yelp)
+    if travel or yelp:
+        probe = "/api/health"
+    else:
+        probe = "/healthz"
+    if travel:
+        state = _probe_health(base, yelp=False, travel=True)
+    else:
+        state = _probe_health(base, yelp=yelp)
     if state == "busy":
         return _result(
             failure_class="port_in_use",
@@ -724,13 +794,44 @@ def _run_website_green(
                 url=base,
                 next_action=str(started.get("next_action") or ""),
             )
-        state = _poll_health(base, yelp=yelp)
+        if travel:
+            state = _poll_health(base, travel=True)
+        else:
+            state = _poll_health(base, yelp=yelp)
     if state != "up":
         failure = "port_in_use" if state == "busy" else "health_timeout"
         return _result(
             failure_class=failure,
             url=base,
             next_action=f"{base}{probe} did not answer for this app.",
+        )
+    if travel:
+        from zeus_dev_helper_mcp.llm_key import inspect_app_llm_key
+
+        key = inspect_app_llm_key(root)
+        search_off = not (key.get("applies") and key.get("ok"))
+        if search_off:
+            action = (
+                f"TravelPlan health is up at {base}/api/health. "
+                "Beer cards are not required. "
+                "Search is off until LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY "
+                "is in the app .env. "
+                "A describe 200 is not this check."
+            )
+        else:
+            action = (
+                f"TravelPlan health is up at {base}/api/health. "
+                "Beer cards are not required. "
+                "A describe 200 is not this check."
+            )
+        return _result(
+            ok=True,
+            url=base,
+            list_count=0,
+            search_skipped=search_off,
+            pour_enabled=not search_off,
+            next_action=action,
+            recommended_tools=[],
         )
     if yelp:
         return _result(

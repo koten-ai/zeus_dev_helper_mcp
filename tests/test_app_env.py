@@ -238,6 +238,86 @@ def test_existing_dotenv_is_not_rewritten(tmp_path: Path, monkeypatch: pytest.Mo
     assert "cp .env.example .env" not in (out.get("next_action") or "")
 
 
+def test_travel_env_keeps_populated_values_and_names_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zeus_dev_helper_mcp.app_env import ensure_app_env
+
+    _clear_secrets(monkeypatch)
+    monkeypatch.setenv("ZEUS_USERNAME", "process-user")
+    monkeypatch.setenv("LLM_API_KEY", "process-key-should-not-replace")
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.x.ai/v1")
+    monkeypatch.setenv("LLM_MODEL", "grok-4.5-latest")
+    root = tmp_path / "demo_travel_sample"
+    (root / "src" / "travel_planner").mkdir(parents=True)
+    (root / ".env").write_text(
+        "\n".join(
+            [
+                "ZEUS_URL=http://kept.example:8080",
+                "ZEUS_USERNAME=kept-user",
+                f"LLM_API_KEY={LLM_KEY}",
+                "LLM_BASE_URL=https://kept.example/v1",
+                "LLM_MODEL=kept-model",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    cfg = HelperConfig(
+        zeus_url="http://cfg.example:8080",
+        default_bucket="travel-sample",
+        default_scope="_default",
+        state_dir=tmp_path / "state",
+    )
+    out = ensure_app_env(cfg, root, travel=True)
+    text = (root / ".env").read_text(encoding="utf-8")
+    assert "ZEUS_URL=http://kept.example:8080" in text
+    assert "ZEUS_USERNAME=kept-user" in text
+    assert f"LLM_API_KEY={LLM_KEY}" in text
+    assert "LLM_MODEL=kept-model" in text
+    assert "process-user" not in text
+    assert "process-key-should-not-replace" not in text
+    assert _mode(root / ".env") == 0o600
+    assert not (root / ".env.example").exists()
+    assert out["configuration_policy"] == "preserve_existing_then_fill_missing"
+    assert out["env_template"] == "zeus_llm_names"
+    assert "LLM_API_KEY" in out["env_keys"]
+    assert LLM_KEY not in json.dumps(out)
+    assert "process-key-should-not-replace" not in json.dumps(out)
+
+
+def test_travel_env_copies_xai_only_when_base_and_model_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zeus_dev_helper_mcp.app_env import ensure_app_env
+
+    _clear_secrets(monkeypatch)
+    monkeypatch.setenv("XAI_API_KEY", LLM_KEY)
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("LLM_MODEL", "gpt-5.6-sol")
+    root = tmp_path / "demo_travel_sample"
+    root.mkdir()
+    cfg = HelperConfig(state_dir=tmp_path / "state", zeus_url="http://lab.example:8080")
+    skipped = ensure_app_env(cfg, root, travel=True)
+    text = (root / ".env").read_text(encoding="utf-8")
+    assert LLM_KEY not in text
+    assert skipped["skipped_llm_alias"] == "XAI_API_KEY"
+    assert "ZEUS_USERNAME=demo_1" in text
+    assert LLM_KEY not in json.dumps(skipped)
+
+    matched = tmp_path / "matched"
+    matched.mkdir()
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.x.ai/v1")
+    monkeypatch.setenv("LLM_MODEL", "grok-4.5-latest")
+    copied = ensure_app_env(cfg, matched, travel=True)
+    matched_text = (matched / ".env").read_text(encoding="utf-8")
+    assert f"LLM_API_KEY={LLM_KEY}" in matched_text
+    assert "LLM_BASE_URL=https://api.x.ai/v1" in matched_text
+    assert "LLM_MODEL=grok-4.5-latest" in matched_text
+    assert LLM_KEY not in json.dumps(copied)
+    assert not (matched / ".env.example").exists()
+
+
 def test_scaffold_basic_login_and_private_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_secrets(monkeypatch)
     cfg = HelperConfig(

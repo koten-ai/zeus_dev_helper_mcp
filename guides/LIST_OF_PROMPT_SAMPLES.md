@@ -131,7 +131,7 @@ Store non-secret prereqs for readiness. Does not store password or token values.
 
 ### `validate_env`
 
-Validate Helper env + stored prereqs shape (presence only — no secret values). A missing `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is an error (`llm_key_missing`) when the path calls `run_turn` (travel, API, yelp demo). Beer lists warn: Pour stays off until the key is in the app `.env`. A stored `has_llm_key=true` does not count. A travel Direct opt-out warns instead of failing.
+Validate Helper env + stored prereqs shape (presence only — no secret values). A missing `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` is an error (`llm_key_missing`) when the path calls `run_turn` (travel, API, yelp demo). Travel stays an error because the page is search and has no Direct list. Beer lists warn: Pour stays off until the key is in the app `.env`. A stored `has_llm_key=true` does not count.
 
 1. Validate my Helper environment. Flag Hub `:9091`, missing `ZEUS_URL`, missing LLM key, and catalog template problems.
 2. Is env ready for `readiness_check`? Check presence of Zeus URL, bucket/scope, the process LLM key, and catalog templates without printing secrets.
@@ -234,7 +234,7 @@ Write a ZeusRuntime middle-man (`cli` or FastAPI `api`). UI demos use `use_sampl
 
 ### `use_sample`
 
-Locate or clone public `demo_travel_sample` (UI default). Sets `DEMO_TRAVEL_SAMPLE_DIR`.
+Shallow-clone https://github.com/koten-ai/demo_travel_sample.git when the destination is missing, using the beer creation procedure. The destination is `sample_dir`, or `parent_dir` plus `project_name`. A blank parent is the directory next to this Helper checkout. Start with `python -m travel_planner` on port 5000 unless `PORT` is set. Sets `DEMO_TRAVEL_SAMPLE_DIR`. The create path does not rewrite Docker files.
 
 1. Bootstrap the travel UI sample — clone it if needed and show where it landed.
 2. Clone the travel sample as directory `my_first_zeus_ui` under my workspace (`project_name=my_first_zeus_ui`).
@@ -248,7 +248,7 @@ Locate or clone public `demo_travel_sample` (UI default). Sets `DEMO_TRAVEL_SAMP
 
 Travel sample golden path phases + optional layout validation.
 
-1. Walk the travel-sample golden path and validate the layout if `DEMO_TRAVEL_SAMPLE_DIR` is set.
+1. Walk the travel-sample golden path. The destination is the directory beside this Helper checkout. Start with `python -m travel_planner` on port 5000 unless `PORT` is set.
 2. What are the travel golden-path phases? Run `travel_golden_path` for my local clone.
 3. Check `/path/to/demo_travel_sample` against the travel golden path before we smoke.
 

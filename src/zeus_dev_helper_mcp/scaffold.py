@@ -289,7 +289,7 @@ def use_sample(
 ) -> dict[str, Any]:
     """UI sample path: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
-    travel: locate/clone public demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
+    travel: shallow-clone https://github.com/koten-ai/demo_travel_sample.git when the destination is missing. The destination is sample_dir, or parent_dir plus project_name. A blank parent is the directory next to this Helper checkout. A foreign default directory moves to the next open sibling. An explicit foreign sample_dir returns foreign_sample_dir and writes nothing. A recorded checkout that answers GET /api/health stays in place. Start with python -m travel_planner on port 5000 unless PORT is set. The create path does not rewrite Docker files. Set DEMO_TRAVEL_SAMPLE_DIR.
     beer: shallow-clone public demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR.
     Start that checkout with python main.py (README). Search is run_turn with chat_request omitted.
     When the checkout has both a Dockerfile and a compose file, serve_choice_required
@@ -349,6 +349,24 @@ def use_sample(
             "checklist_hint": "Mark 3.1 done after clone/scaffold succeeds",
             "sample_readme_snippet": golden.get("sample_readme_snippet"),
         }
+        for key in (
+            "failure_class",
+            "already_serving",
+            "url",
+            "app_env",
+            "env_template",
+            "env_target",
+            "configuration_policy",
+            "missing_app_settings",
+            "missing_process_settings",
+            "skipped_llm_alias",
+            "missing_env",
+            "relocated_from",
+            "written",
+            "error",
+        ):
+            if golden.get(key) is not None:
+                payload[key] = golden[key]
         from zeus_dev_helper_mcp.serve_choice import copy_serve_choice
 
         copy_serve_choice(golden, payload)

@@ -162,10 +162,11 @@ def test_next_step_post_green_hints(tmp_path: Path) -> None:
     save_checklist(cfg, data)
     nxt = enriched_next_step(cfg)
     assert "post_green" in nxt
-    tools = nxt.get("recommended_tools") or []
-    assert "recommend_data_plane_mcp" in tools or "handoff_to_multi" in (
-        nxt["post_green"].get("suggested_tools") or []
-    )
+    suggested = nxt["post_green"].get("suggested_tools") or []
+    assert "recommend_data_plane_mcp" in suggested
+    assert "handoff_to_multi" not in suggested
+    assert "handoff_to_multi" not in (nxt.get("recommended_tools") or [])
+    assert "jobs.host_url is not written" in nxt["post_green"]["note"]
 
 
 def _green(cfg: HelperConfig) -> None:

@@ -178,8 +178,23 @@ INSTRUCTIONS = (
     "Do not pip install kotenai-zeus-client into the app as the fix for that check. "
     "The BFF does not build a pipeline body — "
     "https://docs.koten.ai/zeus-client/using-zeus-client. "
-    "Bootstrap default is UI: use_sample clones public demo_travel_sample when missing "
-    "and sets DEMO_TRAVEL_SAMPLE_DIR (optional project_name for the clone directory). "
+    "Bootstrap default is UI: use_sample follows the beer creation procedure for "
+    "https://github.com/koten-ai/demo_travel_sample.git. The destination is sample_dir, "
+    "or parent_dir plus project_name. A blank parent is the directory next to this "
+    "Helper checkout. A foreign default directory moves to the next open sibling. "
+    "An explicit foreign sample_dir returns foreign_sample_dir and writes nothing. "
+    "A recorded checkout that answers GET /api/health returns already_serving. "
+    "Basic auth with no process login returns login_not_in_process before git clone. "
+    "The create path does not rewrite Docker files. "
+    "python -m travel_planner listens on port 5000 unless PORT is set. "
+    "use_sample writes a mode 600 .env from the non-secret Zeus and LLM names, "
+    "keeps populated values, and fills empties. ZEUS_USERNAME defaults to demo_1. "
+    "Checklist 1.2 stays open until this process has an LLM key, because this page "
+    "is search and has no Direct list. Checklist 3.2 stays open until the app .env "
+    "has LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY. set_prereq(has_llm_key=true) "
+    "does not count. After the app is on disk, checklist 5.1, 5.2, and 6.1 recommend "
+    "website_green. Travel is one scope: do not add handoff_to_multi after smoke-green "
+    "and do not write jobs.host_url. "
     "Beer / website: start_project(sample=beer) → use_sample(sample=beer) shallow-clones "
     "https://github.com/koten-ai/demo_beer_sample when missing and sets DEMO_BEER_SAMPLE_DIR. "
     "That checkout is the app. Create the virtualenv with Python 3.11 or newer. "
@@ -243,7 +258,7 @@ INSTRUCTIONS = (
     "include that full ask_user set when the first-create cards were not shown, "
     "including a second build after the creation log is sealed. "
     "ZEUS_AUTH_MODE is none, basic, or bearer. "
-    "basic asks ZEUS_USERNAME as text (beer default tester_beer) and ZEUS_PASSWORD "
+    "basic asks ZEUS_USERNAME as text (beer default tester_beer, travel default demo_1) and ZEUS_PASSWORD "
     "as a password. bearer asks ZEUS_BEARER_TOKEN as a password. none skips those. "
     "Prefill text fields from the current value. Password, bearer token, and API key "
     "have no value in the result. Also write the same names in the app .env. "
@@ -1111,7 +1126,7 @@ def use_sample(
 ) -> dict[str, Any]:
     """UI sample: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
-    sample=travel — locate/clone demo_travel_sample; set DEMO_TRAVEL_SAMPLE_DIR.
+    sample=travel — shallow-clone https://github.com/koten-ai/demo_travel_sample.git when the destination is missing. The destination is sample_dir, or parent_dir plus project_name. A blank parent is the directory next to this Helper checkout. Start with python -m travel_planner on port 5000 unless PORT is set. The create path does not rewrite Docker files. Set DEMO_TRAVEL_SAMPLE_DIR. A mode 600 .env keeps populated values and fills empty Zeus and LLM names. ZEUS_USERNAME defaults to demo_1.
     sample=beer — shallow-clone https://github.com/koten-ai/demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR. Start with python main.py after a Python 3.11+ virtualenv (python3 -m venv only when python3 is 3.11 or newer) and pip install -r requirements.txt. use_sample writes mode 600 .env from .env.example, keeps populated values, and adds missing template keys. LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL are resolved together. The clone keeps LLM_MODEL=grok-4.5-latest. Do not copy .env.example over a .env that already has values. Lists are Direct and need no LLM key. Pour is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA) and max_rounds 4. Pour stays off until an LLM key is in the app .env. No pipeline body. Do not write a job for this one-scope page. Clone success is not website_green. When the checkout has both a Dockerfile and a compose file, serve_choice_required is true, serve_options lists Python and Docker, host_question is the selection, and run is empty until serve_with is python or docker. Follow host_question and next_action on that result. The helper does not run Docker. Pass serve_with on a later use_sample or website_green call. An already-serving checkout does not ask.
     sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
     sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: pip install -e . && python -m local_guide on http://127.0.0.1:5000, and cd frontend && npm install && npm run dev on http://localhost:5173 (the SPA proxies /api to port 5000). Writes gitignored mode-600 config.json from this process. llm.api_key_env stays the name LLM_API_KEY. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. A 401 stays red. Search cards get latitude and longitude from biz:yelp:<id> when the project step omits them, including a cached business page. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.

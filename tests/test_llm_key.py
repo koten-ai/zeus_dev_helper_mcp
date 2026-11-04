@@ -127,8 +127,8 @@ def test_readiness_direct_opt_out_does_not_require_key(
     save_prereqs(cfg, {"has_llm_key": False, "bucket": "travel-sample"})
     _finish(cfg, [], update_checklist=True)
     item = _item(cfg, "1.2")
-    assert item["status"] == "done"
-    assert "not required" in item["evidence"]
+    assert item["status"] != "done"
+    assert "not required" not in str(item.get("evidence") or "")
 
 
 def test_validate_env_errors_when_the_path_calls_the_model(
@@ -246,8 +246,9 @@ def test_validate_env_warns_on_direct_opt_out(
     save_checklist(cfg, data)
     out = validate_env()
     issue = next(i for i in out["issues"] if i["field"] == "LLM_API_KEY")
-    assert issue["level"] == "warn"
-    assert out["ok"] is True
+    assert issue["level"] == "error"
+    assert issue["failure_class"] == "llm_key_missing"
+    assert out["ok"] is False
 
 
 def test_beer_sample_stays_on_32_until_dotenv_is_filled(tmp_path: Path) -> None:
@@ -305,6 +306,35 @@ def test_next_step_32_asks_for_verify_before_smoke(
     assert "lint_runtime_config" in nxt["recommended_tools"]
     assert "api_key_env" in nxt["note"]
     assert "smoke_test_agent" not in nxt["recommended_tools"]
+
+
+def test_travel_verify_leaves_32_open_when_the_app_env_has_no_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_llm(monkeypatch)
+    root = tmp_path / "demo_travel_sample"
+    (root / "src" / "travel_planner").mkdir(parents=True)
+    (root / "config.json").write_text(
+        json.dumps({"llm_provider": {"api_key": ""}, "zeus": {"username": "demo_1"}}),
+        encoding="utf-8",
+    )
+    (root / ".env").write_text("ZEUS_URL=http://127.0.0.1:8080\nZEUS_USERNAME=demo_1\n", encoding="utf-8")
+    cfg = HelperConfig(
+        state_dir=tmp_path / "state",
+        has_llm_key=True,
+        zeus_url="http://127.0.0.1:8080",
+    )
+    save_prereqs(cfg, {"has_llm_key": True, "zeus_url": "http://127.0.0.1:8080"})
+    data = load_checklist(cfg)
+    data["meta"] = {"sample": "travel"}
+    save_checklist(cfg, data)
+    out = verify_local_setup(cfg, str(root))
+    item = _item(cfg, "3.2")
+    assert item["status"] == "blocked"
+    assert item["status"] != "done"
+    assert SECRET not in json.dumps(out)
+    assert SECRET not in json.dumps(load_checklist(cfg))
+    assert "set_prereq" not in str(item.get("evidence") or "")
 
 
 def test_smoke_test_agent_ignores_stored_flag_when_client_imports(

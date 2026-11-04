@@ -443,7 +443,28 @@ def overlay_nonsecret_env(root: str | Path, updates: Mapping[str, str]) -> None:
     _write_private(path, text)
 
 
-def ensure_app_env(cfg: HelperConfig, target_dir: str | Path) -> dict[str, Any]:
+_TRAVEL_ENV_TEMPLATE = """\
+# Non-secret Zeus and LLM names for demo_travel_sample. Secrets stay empty.
+ZEUS_URL=
+ZEUS_BUCKET=
+ZEUS_SCOPE=
+ZEUS_COLLECTION=
+ZEUS_USERNAME=demo_1
+ZEUS_PASSWORD=
+# ZEUS_BEARER_TOKEN=
+LLM_BASE_URL=
+LLM_API_KEY=
+LLM_MODEL=
+PORT=5000
+"""
+
+
+def ensure_app_env(
+    cfg: HelperConfig,
+    target_dir: str | Path,
+    *,
+    travel: bool = False,
+) -> dict[str, Any]:
     """Create or merge a mode 600 ``.env`` from this app's ``.env.example``.
 
     Populated values already in ``.env`` stay. Missing template keys are added.
@@ -462,11 +483,15 @@ def ensure_app_env(cfg: HelperConfig, target_dir: str | Path) -> dict[str, Any]:
         except OSError:
             existing = ""
     example = ""
+    template_name = ".env.example"
     if example_path.is_file() and not example_path.is_symlink():
         try:
             example = example_path.read_text(encoding="utf-8")
         except OSError:
             example = ""
+    elif travel:
+        example = _TRAVEL_ENV_TEMPLATE
+        template_name = "zeus_llm_names"
     template = _dotenv_map(example)
     existing_vals = _dotenv_map(existing)
     fills = _confirmed_routing(cfg)
@@ -517,7 +542,7 @@ def ensure_app_env(cfg: HelperConfig, target_dir: str | Path) -> dict[str, Any]:
         "created_env": created,
         "env_keys": names,
         "gitignore": gitignore,
-        "env_template": ".env.example",
+        "env_template": template_name,
         "env_target": ".env",
         "configuration_policy": "preserve_existing_then_fill_missing",
         "missing_app_settings": app_missing,
@@ -540,8 +565,9 @@ def annotate_app_env(
     result: dict[str, Any],
     *,
     report: bool = False,
+    travel: bool = False,
 ) -> dict[str, Any]:
-    info = ensure_app_env(cfg, root)
+    info = ensure_app_env(cfg, root, travel=travel)
     result["app_env"] = {
         "wrote_env": info["wrote_env"],
         "created_env": info["created_env"],

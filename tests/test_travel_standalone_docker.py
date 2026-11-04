@@ -174,7 +174,12 @@ def test_ensure_travel_sample_prepares_docker(tmp_path: Path, monkeypatch) -> No
     out = ensure_travel_sample(cfg, project_name="ui-app", parent_dir=str(parent))
     assert out["ok"] is True
     assert out["cloned"] is True
-    setup = out.get("docker_setup") or {}
-    assert setup.get("prepared") is True
-    assert "docker compose" in (out.get("next_action") or "").lower()
-    assert "context: ." in (root / "docker-compose.yml").read_text(encoding="utf-8")
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert "demo_travel_sample/" in dockerfile
+    assert "context: .." in (root / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "file:../zeus_client_python" in pyproject
+    blob = __import__("json").dumps(out)
+    assert ">=2.4.0,<2.5" not in blob
+    assert "llm_provider.api_key" not in blob
+    assert out.get("docker_setup") in (None, {})
