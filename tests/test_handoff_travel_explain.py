@@ -75,6 +75,7 @@ def test_travel_layout_soft(tmp_path: Path) -> None:
     (root / "requirements.txt").write_text("httpx\n")
     layout = validate_travel_layout(root)
     assert layout["ok"] is True
+    (root / "src" / "travel_planner").mkdir(parents=True)
 
     cfg = _cfg(tmp_path)
     # ensure checklist exists

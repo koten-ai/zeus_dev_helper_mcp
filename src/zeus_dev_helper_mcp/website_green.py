@@ -13,6 +13,8 @@ import os
 import subprocess
 import sys
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -154,7 +156,7 @@ def install_app(root: Path) -> dict[str, Any]:
 
 def _child_env(root: Path, port: int) -> dict[str, str]:
     """Process environment plus the app ``.env``. TravelPlan does not load that file."""
-    from zeus_dev_helper_mcp.app_env import _dotenv_map
+    from zeus_dev_helper_mcp.app_env import dotenv_map
 
     env = os.environ.copy()
     path = root / ".env"
@@ -163,7 +165,7 @@ def _child_env(root: Path, port: int) -> dict[str, str]:
             text = path.read_text(encoding="utf-8")
         except OSError:
             text = ""
-        for key, value in _dotenv_map(text).items():
+        for key, value in dotenv_map(text).items():
             env[key] = value
     env["PORT"] = str(port)
     return env
@@ -415,39 +417,42 @@ def _remember(ids: list[str], header: str, body: dict[str, Any]) -> None:
             ids.append(item.strip())
 
 
-def _health(base: str, yelp: bool = False, travel: bool = False) -> str:
-    if travel or yelp:
-        path = "/api/health"
-    else:
-        path = "/healthz"
-    code, body, _header = _get_json(base + path)
+@dataclass(frozen=True)
+class AppHealth:
+    path: str
+    ok: Callable[[dict[str, Any]], bool]
+
+
+def _status_ok(body: dict[str, Any]) -> bool:
+    return str(body.get("status") or "") == "ok"
+
+
+def _yelp_ok(body: dict[str, Any]) -> bool:
+    return body.get("ok") is True
+
+
+BEER_HEALTH = AppHealth("/healthz", _status_ok)
+YELP_HEALTH = AppHealth("/api/health", _yelp_ok)
+TRAVEL_HEALTH = AppHealth("/api/health", _status_ok)
+
+
+def _health(base: str, kind: AppHealth = BEER_HEALTH) -> str:
+    code, body, _header = _get_json(base + kind.path)
     if code == 0:
         return "down"
-    if travel and code == 200 and str(body.get("status") or "") == "ok":
-        return "up"
-    if yelp and code == 200 and body.get("ok") is True:
-        return "up"
-    if not yelp and not travel and code == 200 and str(body.get("status") or "") == "ok":
+    if code == 200 and kind.ok(body):
         return "up"
     return "busy"
 
 
-def _probe_health(base: str, *, yelp: bool, travel: bool = False) -> str:
-    """Beer callers pass ``yelp`` only so existing test doubles stay valid."""
-    if travel:
-        return _health(base, False, True)
-    if yelp:
-        return _health(base, True)
-    return _health(base)
+def _probe_health(base: str, kind: AppHealth = BEER_HEALTH) -> str:
+    return _health(base, kind)
 
 
-def _poll_health(base: str, *, yelp: bool = False, travel: bool = False) -> str:
+def _poll_health(base: str, kind: AppHealth = BEER_HEALTH) -> str:
     state = "down"
     for attempt in range(POLL_TRIES):
-        if travel:
-            state = _probe_health(base, yelp=False, travel=True)
-        else:
-            state = _probe_health(base, yelp=yelp)
+        state = _probe_health(base, kind)
         if state != "down":
             return state
         if attempt + 1 < POLL_TRIES:
@@ -753,18 +758,15 @@ def _run_website_green(
                 "then website_green checks the page."
             ),
         )
-    yelp = _is_yelp_app(root)
-    travel = _is_travel_app(root)
+    if _is_travel_app(root):
+        kind = TRAVEL_HEALTH
+    elif _is_yelp_app(root):
+        kind = YELP_HEALTH
+    else:
+        kind = BEER_HEALTH
     port = _listen_port(root)
     base = f"http://127.0.0.1:{port}"
-    if travel or yelp:
-        probe = "/api/health"
-    else:
-        probe = "/healthz"
-    if travel:
-        state = _probe_health(base, yelp=False, travel=True)
-    else:
-        state = _probe_health(base, yelp=yelp)
+    state = _probe_health(base, kind)
     if state == "busy":
         return _result(
             failure_class="port_in_use",
@@ -794,18 +796,15 @@ def _run_website_green(
                 url=base,
                 next_action=str(started.get("next_action") or ""),
             )
-        if travel:
-            state = _poll_health(base, travel=True)
-        else:
-            state = _poll_health(base, yelp=yelp)
+        state = _poll_health(base, kind)
     if state != "up":
         failure = "port_in_use" if state == "busy" else "health_timeout"
         return _result(
             failure_class=failure,
             url=base,
-            next_action=f"{base}{probe} did not answer for this app.",
+            next_action=f"{base}{kind.path} did not answer for this app.",
         )
-    if travel:
+    if kind is TRAVEL_HEALTH:
         from zeus_dev_helper_mcp.llm_key import inspect_app_llm_key
 
         key = inspect_app_llm_key(root)
@@ -833,7 +832,7 @@ def _run_website_green(
             next_action=action,
             recommended_tools=[],
         )
-    if yelp:
+    if kind is YELP_HEALTH:
         return _result(
             ok=True,
             url=base,

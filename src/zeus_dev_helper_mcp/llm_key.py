@@ -149,8 +149,12 @@ def _declared_api_key_envs(doc: dict[str, Any]) -> list[tuple[str, str]] | None:
     return found or None
 
 
-def _travel_llm_key(root: Path) -> dict[str, Any]:
-    """TravelPlan has no ``api_key_env``. Any of the three names in ``.env`` counts."""
+def _llm_block_present(doc: dict[str, Any]) -> bool:
+    return any(isinstance(doc.get(key), dict) for key in ("llm", "llm_provider"))
+
+
+def _undeclared_llm_key(root: Path) -> dict[str, Any]:
+    """An llm block names no ``api_key_env``. Any of the three names in ``.env`` counts."""
     values = _dotenv_values(root / ".env")
     present = [name for name in LLM_KEY_ENV_NAMES if (values.get(name) or "").strip()]
     if present:
@@ -180,8 +184,6 @@ def _travel_llm_key(root: Path) -> dict[str, Any]:
 def inspect_app_llm_key(root: Path) -> dict[str, Any]:
     """Check the app directory. Report names and presence, never the secret."""
     root = Path(root)
-    if (root / "src" / "travel_planner").is_dir():
-        return _travel_llm_key(root)
     config_path = root / "config.json"
     example = root / ".env.example"
     dotenv = root / ".env"
@@ -205,6 +207,8 @@ def inspect_app_llm_key(root: Path) -> dict[str, Any]:
             }
         declared = _declared_api_key_envs(doc)
         if declared is None and not example_names:
+            if _llm_block_present(doc):
+                return _undeclared_llm_key(root)
             return {"applies": False, "ok": True, "message": ""}
         if declared is None:
             names = example_names

@@ -149,6 +149,7 @@ def test_travel_with_both_files_asks(tmp_path: Path, monkeypatch) -> None:
         'travel-planner = "travel_planner.__main__:main"\n',
         encoding="utf-8",
     )
+    (root / "src" / "travel_planner").mkdir(parents=True)
     _compose(root, "5050:5000")
     cfg = _cfg(tmp_path)
     out = travel_golden_path(cfg, sample_dir=str(root))
@@ -218,6 +219,7 @@ def test_travel_compose_without_dockerfile_stays_on_docker_docs(
     )
     (root / "requirements.txt").write_text("flask\n", encoding="utf-8")
     (root / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    (root / "src" / "travel_planner").mkdir(parents=True)
     out = travel_golden_path(_cfg(tmp_path), sample_dir=str(root))
     assert out.get("serve_choice_required") is None
     assert "docker compose up --build" in out["next_action"]

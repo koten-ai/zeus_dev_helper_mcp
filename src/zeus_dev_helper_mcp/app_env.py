@@ -112,7 +112,7 @@ def _format_value(value: str) -> str:
     return f'"{escaped}"'
 
 
-def _dotenv_map(text: str) -> dict[str, str]:
+def dotenv_map(text: str) -> dict[str, str]:
     found: dict[str, str] = {}
     for line in text.splitlines():
         match = _ASSIGN_RE.match(line.strip())
@@ -236,7 +236,7 @@ def _merge_env_text(
     auth_mode: str,
 ) -> str:
     """Keep populated ``.env`` values, then fill empties, then the template."""
-    existing_vals = _dotenv_map(existing)
+    existing_vals = dotenv_map(existing)
     seen: set[str] = set()
     out_lines: list[str] = []
 
@@ -443,33 +443,18 @@ def overlay_nonsecret_env(root: str | Path, updates: Mapping[str, str]) -> None:
     _write_private(path, text)
 
 
-_TRAVEL_ENV_TEMPLATE = """\
-# Non-secret Zeus and LLM names for demo_travel_sample. Secrets stay empty.
-ZEUS_URL=
-ZEUS_BUCKET=
-ZEUS_SCOPE=
-ZEUS_COLLECTION=
-ZEUS_USERNAME=demo_1
-ZEUS_PASSWORD=
-# ZEUS_BEARER_TOKEN=
-LLM_BASE_URL=
-LLM_API_KEY=
-LLM_MODEL=
-PORT=5000
-"""
-
-
 def ensure_app_env(
     cfg: HelperConfig,
     target_dir: str | Path,
     *,
-    travel: bool = False,
+    example_text: str = "",
+    template_name: str = "",
 ) -> dict[str, Any]:
     """Create or merge a mode 600 ``.env`` from this app's ``.env.example``.
 
     Populated values already in ``.env`` stay. Missing template keys are added.
     Confirmed Zeus routing and this process fill empty keys. The result lists
-    variable names only.
+    variable names only. A caller with no ``.env.example`` passes ``example_text``.
     """
     root = Path(target_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -483,17 +468,17 @@ def ensure_app_env(
         except OSError:
             existing = ""
     example = ""
-    template_name = ".env.example"
+    chosen_template = ".env.example"
     if example_path.is_file() and not example_path.is_symlink():
         try:
             example = example_path.read_text(encoding="utf-8")
         except OSError:
             example = ""
-    elif travel:
-        example = _TRAVEL_ENV_TEMPLATE
-        template_name = "zeus_llm_names"
-    template = _dotenv_map(example)
-    existing_vals = _dotenv_map(existing)
+    elif example_text:
+        example = example_text
+        chosen_template = template_name or "inline"
+    template = dotenv_map(example)
+    existing_vals = dotenv_map(existing)
     fills = _confirmed_routing(cfg)
     llm_fills, skipped_alias = _llm_fills(template, existing_vals)
     fills.update(llm_fills)
@@ -512,7 +497,7 @@ def ensure_app_env(
                 os.chmod(path, 0o600)
             except OSError:
                 pass
-        written = _dotenv_map(merged)
+        written = dotenv_map(merged)
         names = _env_key_names(merged)
     elif existing.strip():
         names = _env_key_names(existing)
@@ -526,7 +511,7 @@ def ensure_app_env(
         if lines:
             _write_private(path, "\n".join(lines) + "\n")
             created = True
-        written = _dotenv_map("\n".join(lines))
+        written = dotenv_map("\n".join(lines))
     gitignore = _ensure_gitignore(root)
     present = path.is_file() and not path.is_symlink() and bool(names or created)
     if path.is_symlink():
@@ -542,7 +527,7 @@ def ensure_app_env(
         "created_env": created,
         "env_keys": names,
         "gitignore": gitignore,
-        "env_template": template_name,
+        "env_template": chosen_template,
         "env_target": ".env",
         "configuration_policy": "preserve_existing_then_fill_missing",
         "missing_app_settings": app_missing,
@@ -565,9 +550,15 @@ def annotate_app_env(
     result: dict[str, Any],
     *,
     report: bool = False,
-    travel: bool = False,
+    example_text: str = "",
+    template_name: str = "",
 ) -> dict[str, Any]:
-    info = ensure_app_env(cfg, root, travel=travel)
+    info = ensure_app_env(
+        cfg,
+        root,
+        example_text=example_text,
+        template_name=template_name,
+    )
     result["app_env"] = {
         "wrote_env": info["wrote_env"],
         "created_env": info["created_env"],

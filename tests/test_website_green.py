@@ -14,6 +14,8 @@ import pytest
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.smoke import smoke_test_zeus
 from zeus_dev_helper_mcp.website_green import (
+    TRAVEL_HEALTH,
+    YELP_HEALTH,
     _health,
     card_display_name,
     install_app,
@@ -389,7 +391,7 @@ def test_closed_port_installs_and_starts(
     calls = {"install": 0, "start": 0}
     state = {"down": True}
 
-    def health(_base: str) -> str:
+    def health(_base: str, _kind: object = None) -> str:
         return "down" if state["down"] else "up"
 
     def install(root: Path) -> dict[str, object]:
@@ -546,7 +548,7 @@ def test_yelp_health_uses_api_health(monkeypatch: pytest.MonkeyPatch) -> None:
         return 200, {"ok": True}, ""
 
     monkeypatch.setattr("zeus_dev_helper_mcp.website_green._get_json", get_json)
-    assert _health("http://127.0.0.1:5000", True) == "up"
+    assert _health("http://127.0.0.1:5000", YELP_HEALTH) == "up"
 
 
 def test_beer_health_still_uses_healthz(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -631,8 +633,8 @@ def test_yelp_green_checks_health_and_skips_the_beer_list(
     root = _yelp_tree(tmp_path)
     state = {"down": True}
 
-    def health(base: str, yelp: bool = False) -> str:
-        assert yelp is True
+    def health(base: str, kind: object = None) -> str:
+        assert kind is YELP_HEALTH
         assert base.endswith(":5000")
         return "down" if state["down"] else "up"
 
@@ -700,7 +702,7 @@ def test_travel_health_uses_api_health_status_ok(monkeypatch: pytest.MonkeyPatch
         return 200, {"status": "ok"}, ""
 
     monkeypatch.setattr("zeus_dev_helper_mcp.website_green._get_json", get_json)
-    assert _health("http://127.0.0.1:5000", False, True) == "up"
+    assert _health("http://127.0.0.1:5000", TRAVEL_HEALTH) == "up"
 
 
 def test_travel_describe_200_is_not_health(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -709,7 +711,7 @@ def test_travel_describe_200_is_not_health(monkeypatch: pytest.MonkeyPatch) -> N
         return 200, {"ok": True, "status": "degraded"}, ""
 
     monkeypatch.setattr("zeus_dev_helper_mcp.website_green._get_json", get_json)
-    assert _health("http://127.0.0.1:5000", False, True) == "busy"
+    assert _health("http://127.0.0.1:5000", TRAVEL_HEALTH) == "busy"
 
 
 def test_travel_install_uses_dev_extra(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -765,9 +767,8 @@ def test_travel_green_starts_planner_and_skips_search(
     state = {"down": True}
     seen: dict[str, object] = {}
 
-    def health(base: str, yelp: bool = False, travel: bool = False) -> str:
-        assert travel is True
-        assert yelp is False
+    def health(base: str, kind: object = None) -> str:
+        assert kind is TRAVEL_HEALTH
         assert base == "http://127.0.0.1:5000"
         return "down" if state["down"] else "up"
 
@@ -802,6 +803,34 @@ def test_travel_green_starts_planner_and_skips_search(
     assert secret not in json.dumps(out)
 
 
+def test_travel_green_enables_search_when_the_app_env_has_a_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _travel_tree(tmp_path)
+    secret = "fixture-travel-secret-value"
+    (root / "config.json").write_text(
+        '{"llm_provider": {"api_key": ""}}\n',
+        encoding="utf-8",
+    )
+    (root / ".env").write_text(f"LLM_API_KEY={secret}\n", encoding="utf-8")
+
+    def health(base: str, kind: object = None) -> str:
+        assert kind is TRAVEL_HEALTH
+        assert base == "http://127.0.0.1:5000"
+        return "up"
+
+    def fail_start(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise AssertionError("started a healthy travel checkout")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._health", health)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.start_app", fail_start)
+    out = website_green(_cfg(tmp_path), target_dir=str(root))
+    assert out["ok"] is True
+    assert out["search_skipped"] is False
+    assert out["pour_enabled"] is True
+    assert secret not in json.dumps(out)
+
+
 def test_recorded_travel_dir_is_the_green_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -814,8 +843,8 @@ def test_recorded_travel_dir_is_the_green_root(
     cfg = _cfg(tmp_path)
     save_travel_sample_dir(cfg, root)
 
-    def health(base: str, yelp: bool = False, travel: bool = False) -> str:
-        assert travel is True
+    def health(base: str, kind: object = None) -> str:
+        assert kind is TRAVEL_HEALTH
         assert base == "http://127.0.0.1:5000"
         return "up"
 
@@ -841,8 +870,8 @@ def test_recorded_yelp_dir_is_the_green_root(
     cfg = _cfg(tmp_path)
     save_yelp_sample_dir(cfg, root)
 
-    def health(base: str, yelp: bool = False) -> str:
-        assert yelp is True
+    def health(base: str, kind: object = None) -> str:
+        assert kind is YELP_HEALTH
         assert base.endswith(":5000")
         return "up"
 

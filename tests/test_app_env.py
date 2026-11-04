@@ -242,6 +242,7 @@ def test_travel_env_keeps_populated_values_and_names_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from zeus_dev_helper_mcp.app_env import ensure_app_env
+    from zeus_dev_helper_mcp.travel import TRAVEL_ENV_TEMPLATE
 
     _clear_secrets(monkeypatch)
     monkeypatch.setenv("ZEUS_USERNAME", "process-user")
@@ -269,7 +270,12 @@ def test_travel_env_keeps_populated_values_and_names_only(
         default_scope="_default",
         state_dir=tmp_path / "state",
     )
-    out = ensure_app_env(cfg, root, travel=True)
+    out = ensure_app_env(
+        cfg,
+        root,
+        example_text=TRAVEL_ENV_TEMPLATE,
+        template_name="zeus_llm_names",
+    )
     text = (root / ".env").read_text(encoding="utf-8")
     assert "ZEUS_URL=http://kept.example:8080" in text
     assert "ZEUS_USERNAME=kept-user" in text
@@ -290,6 +296,7 @@ def test_travel_env_copies_xai_only_when_base_and_model_match(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from zeus_dev_helper_mcp.app_env import ensure_app_env
+    from zeus_dev_helper_mcp.travel import TRAVEL_ENV_TEMPLATE
 
     _clear_secrets(monkeypatch)
     monkeypatch.setenv("XAI_API_KEY", LLM_KEY)
@@ -298,7 +305,12 @@ def test_travel_env_copies_xai_only_when_base_and_model_match(
     root = tmp_path / "demo_travel_sample"
     root.mkdir()
     cfg = HelperConfig(state_dir=tmp_path / "state", zeus_url="http://lab.example:8080")
-    skipped = ensure_app_env(cfg, root, travel=True)
+    skipped = ensure_app_env(
+        cfg,
+        root,
+        example_text=TRAVEL_ENV_TEMPLATE,
+        template_name="zeus_llm_names",
+    )
     text = (root / ".env").read_text(encoding="utf-8")
     assert LLM_KEY not in text
     assert skipped["skipped_llm_alias"] == "XAI_API_KEY"
@@ -309,7 +321,12 @@ def test_travel_env_copies_xai_only_when_base_and_model_match(
     matched.mkdir()
     monkeypatch.setenv("LLM_BASE_URL", "https://api.x.ai/v1")
     monkeypatch.setenv("LLM_MODEL", "grok-4.5-latest")
-    copied = ensure_app_env(cfg, matched, travel=True)
+    copied = ensure_app_env(
+        cfg,
+        matched,
+        example_text=TRAVEL_ENV_TEMPLATE,
+        template_name="zeus_llm_names",
+    )
     matched_text = (matched / ".env").read_text(encoding="utf-8")
     assert f"LLM_API_KEY={LLM_KEY}" in matched_text
     assert "LLM_BASE_URL=https://api.x.ai/v1" in matched_text

@@ -106,6 +106,7 @@ def test_ensure_uses_existing_sample_dir(tmp_path: Path, monkeypatch) -> None:
     root.mkdir()
     (root / "README.md").write_text("# ok\n", encoding="utf-8")
     (root / "requirements.txt").write_text("x\n", encoding="utf-8")
+    (root / "src" / "travel_planner").mkdir(parents=True)
     monkeypatch.delenv(ENV_TRAVEL_DIR, raising=False)
     called = {"n": 0}
 
@@ -225,6 +226,52 @@ def test_foreign_default_directory_clones_the_next_sibling(
     assert "demo_beer_sample" not in " ".join(seen["cmd"])
     assert (foreign / "notes.txt").read_text(encoding="utf-8") == "keep\n"
     assert out["relocated_from"] == str(foreign.resolve())
+
+
+def _clone_into_layout(cmd, **kwargs):
+    del kwargs
+    dest = Path(cmd[-1])
+    _layout(dest)
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.stderr = ""
+    proc.stdout = ""
+    return proc
+
+
+def test_python_tree_without_travel_planner_is_relocated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_login(monkeypatch)
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.probe_travel_port", _closed_probe)
+    parent = tmp_path / "apps"
+    foreign = parent / "demo_travel_sample"
+    foreign.mkdir(parents=True)
+    (foreign / "README.md").write_text("# other app\n", encoding="utf-8")
+    (foreign / "src" / "other_app").mkdir(parents=True)
+    (foreign / "requirements.txt").write_text("flask\n", encoding="utf-8")
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", _clone_into_layout)
+    out = ensure_travel_sample(_cfg(tmp_path), parent_dir=str(parent))
+    assert out["ok"] is True
+    assert Path(out["local_dir"]).name == "demo_travel_sample-2"
+    assert (foreign / "README.md").read_text(encoding="utf-8") == "# other app\n"
+
+
+def test_travel_planner_without_readme_is_relocated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_login(monkeypatch)
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.probe_travel_port", _closed_probe)
+    parent = tmp_path / "apps"
+    foreign = parent / "demo_travel_sample"
+    (foreign / "src" / "travel_planner").mkdir(parents=True)
+    (foreign / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", _clone_into_layout)
+    out = ensure_travel_sample(_cfg(tmp_path), parent_dir=str(parent))
+    assert out["ok"] is True
+    assert Path(out["local_dir"]).name == "demo_travel_sample-2"
+    assert (foreign / "src" / "travel_planner").is_dir()
+    assert not (foreign / "README.md").exists()
 
 
 def test_explicit_foreign_sample_dir_writes_nothing(

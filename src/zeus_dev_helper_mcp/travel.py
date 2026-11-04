@@ -6,7 +6,6 @@ import json
 import os
 import re
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -40,85 +39,47 @@ _HOST_PORT_RE = re.compile(
     r"localhost:(\d{2,5})|ports:\s*\n(?:\s*-\s*[\"']?)(\d{2,5}):",
     re.IGNORECASE,
 )
-# Upstream demo_travel_sample ships monorepo Docker (context: .. + sibling
-# zeus_client_python). Standalone clones need a local-context rewrite.
-_MONOREPO_DOCKER_MARKERS = (
-    "demo_travel_sample/",
-    "zeus_client_python",
-    "file:../zeus_client_python",
+
+# Travel ships config.example.json and no .env.example. Names only; secrets stay empty.
+TRAVEL_ENV_TEMPLATE = """\
+# Non-secret Zeus and LLM names for demo_travel_sample. Secrets stay empty.
+ZEUS_URL=
+ZEUS_BUCKET=
+ZEUS_SCOPE=
+ZEUS_COLLECTION=
+ZEUS_USERNAME=demo_1
+ZEUS_PASSWORD=
+# ZEUS_BEARER_TOKEN=
+LLM_BASE_URL=
+LLM_API_KEY=
+LLM_MODEL=
+PORT=5000
+"""
+
+TRAVEL_RESULT_KEYS = (
+    "failure_class",
+    "already_serving",
+    "url",
+    "app_env",
+    "env_template",
+    "env_target",
+    "configuration_policy",
+    "missing_app_settings",
+    "missing_process_settings",
+    "skipped_llm_alias",
+    "missing_env",
+    "relocated_from",
+    "written",
+    "run",
+    "error",
 )
-# 2.4.x has parse_pipeline_envelope. 2.3.0 is not enough for the TravelPlan BFF
-# (LL-2026-08-25-001 / LL-2026-08-25-003). The BFF calls run_turn; it does not POST /pipeline.
-_STANDALONE_CLIENT_DEP = "kotenai-zeus-client>=2.4.0,<2.5"
-_STANDALONE_DOCKERFILE = """\
-FROM python:3.12-slim
 
-WORKDIR /app
 
-# Standalone build: compose context is this app directory (Helper-prepared).
-# pip installs kotenai-zeus-client 2.4.x. Pipeline envelope recovery stays in
-# that SDK. This BFF calls rt.agent.run_turn and does not POST /pipeline.
-COPY pyproject.toml requirements.txt LICENSE ./
-COPY src ./src
-COPY data ./data
-COPY config.example.json .
-
-RUN pip install --no-cache-dir -r requirements.txt \\
-    && pip install --no-cache-dir -e .
-
-ENV PORT=5000
-ENV ZEUS_CLIENT_CONFIG_DIR=/app
-ENV ZEUS_CHAT_REQUESTS_DIR=/app/data/chat_requests
-
-EXPOSE 5000
-CMD ["python", "-m", "travel_planner"]
-"""
-_STANDALONE_COMPOSE = """\
-services:
-  travel-planner:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: {container_name}
-    ports:
-      - "5050:5000"
-    environment:
-      ENVIRONMENT: dev
-      # Reach Zeus on the host from this container.
-      ZEUS_URL: "http://host.docker.internal:8080"
-      CHAT_LOG_PATH: "/app/data/chats.jsonl"
-      ZEUS_CLIENT_CONFIG_DIR: "/app"
-      ZEUS_CHAT_REQUESTS_DIR: "/app/data/chat_requests"
-      PORT: "5000"
-    volumes:
-      - ./config.json:/app/config.json
-      - ./data:/app/data
-      - ./src/travel_planner/templates:/app/src/travel_planner/templates
-      - ./src/travel_planner/static:/app/src/travel_planner/static
-      - ./src/travel_planner:/app/src/travel_planner
-      - ./data/chat_requests:/app/data/chat_requests
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: unless-stopped
-"""
-_STANDALONE_DOCKERIGNORE = """\
-__pycache__
-*.pyc
-.git
-.grok
-.venv
-config.json
-.env
-mcps
-terminals
-*.md
-data/chats.jsonl
-data/*.jsonl
-"""
-_PYPROJECT_FILE_DEP_RE = re.compile(
-    r"""["']kotenai-zeus-client\s*@\s*file:\.\./zeus_client_python["']""",
-    re.IGNORECASE,
-)
+def copy_travel_fields(source: dict[str, Any], dest: dict[str, Any]) -> None:
+    """Copy present travel result fields. Both callers use this list."""
+    for key in TRAVEL_RESULT_KEYS:
+        if source.get(key) is not None:
+            dest[key] = source[key]
 
 
 def _travel_state_path(cfg: HelperConfig) -> Path:
@@ -303,40 +264,17 @@ def _resolve_clone_dest(
 
 
 def looks_like_travel_sample(root: Path) -> bool:
-    """True for the TravelPlan tree or a layout ``validate_travel_layout`` accepts."""
-    if not root.is_dir():
+    """TravelPlan package plus a README and a Python tree."""
+    if not (root / "src" / "travel_planner").is_dir():
         return False
-    if (root / "src" / "travel_planner").is_dir():
-        return True
-    return (root / "README.md").is_file() and (
-        (root / "pyproject.toml").is_file()
-        or (root / "requirements.txt").is_file()
-        or (root / "src").is_dir()
-    )
+    return bool(validate_travel_layout(root).get("ok"))
 
 
 def travel_listen_port(root: Path) -> int:
     """Port TravelPlan binds. ``.env`` wins over ``.env.example``. Default 5000."""
-    for name in (".env", ".env.example"):
-        path = root / name
-        if not path.is_file() or path.is_symlink():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        for line in text.splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or not stripped.startswith("PORT="):
-                continue
-            raw = stripped.split("=", 1)[1].strip().strip('"').strip("'")
-            try:
-                port = int(raw)
-            except ValueError:
-                continue
-            if 1 <= port <= 65535:
-                return port
-    return 5000
+    from zeus_dev_helper_mcp.sample_place import env_listen_port
+
+    return env_listen_port(root, 5000)
 
 
 def probe_travel_port(port: int, *, timeout: float = 0.6) -> dict[str, Any]:
@@ -401,49 +339,21 @@ def travel_port_verdict(root: Path) -> dict[str, Any] | None:
     }
 
 
-def _nonempty(path: Path) -> bool:
-    try:
-        return path.exists() and any(path.iterdir())
-    except OSError:
-        return False
-
-
-def _foreign_travel_dir(path: Path) -> bool:
-    return _nonempty(path) and not looks_like_travel_sample(path)
-
-
-def _next_open_travel_dir(parent: Path) -> Path | None:
-    """Next demo_travel_sample-N that is missing, empty, or already the sample."""
-    for n in range(2, 100):
-        candidate = parent / f"{DEFAULT_TRAVEL_DIR_NAME}-{n}"
-        if not _foreign_travel_dir(candidate):
-            return candidate
-    return None
-
-
-@dataclass
-class TravelTarget:
-    """Directory ``ensure_travel_sample`` will read or clone into."""
-
-    root: Path
-    serving_verdict: dict[str, Any] | None = None
-    relocated_from: str = ""
-    foreign_blocked: bool = False
-
-
 def travel_destination(
     cfg: HelperConfig | None,
     *,
     sample_dir: str = "",
     project_name: str = "",
     parent_dir: str = "",
-) -> TravelTarget:
+):
     """The path ``ensure_travel_sample`` uses, including a live checkout or a move.
 
     ``sample_dir``, or ``parent_dir`` plus ``project_name``, is the destination.
     A blank parent is the directory next to this Helper checkout. A recorded
     checkout is used only when that port is already serving.
     """
+    from zeus_dev_helper_mcp.sample_place import place_sample
+
     dest = _resolve_clone_dest(
         sample_dir=sample_dir,
         project_name=project_name,
@@ -453,24 +363,20 @@ def travel_destination(
     explicit = bool(sample_dir.strip()) or (
         bool(named) and sanitize_travel_dir_name(named) != DEFAULT_TRAVEL_DIR_NAME
     )
+    recorded = None
     if not explicit and cfg is not None:
-        recorded = recorded_travel_dir(cfg)
-        if recorded is not None and looks_like_travel_sample(recorded):
-            verdict = travel_port_verdict(recorded)
-            if verdict is not None:
-                return TravelTarget(root=recorded, serving_verdict=verdict)
-    if (
-        not explicit
-        and _foreign_travel_dir(dest)
-        and dest.name == DEFAULT_TRAVEL_DIR_NAME
-    ):
-        sibling = _next_open_travel_dir(dest.parent)
-        if sibling is None:
-            return TravelTarget(root=dest, foreign_blocked=True)
-        return TravelTarget(root=sibling, relocated_from=str(dest.resolve()))
-    if sample_dir.strip() and _foreign_travel_dir(dest):
-        return TravelTarget(root=dest, foreign_blocked=True)
-    return TravelTarget(root=dest)
+        found = recorded_travel_dir(cfg)
+        if found is not None and looks_like_travel_sample(found):
+            recorded = found
+    return place_sample(
+        dest,
+        explicit=explicit,
+        default_name=DEFAULT_TRAVEL_DIR_NAME,
+        looks_like=looks_like_travel_sample,
+        recorded=recorded,
+        serving_of=travel_port_verdict,
+        block_explicit_foreign=True,
+    )
 
 
 def travel_quick_start() -> str:
@@ -542,9 +448,41 @@ def _bind_travel_env(
     serving = bool(result.get("already_serving"))
     if not serving and not result.get("run"):
         result["run"] = f"cd {root} && {travel_quick_start()}"
-    result = annotate_app_env(cfg, root, result, report=True, travel=True)
+    result = annotate_app_env(
+        cfg,
+        root,
+        result,
+        report=True,
+        example_text=TRAVEL_ENV_TEMPLATE,
+        template_name="zeus_llm_names",
+    )
     if not serving:
         result["next_action"] = _travel_setup_next_action(root, result)
+    return result
+
+
+def _checkout_result(
+    dest: Path,
+    *,
+    env_path: str | None,
+    clone_info: dict[str, Any] | None,
+    layout: dict[str, Any] | None,
+    **extra: Any,
+) -> dict[str, Any]:
+    """Fields shared by a found or cloned travel checkout."""
+    result: dict[str, Any] = {
+        "ok": True,
+        "local_dir": str(dest.resolve()),
+        "cloned": bool(clone_info and clone_info.get("cloned")),
+        "written": False,
+        "project_name": dest.name,
+        "clone": clone_info,
+        "layout": layout,
+        "env": {ENV_TRAVEL_DIR: env_path},
+        "repo": TRAVEL_REPO,
+        "private": False,
+    }
+    result.update(extra)
     return result
 
 
@@ -594,20 +532,13 @@ def ensure_travel_sample(
         root = target.root
         env_path = set_demo_travel_sample_dir_env(root)
         save_travel_sample_dir(cfg, root)
-        result = {
-            "ok": bool(target.serving_verdict.get("ok")),
-            "local_dir": str(root.resolve()),
-            "cloned": False,
-            "written": False,
-            "project_name": root.name,
-            "clone": None,
-            "layout": validate_travel_layout(root),
-            "docker_setup": None,
-            "env": {ENV_TRAVEL_DIR: env_path},
-            "repo": TRAVEL_REPO,
-            "private": False,
+        result = _checkout_result(
+            root,
+            env_path=env_path,
+            clone_info=None,
+            layout=validate_travel_layout(root),
             **target.serving_verdict,
-        }
+        )
         if result.get("ok"):
             return _bind_travel_env(cfg, root, result)
         return result
@@ -618,7 +549,9 @@ def ensure_travel_sample(
     relocated_from = target.relocated_from
     if relocated_from:
         dir_name = dest.name
-    if dest.is_dir() and not _nonempty(dest):
+    from zeus_dev_helper_mcp.sample_place import nonempty_dir
+
+    if dest.is_dir() and not nonempty_dir(dest):
         try:
             dest.rmdir()
         except OSError:
@@ -674,55 +607,35 @@ def ensure_travel_sample(
     save_travel_sample_dir(cfg, dest)
     layout = validate_travel_layout(dest)
     if verdict is not None:
-        result = {
-            "ok": bool(verdict.get("ok")),
-            "local_dir": str(dest.resolve()),
-            "cloned": bool(clone_info and clone_info.get("cloned")),
-            "written": False,
-            "project_name": dest.name,
-            "clone": clone_info,
-            "layout": layout,
-            "docker_setup": None,
-            "env": {ENV_TRAVEL_DIR: env_path},
-            "repo": TRAVEL_REPO,
-            "private": False,
+        result = _checkout_result(
+            dest,
+            env_path=env_path,
+            clone_info=clone_info,
+            layout=layout,
             **verdict,
-        }
+        )
         if result.get("ok"):
             return _bind_travel_env(cfg, dest, result)
         return result
     if not layout.get("ok"):
-        return {
-            "ok": False,
-            "local_dir": str(dest.resolve()),
-            "cloned": bool(clone_info and clone_info.get("cloned")),
-            "written": False,
-            "project_name": dest.name,
-            "clone": clone_info,
-            "layout": layout,
-            "docker_setup": None,
-            "env": {ENV_TRAVEL_DIR: env_path},
-            "repo": TRAVEL_REPO,
-            "private": False,
-            "next_action": (
+        return _checkout_result(
+            dest,
+            env_path=env_path,
+            clone_info=clone_info,
+            layout=layout,
+            ok=False,
+            next_action=(
                 "Clone/path exists but layout looks incomplete — check README / sample_dir"
             ),
-        }
-    result = {
-        "ok": True,
-        "local_dir": str(dest.resolve()),
-        "cloned": bool(clone_info and clone_info.get("cloned")),
-        "written": False,
-        "project_name": dest.name,
-        "clone": clone_info,
-        "layout": layout,
-        "docker_setup": None,
-        "env": {ENV_TRAVEL_DIR: env_path},
-        "repo": TRAVEL_REPO,
-        "private": False,
-        "run": f"cd {dest.resolve()} && {travel_quick_start()}",
-        "next_action": "",
-    }
+        )
+    result = _checkout_result(
+        dest,
+        env_path=env_path,
+        clone_info=clone_info,
+        layout=layout,
+        run=f"cd {dest.resolve()} && {travel_quick_start()}",
+        next_action="",
+    )
     result = _bind_travel_env(cfg, dest, result)
     if relocated_from and result.get("ok"):
         result["relocated_from"] = relocated_from
@@ -839,230 +752,6 @@ def detect_docker_install(root: Path | None) -> dict[str, Any]:
         "host_port": host_port,
         "compose_file": str(compose) if compose else None,
         "next_action": next_action,
-    }
-
-
-def _read_text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8", errors="replace")
-    except Exception:  # noqa: BLE001
-        return ""
-
-
-def monorepo_docker_layout_usable(root: Path) -> bool:
-    """True when parent looks like the koten-ai monorepo Docker expects."""
-    parent = root.parent
-    sibling_client = parent / "zeus_client_python"
-    # Upstream compose: context=parent, dockerfile=demo_travel_sample/Dockerfile
-    dockerfile_via_parent = parent / "demo_travel_sample" / "Dockerfile"
-    local_dockerfile = root / "Dockerfile"
-    return bool(
-        sibling_client.is_dir()
-        and (dockerfile_via_parent.is_file() or (root.name == "demo_travel_sample" and local_dockerfile.is_file()))
-    )
-
-
-def _packaging_has_monorepo_markers(root: Path) -> bool:
-    texts: list[str] = []
-    for name in ("Dockerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml", "pyproject.toml"):
-        p = root / name
-        if p.is_file():
-            texts.append(_read_text(p))
-    blob = "\n".join(texts)
-    return any(marker in blob for marker in _MONOREPO_DOCKER_MARKERS)
-
-
-def _is_standalone_docker_packaging(root: Path) -> bool:
-    dockerfile = root / "Dockerfile"
-    if not dockerfile.is_file():
-        return False
-    text = _read_text(dockerfile)
-    if any(marker in text for marker in _MONOREPO_DOCKER_MARKERS):
-        return False
-    return "COPY pyproject.toml" in text and "WORKDIR /app" in text
-
-
-def needs_standalone_docker_setup(root: Path | None) -> bool:
-    """True when UI sample Docker packaging won't build outside the monorepo."""
-    if root is None or not root.is_dir():
-        return False
-    if monorepo_docker_layout_usable(root):
-        return False
-    if _is_standalone_docker_packaging(root) and not _packaging_has_monorepo_markers(root):
-        return False
-    # Only rewrite upstream monorepo packaging — do not invent Docker for plain trees.
-    return _packaging_has_monorepo_markers(root)
-
-
-def _pin_standalone_client(text: str) -> str:
-    """Point a standalone clone at PyPI 2.4.x (envelope recovery). Leave other deps."""
-    new = _PYPROJECT_FILE_DEP_RE.sub(f'"{_STANDALONE_CLIENT_DEP}"', text)
-    new = new.replace(
-        "kotenai-zeus-client @ file:../zeus_client_python",
-        _STANDALONE_CLIENT_DEP,
-    )
-    new = new.replace("kotenai-zeus-client>=2.3.0", _STANDALONE_CLIENT_DEP)
-    return new
-
-
-def _rewrite_pyproject_client_dep(root: Path) -> bool:
-    path = root / "pyproject.toml"
-    if not path.is_file():
-        return False
-    text = _read_text(path)
-    new_text = _pin_standalone_client(text)
-    if new_text == text:
-        return False
-    path.write_text(new_text, encoding="utf-8")
-    return True
-
-
-def _rewrite_requirements_client_dep(root: Path) -> bool:
-    path = root / "requirements.txt"
-    if not path.is_file():
-        return False
-    text = _read_text(path)
-    new_text = _pin_standalone_client(text)
-    if new_text == text:
-        return False
-    path.write_text(new_text, encoding="utf-8")
-    return True
-
-
-def _rewrite_dockerignore(root: Path) -> bool:
-    path = root / ".dockerignore"
-    existing = _read_text(path) if path.is_file() else ""
-    # Bare `data` excludes stamped chat_requests from the image build context.
-    lines = [ln.strip() for ln in existing.splitlines() if ln.strip()]
-    if "data" in lines or not path.is_file():
-        path.write_text(_STANDALONE_DOCKERIGNORE, encoding="utf-8")
-        return True
-    return False
-
-
-def prepare_standalone_docker(root: Path, *, force: bool = False) -> dict[str, Any]:
-    """Rewrite travel-sample Docker packaging for a standalone clone.
-
-    Upstream demo_travel_sample assumes compose ``context: ..`` and a sibling
-    ``zeus_client_python``. When the sample is cloned outside that monorepo
-    (typical Helper ``use_sample`` / ``project_name`` path), rewrite Dockerfile,
-    compose, pyproject client dep, and ``.dockerignore`` so
-    ``docker compose up --build`` works. Does not run Docker.
-    """
-    root = root.expanduser().resolve()
-    if not root.is_dir():
-        return {
-            "ok": False,
-            "prepared": False,
-            "local_dir": str(root),
-            "reason": "missing_dir",
-            "next_action": "Clone or set sample_dir to a travel UI sample root",
-            "files_written": [],
-        }
-
-    if monorepo_docker_layout_usable(root) and not force:
-        return {
-            "ok": True,
-            "prepared": False,
-            "skipped": "monorepo_layout",
-            "local_dir": str(root),
-            "reason": "monorepo_docker_usable",
-            "next_action": (
-                f"Monorepo Docker layout detected — from {root} run "
-                "`docker compose up --build` (parent must contain zeus_client_python)."
-            ),
-            "files_written": [],
-        }
-
-    if _is_standalone_docker_packaging(root) and not _packaging_has_monorepo_markers(root) and not force:
-        pinned: list[str] = []
-        if _rewrite_pyproject_client_dep(root):
-            pinned.append("pyproject.toml")
-        if _rewrite_requirements_client_dep(root):
-            pinned.append("requirements.txt")
-        if pinned:
-            return {
-                "ok": True,
-                "prepared": True,
-                "local_dir": str(root),
-                "reason": "upgraded_client_pin",
-                "client_dep": _STANDALONE_CLIENT_DEP,
-                "files_written": pinned,
-                "next_action": (
-                    f"Pinned {_STANDALONE_CLIENT_DEP} in {root} so the image has "
-                    "pipeline envelope recovery. The BFF still calls rt.agent.run_turn."
-                ),
-            }
-        return {
-            "ok": True,
-            "prepared": False,
-            "skipped": "already_standalone",
-            "local_dir": str(root),
-            "reason": "already_standalone",
-            "client_dep": _STANDALONE_CLIENT_DEP,
-            "next_action": docker_install_next_action(root),
-            "files_written": [],
-        }
-
-    if not force and not needs_standalone_docker_setup(root):
-        return {
-            "ok": True,
-            "prepared": False,
-            "skipped": "not_needed",
-            "local_dir": str(root),
-            "reason": "not_needed",
-            "next_action": docker_install_next_action(root) if detect_docker_install(root).get("ok") else "",
-            "files_written": [],
-        }
-
-    written: list[str] = []
-    container_name = sanitize_travel_dir_name(root.name)
-    if container_name == DEFAULT_TRAVEL_DIR_NAME:
-        container_name = "travel-planner"
-
-    # Prefer docker-compose.yml name used by the upstream sample.
-    compose_path = root / "docker-compose.yml"
-    existing_compose = _compose_file(root)
-    if existing_compose is not None and existing_compose.name != "docker-compose.yml":
-        compose_path = existing_compose
-
-    (root / "Dockerfile").write_text(_STANDALONE_DOCKERFILE, encoding="utf-8")
-    written.append("Dockerfile")
-    compose_path.write_text(
-        _STANDALONE_COMPOSE.format(container_name=container_name),
-        encoding="utf-8",
-    )
-    written.append(compose_path.name)
-
-    if _rewrite_pyproject_client_dep(root):
-        written.append("pyproject.toml")
-    if _rewrite_requirements_client_dep(root):
-        written.append("requirements.txt")
-    if _rewrite_dockerignore(root):
-        written.append(".dockerignore")
-
-    # Ensure LICENSE exists for Dockerfile COPY (upstream has it; keep soft).
-    if not (root / "LICENSE").is_file() and (root / "LICENSE.md").is_file():
-        pass  # Dockerfile expects LICENSE; leave as-is — build will fail loudly
-
-    host_port = 5050
-    next_action = (
-        f"Standalone Docker packaging prepared in {root}. "
-        "Copy config.example.json to config.json only when config.json is missing. "
-        "Compose sets ZEUS_URL=host.docker.internal:8080. "
-        f"Then `docker compose up --build` and open http://localhost:{host_port}. "
-        "The helper does not run Docker."
-    )
-    return {
-        "ok": True,
-        "prepared": True,
-        "local_dir": str(root),
-        "reason": "rewrote_monorepo_docker",
-        "container_name": container_name,
-        "client_dep": _STANDALONE_CLIENT_DEP,
-        "files_written": written,
-        "next_action": next_action,
-        "host_port": host_port,
     }
 
 
@@ -1222,25 +911,7 @@ def travel_golden_path(
         },
         "jira": "https://kotenai.atlassian.net/browse/ZDH-10",
     }
-    for key in (
-        "failure_class",
-        "already_serving",
-        "url",
-        "app_env",
-        "env_template",
-        "env_target",
-        "configuration_policy",
-        "missing_app_settings",
-        "missing_process_settings",
-        "skipped_llm_alias",
-        "missing_env",
-        "relocated_from",
-        "written",
-        "run",
-        "error",
-    ):
-        if ensured.get(key) is not None:
-            payload[key] = ensured[key]
+    copy_travel_fields(ensured, payload)
     from zeus_dev_helper_mcp.serve_choice import annotate_serve_choice
 
     return annotate_serve_choice(payload, root, cfg=cfg, serve_with=serve_with)

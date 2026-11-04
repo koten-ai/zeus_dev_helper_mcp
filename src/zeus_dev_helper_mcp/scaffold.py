@@ -314,7 +314,7 @@ def use_sample(
             serve_with=serve_with,
         )
     if sample in ("travel", "demo_travel", "travel_sample", "demo_travel_sample", "ui"):
-        from zeus_dev_helper_mcp.travel import travel_golden_path
+        from zeus_dev_helper_mcp.travel import copy_travel_fields, travel_golden_path
 
         golden = travel_golden_path(
             cfg,
@@ -349,24 +349,7 @@ def use_sample(
             "checklist_hint": "Mark 3.1 done after clone/scaffold succeeds",
             "sample_readme_snippet": golden.get("sample_readme_snippet"),
         }
-        for key in (
-            "failure_class",
-            "already_serving",
-            "url",
-            "app_env",
-            "env_template",
-            "env_target",
-            "configuration_policy",
-            "missing_app_settings",
-            "missing_process_settings",
-            "skipped_llm_alias",
-            "missing_env",
-            "relocated_from",
-            "written",
-            "error",
-        ):
-            if golden.get(key) is not None:
-                payload[key] = golden[key]
+        copy_travel_fields(golden, payload)
         from zeus_dev_helper_mcp.serve_choice import copy_serve_choice
 
         copy_serve_choice(golden, payload)

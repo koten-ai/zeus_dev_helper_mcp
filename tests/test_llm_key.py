@@ -83,6 +83,41 @@ def test_inspect_requires_dotenv_value_for_the_configured_name(tmp_path: Path) -
     assert ready["evidence"] == "api_key_env=LLM_API_KEY present in .env"
 
 
+def test_undeclared_llm_block_accepts_any_key_name(tmp_path: Path) -> None:
+    from zeus_dev_helper_mcp.llm_key import inspect_app_llm_key
+
+    root = tmp_path / "app"
+    root.mkdir()
+    (root / "config.json").write_text(
+        json.dumps({"llm_provider": {"api_key": ""}}),
+        encoding="utf-8",
+    )
+    missing = inspect_app_llm_key(root)
+    assert missing["applies"] is True
+    assert missing["ok"] is False
+    assert "LLM_API_KEY" in missing["missing_env"]
+    (root / ".env").write_text("OPENAI_API_KEY=sk-quoted\n", encoding="utf-8")
+    ready = inspect_app_llm_key(root)
+    assert ready["applies"] is True
+    assert ready["ok"] is True
+    assert ready["api_key_env"] == "OPENAI_API_KEY"
+    assert "sk-quoted" not in json.dumps(ready)
+
+
+def test_config_without_an_llm_block_does_not_apply(tmp_path: Path) -> None:
+    from zeus_dev_helper_mcp.llm_key import inspect_app_llm_key
+
+    root = tmp_path / "app"
+    root.mkdir()
+    (root / "config.json").write_text(
+        json.dumps({"zeus": {"username": "demo_1"}}),
+        encoding="utf-8",
+    )
+    (root / "src" / "travel_planner").mkdir(parents=True)
+    report = inspect_app_llm_key(root)
+    assert report == {"applies": False, "ok": True, "message": ""}
+
+
 def test_readiness_closes_12_for_beer_lists_without_a_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

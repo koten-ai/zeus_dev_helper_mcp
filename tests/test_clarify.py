@@ -249,6 +249,7 @@ def test_travel_destination_uses_parent_until_the_port_is_serving(
     checkout.mkdir()
     (checkout / "README.md").write_text("# travel\n", encoding="utf-8")
     (checkout / "requirements.txt").write_text("x\n", encoding="utf-8")
+    (checkout / "src" / "travel_planner").mkdir(parents=True)
     monkeypatch.setenv("DEMO_TRAVEL_SAMPLE_DIR", str(checkout))
     parent = tmp_path / "parent"
     parent.mkdir()
