@@ -234,7 +234,7 @@ Write a ZeusRuntime middle-man (`cli` or FastAPI `api`). UI demos use `use_sampl
 
 ### `use_sample`
 
-Shallow-clone https://github.com/koten-ai/demo_travel_sample.git when the destination is missing, using the beer creation procedure. The destination is `sample_dir`, or `parent_dir` plus `project_name`. A blank parent is the directory next to this Helper checkout. Start with `python -m travel_planner` on port 5000 unless `PORT` is set. Sets `DEMO_TRAVEL_SAMPLE_DIR`. The create path does not rewrite Docker files.
+Shallow-clone https://github.com/koten-ai/demo_travel_sample.git when the destination is missing, using the beer creation procedure. The destination is `sample_dir`, or `parent_dir` plus `project_name`. A blank parent is the directory next to this Helper checkout. A foreign default directory moves to the next open sibling. An explicit foreign `sample_dir` returns `foreign_sample_dir` and writes nothing. A recorded checkout that answers `GET /api/health` returns `already_serving`. Basic auth with no process login returns `login_not_in_process` before git clone. Start with `python -m travel_planner` on port 5000 unless `PORT` is set. Sets `DEMO_TRAVEL_SAMPLE_DIR`. The create path does not rewrite Docker files. A mode 600 `.env` keeps populated values and fills empty Zeus and LLM names. `ZEUS_USERNAME` defaults to `demo_1`.
 
 1. Bootstrap the travel UI sample — clone it if needed and show where it landed.
 2. Clone the travel sample as directory `my_first_zeus_ui` under my workspace (`project_name=my_first_zeus_ui`).

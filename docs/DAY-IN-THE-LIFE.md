@@ -41,7 +41,7 @@ This is the day the product is designed for. Typical talk with the agent:
 | “Start the project” | `start_project` | Checklist reset: `single-agent:travel` |
 | “What’s the one next step?” | `next_step` | Current blocker + 1–3 recommended tools |
 
-They record non-secret prereqs (`set_prereq`), then `validate_env` (presence only). On a `run_turn` path a missing process key is an error (`llm_key_missing`) for travel, API, and yelp. Beer lists warn: Pour stays off until the key is in the app `.env`. `set_prereq(has_llm_key=true)` does not clear it. Then a live `readiness_check`: healthz / readyz / version, auth, bootstrap, chat_request. That check marks checklist **1.2** done when `ZEUS_URL` is set and, for travel, API, and yelp, the process key is present. Beer lists and a travel Direct opt-out can close 1.2 from the URL alone. If something is red, they get a `failure_class` (`wrong_port_hub_vs_public`, `auth_failed`, `scope_not_enabled`, `llm_key_missing`, …) and a next action — not a stack dump.
+They record non-secret prereqs (`set_prereq`), then `validate_env` (presence only). On a `run_turn` path a missing process key is an error (`llm_key_missing`) for travel, API, and yelp. Beer lists warn: Pour stays off until the key is in the app `.env`. `set_prereq(has_llm_key=true)` does not clear it. Then a live `readiness_check`: healthz / readyz / version, auth, bootstrap, chat_request. That check marks checklist **1.2** done when `ZEUS_URL` is set and, for travel, API, and yelp, the process key is present. Travel stays open because the page is search and has no Direct list. Beer lists can close 1.2 from the URL alone. If something is red, they get a `failure_class` (`wrong_port_hub_vs_public`, `auth_failed`, `scope_not_enabled`, `llm_key_missing`, …) and a next action — not a stack dump.
 
 If they do not know a term: `explain("contract_hash")`, `explain("zeus_runtime")`. Glossary + docs link, not a guess.
 
@@ -49,10 +49,12 @@ If they do not know a term: `explain("contract_hash")`, `explain("zeus_runtime")
 
 Two paths:
 
-- **Sample:** `use_sample` / `travel_golden_path` if `demo_travel_sample` is cloned
+- **Sample:** `use_sample(sample=travel)` follows the beer placement rules for public `demo_travel_sample`. The destination is `sample_dir`, or `parent_dir` plus `project_name`. A blank parent is the directory next to the Helper checkout. A foreign default directory moves to the next open sibling. An explicit foreign `sample_dir` returns `foreign_sample_dir` and writes nothing. A checkout that answers `GET /api/health` stays in place. Basic auth with no process login returns `login_not_in_process` before git clone. The create path does not rewrite Docker files. Start with `python -m travel_planner` on port 5000 unless `PORT` is set. `use_sample` writes a mode 600 `.env`, keeps populated values, and fills empty Zeus and LLM names. `ZEUS_USERNAME` defaults to `demo_1`. Beer is the same procedure against public `demo_beer_sample`, started with `python main.py`.
 - **From scratch:** `scaffold_app` → `write_env` → `verify_local_setup`
 
-They still copy real secrets into `.env` themselves. Helper only writes `.env.example`, with `LLM_API_KEY=` empty, and writes `config.json` `llm.api_key_env` as the name `LLM_API_KEY`. Checklist **3.2** stays open until `verify_local_setup` on that directory sees a non-empty value for the named variable. The check reports presence only. A secret pasted into `api_key_env` fails as `llm_key_missing`. The `zeus_client` import in that check is this Helper process. The app `.venv` does not satisfy it. Launch the Helper with `uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp` and restart the MCP server after installing the extra. Do not start uvicorn or Pour before the key check passes.
+Every beer, travel, yelp, and API build includes `ask_user` for auth mode and the LLM provider. Password, bearer token, and API key stay out of tool arguments. The agent writes a mode-600 env file and calls `load_process_login`. When both a `Dockerfile` and a compose file exist, follow `host_question`. `next_action` names Grok `ask_user_question`, Claude Code `AskUserQuestion`, or Codex `request_user_input`.
+
+Checklist **3.2** stays open until `verify_local_setup` on that directory sees a non-empty value for the named variable. The check reports presence only. A secret pasted into `api_key_env` fails as `llm_key_missing`. The `zeus_client` import in that check is this Helper process. The app `.venv` does not satisfy it. Launch the Helper with `uvx --from 'zeus-dev-helper-mcp[agent]' zeus-dev-helper-mcp` and restart the MCP server after installing the extra. Do not start travel search or Pour before the key check passes.
 
 ### Afternoon: bind without inventing a hash
 
@@ -63,14 +65,14 @@ This is where people usually go wrong. The coach’s job is to stop that.
 3. `bind_contract` with no path copies that hash into a `scope_contracts` snippet. Placeholders and `compute_local` are refused. A Hub / Workbench stamp is only when the live document has no real `contract.hash`.
 4. `catalog_diff` / `explain_hash_boundary` — live bootstrap vs on-disk vs bound prefix; MINI-SCHEMA / brief stay out of the hash. Pinning 4.2 does not turn Pour on.
 
-Meanwhile they pick a **surface**, not “just call the LLM”:
+Meanwhile they pick a **surface**, not “just call the LLM”. A website returns one input per control. It does not return one surface for the whole app.
 
-| Intent | Surface | Trace-Class |
+| Input | Call | LLM key |
 | --- | --- | --- |
-| Natural-language question | `rt.agent.run_turn` | `agent` |
-| Typeahead | `rt.data.search` | `direct.interactive` |
-| One verb | `rt.data.verb` | `direct.read` |
-| Multi-step DAG | agent-for-pipeline | `agent` — **not** pipeline on Direct |
+| List, chips, typeahead, paging, detail | Direct `find`, `get`, and `search` | No |
+| Question box | `rt.agent.run_turn` with `chat_request` omitted | Yes, in the app `.env`. `max_rounds` is 4 on a catalog page and 8 on a copilot |
+
+A single box still returns one surface: a natural-language question is `rt.agent.run_turn`, typeahead is `rt.data.search`, one verb is `rt.data.verb`, and a multi-step DAG is agent-for-pipeline. `pipeline` stays off Direct.
 
 `recommend_surface` / `explain_verb` / `lint_verb_args` / `suggest_verb_call` draft and lint JSON. They **do not POST**. Live field names come from `describe_scope` (types + names only, no sample docs).
 
@@ -79,14 +81,15 @@ Meanwhile they pick a **surface**, not “just call the LLM”:
 ### Late afternoon: first green
 
 1. `smoke_test_zeus` — no LLM; describe on `:8080` → checklist **5.1**
-2. `suggest_demo_prompts` — advice-shaped questions, not SQL
-3. `smoke_test_agent` — one `rt.agent.run_turn` → `session_id` / `req_id`, Zeus tools used → **5.2**. When the client package imports, this refuses with `llm_key_missing` unless the process has `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY`.
+2. `website_green` — after the sample is on disk, checklist **5.1**, **5.2**, and **6.1** recommend this check. Travel installs with `pip install -e ".[dev]"`, starts `python -m travel_planner` on port 5000, loads the mode 600 `.env`, and checks `GET /api/health`. Beer cards are not required. Search stays off until the app `.env` has an LLM key.
+3. `suggest_demo_prompts` — advice-shaped questions, not SQL
+4. `smoke_test_agent` — one `rt.agent.run_turn` → `session_id` / `req_id`, Zeus tools used → **5.2**. When the client package imports, this refuses with `llm_key_missing` unless the process has `LLM_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY`.
 
 If it blows up: paste status / body / `ErrorCode` into `diagnose_error`. They get a class, a docs anchor, and Detective **URL templates** (`/hub/debug/req/<id>`) — Helper does not scrape Hub.
 
 `gap_report` is the stand-up view: progress %, open items, phases 4–7 still red.
 
-When 5.1 + 5.2 are green, `next_step` offers **handoffs only**: `recommend_data_plane_mcp`, `emit_mcp_config`, `handoff_to_multi`. Helper does not become those products.
+When 5.1 + 5.2 are green, a one-scope beer or travel app does not take `handoff_to_multi` as the next build step. `handoff_to_multi` writes `jobs.host_url` only after the operator confirms two or more URLs, two or more scopes, or a report wait of 20 seconds to 5 minutes. Helper does not become those products.
 
 Time-to-green is local (`helper_metrics`). Nothing leaves the machine.
 
@@ -160,9 +163,10 @@ doctor → start_project → set_prereq → validate_env → readiness_check
   → list_catalog_modes → fetch_chat_request → explain → recommend_surface
   → use_sample | travel_golden_path | scaffold_app
   → bootstrap_scope / bind_contract / catalog_diff
-  → smoke_test_zeus → smoke_test_agent → gap_report
-  → (optional) recommend_data_plane_mcp | handoff_to_multi
+  → smoke_test_zeus → website_green → smoke_test_agent → gap_report
 ```
+
+A one-scope sample does not continue into `handoff_to_multi`. That tool writes `jobs.host_url` only after the operator confirms two or more URLs, two or more scopes, or a report wait of 20 seconds to 5 minutes.
 
 Hard constraints throughout:
 
