@@ -104,7 +104,7 @@ def test_validate_env_asks_for_the_provider_before_the_key(
     assert openai["model"] == "gpt-5.6-sol"
 
 
-def test_direct_opt_out_does_not_ask_for_an_llm(
+def test_travel_still_asks_for_an_llm_without_a_direct_list(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
@@ -135,9 +135,17 @@ def test_direct_opt_out_does_not_ask_for_an_llm(
     data["meta"] = {"sample": "travel"}
     save_checklist(cfg, data)
     out = validate_env()
-    assert out["ok"] is True
-    assert "llm_options" not in out
-    assert "ask_user" not in out
+    assert out["ok"] is False
+    issue = next(row for row in out["issues"] if row["field"] == "LLM_API_KEY")
+    assert issue["level"] == "error"
+    assert issue["failure_class"] == "llm_key_missing"
+    assert out["llm_choice_required"] is True
+    assert [row["env"] for row in out["ask_user"]] == [
+        "LLM_BASE_URL",
+        "LLM_MODEL",
+        "LLM_API_KEY",
+    ]
+    assert "set_prereq(has_llm_key=true) does not count" in out["next_action"]
 
 
 def test_smoke_lists_providers_when_the_key_is_missing(

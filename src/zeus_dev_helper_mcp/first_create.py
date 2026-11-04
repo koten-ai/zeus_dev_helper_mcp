@@ -122,7 +122,7 @@ def sample_destination(
         sample_dir=sample_dir,
         project_name=project_name,
         parent_dir=parent_dir,
-    )
+    ).root
 
 
 def _nonempty_dir(path: Path) -> bool:

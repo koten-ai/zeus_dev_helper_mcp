@@ -96,6 +96,7 @@ def test_travel_golden_path_phase5_mentions_docker(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (root / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    (root / "src" / "travel_planner").mkdir(parents=True)
     cfg = _cfg(tmp_path)
     load_checklist(cfg)
     out = travel_golden_path(cfg, sample_dir=str(root))

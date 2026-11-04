@@ -179,6 +179,27 @@ def test_travel_and_yelp_ask_on_the_second_build(
     assert "ask_user" not in (yelp_first.get("app_config") or {})
 
 
+def test_travel_username_defaults_to_the_example(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zeus_dev_helper_mcp.env_questions import sample_build_questions
+
+    _clear(monkeypatch)
+    plain = sample_build_questions("travel")
+    username = next(row for row in plain if row.get("env") == "ZEUS_USERNAME")
+    assert username["default"] == "demo_1"
+    root = tmp_path / "demo_travel_sample"
+    root.mkdir()
+    (root / "config.example.json").write_text(
+        json.dumps({"zeus": {"username": "from-example", "password": ""}}),
+        encoding="utf-8",
+    )
+    named = sample_build_questions("travel", root=root)
+    username = next(row for row in named if row.get("env") == "ZEUS_USERNAME")
+    assert username["default"] == "from-example"
+    assert "password" not in username["default"]
+
+
 def test_other_samples_do_not_grow_the_build_form(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

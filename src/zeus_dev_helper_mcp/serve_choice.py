@@ -119,13 +119,15 @@ def python_serve_command(root: Path) -> tuple[str, str]:
             pass
     travel_src = root / "src" / "travel_planner"
     if "travel_planner" in blob or travel_src.is_dir():
-        copy = ""
-        if (root / "config.example.json").is_file() and not (
-            root / "config.json"
-        ).is_file():
-            copy = "cp config.example.json config.json && "
-        run = f'cd {root} && {copy}pip install -e ".[dev]" && python -m travel_planner'
-        return run, "http://127.0.0.1:5000/"
+        from zeus_dev_helper_mcp.python_runtime import venv_setup_shell
+        from zeus_dev_helper_mcp.travel import travel_listen_port
+
+        port = travel_listen_port(root)
+        setup = venv_setup_shell()
+        run = (
+            f'cd {root} && {setup} && pip install -e ".[dev]" && python -m travel_planner'
+        )
+        return run, f"http://127.0.0.1:{port}/"
 
     if (root / "main.py").is_file() and (root / "requirements.txt").is_file():
         from zeus_dev_helper_mcp.beer import beer_listen_port, beer_quick_start

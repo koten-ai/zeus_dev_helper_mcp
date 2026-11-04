@@ -240,18 +240,48 @@ def test_beer_destination_moves_off_a_foreign_directory(tmp_path: Path) -> None:
     assert target.foreign_blocked is False
 
 
-def test_travel_destination_prefers_the_existing_checkout(
+def test_travel_destination_uses_parent_until_the_port_is_serving(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from zeus_dev_helper_mcp.travel import _resolve_clone_dest, travel_destination
+    from zeus_dev_helper_mcp.travel import travel_destination
 
     checkout = tmp_path / "already"
     checkout.mkdir()
+    (checkout / "README.md").write_text("# travel\n", encoding="utf-8")
+    (checkout / "requirements.txt").write_text("x\n", encoding="utf-8")
+    (checkout / "src" / "travel_planner").mkdir(parents=True)
     monkeypatch.setenv("DEMO_TRAVEL_SAMPLE_DIR", str(checkout))
+    parent = tmp_path / "parent"
+    parent.mkdir()
     cfg = HelperConfig(state_dir=tmp_path / "state")
-    found = travel_destination(cfg)
-    assert found == checkout.resolve()
-    assert found != _resolve_clone_dest()
+
+    def closed(port: int, *, timeout: float = 0.6) -> dict[str, object]:
+        del timeout
+        return {
+            "url": f"http://127.0.0.1:{port}/",
+            "reachable": False,
+            "health_ok": False,
+        }
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.probe_travel_port", closed)
+    found = travel_destination(cfg, parent_dir=str(parent))
+    assert found.serving_verdict is None
+    assert found.root == (parent / "demo_travel_sample").resolve()
+    assert found.root != checkout.resolve()
+
+    def live(port: int, *, timeout: float = 0.6) -> dict[str, object]:
+        del timeout
+        return {
+            "url": f"http://127.0.0.1:{port}/",
+            "reachable": True,
+            "health_ok": True,
+        }
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.probe_travel_port", live)
+    serving = travel_destination(cfg, parent_dir=str(parent))
+    assert serving.serving_verdict is not None
+    assert serving.serving_verdict["already_serving"] is True
+    assert serving.root == checkout.resolve()
 
 
 def test_yelp_destination_stays_inside_parent_dir(
