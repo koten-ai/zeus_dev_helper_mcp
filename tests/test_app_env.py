@@ -288,6 +288,13 @@ def test_travel_env_keeps_populated_values_and_names_only(
     assert out["configuration_policy"] == "preserve_existing_then_fill_missing"
     assert out["env_template"] == "zeus_llm_names"
     assert "LLM_API_KEY" in out["env_keys"]
+    assert out["settings_kept"]["ZEUS_USERNAME"] == "kept-user"
+    assert out["settings_kept"]["LLM_BASE_URL"] == "https://kept.example/v1"
+    assert out["settings_kept"]["LLM_MODEL"] == "kept-model"
+    assert "ZEUS_USERNAME" not in out["settings_written"]
+    assert "LLM_MODEL" not in out["settings_written"]
+    assert out["secret_presence"]["LLM_API_KEY"] is True
+    assert out["env_change"] is True
     assert LLM_KEY not in json.dumps(out)
     assert "process-key-should-not-replace" not in json.dumps(out)
 

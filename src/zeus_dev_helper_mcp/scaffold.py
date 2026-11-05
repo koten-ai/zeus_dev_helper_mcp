@@ -248,20 +248,28 @@ def _with_sample_build(
 def apply_create_answers(payload: dict[str, Any], gate: Any) -> dict[str, Any]:
     """Merge accepted non-secrets into an existing or just-written app ``.env``.
 
-    An existing beer directory still reaches this path. ``ZEUS_PASSWORD`` and
-    ``LLM_API_KEY`` are left unchanged. After the cards are accepted, the chat
-    ``ask_user`` list is dropped so the model does not ask those names again.
+    An existing beer directory still reaches this path. ``ZEUS_PASSWORD``,
+    ``ZEUS_BEARER_TOKEN``, and ``LLM_API_KEY`` are left unchanged. When this
+    result already has an ensure report, the overlay refreshes which of
+    ``ZEUS_AUTH_MODE``, ``ZEUS_USERNAME``, ``LLM_BASE_URL``, and ``LLM_MODEL``
+    were written, and which populated values stayed. A byte change of an
+    existing file sets ``env_change``. A result that never wrote ``.env`` is
+    left unchanged. After the cards are accepted, the chat ``ask_user`` list
+    is dropped so the model does not ask those names again.
     """
     if not getattr(gate, "cards_accepted", False) or not isinstance(payload, dict):
         return payload
     root = payload.get("local_dir") or payload.get("target_dir")
     if isinstance(root, str) and root.strip() and Path(root).is_dir():
-        from zeus_dev_helper_mcp.app_env import overlay_nonsecret_env
+        from zeus_dev_helper_mcp.app_env import apply_env_overlay
 
         updates: dict[str, str] = {}
         url = str(getattr(gate, "zeus_url", "") or "").strip()
         if url:
             updates["ZEUS_URL"] = url
+        mode = str(getattr(gate, "auth_mode", "") or "").strip().lower()
+        if mode in {"none", "basic", "bearer"}:
+            updates["ZEUS_AUTH_MODE"] = mode
         updates["ZEUS_USERNAME"] = str(getattr(gate, "zeus_username", "") or "")
         if str(getattr(gate, "llm_provider", "") or "").strip():
             base = str(getattr(gate, "llm_base_url", "") or "").strip()
@@ -270,7 +278,7 @@ def apply_create_answers(payload: dict[str, Any], gate: Any) -> dict[str, Any]:
                 updates["LLM_BASE_URL"] = base
             if model:
                 updates["LLM_MODEL"] = model
-        overlay_nonsecret_env(root, updates)
+        apply_env_overlay(payload, updates)
     if payload.get("ok") is True:
         payload.pop("ask_user", None)
         payload.pop("sample_build_form", None)
@@ -422,6 +430,10 @@ def use_sample(
             "configuration_policy",
             "missing_app_settings",
             "missing_process_settings",
+            "settings_written",
+            "settings_kept",
+            "secret_presence",
+            "env_change",
             "verification",
             "skipped_llm_alias",
         ):
@@ -911,7 +923,7 @@ dependencies = [
     except Exception:  # noqa: BLE001, S110
         pass
 
-    from zeus_dev_helper_mcp.app_env import annotate_pour
+    from zeus_dev_helper_mcp.app_env import annotate_pour, attach_env_change_note
     from zeus_dev_helper_mcp.llm_key import inspect_app_llm_key
 
     llm_key = inspect_app_llm_key(root)
@@ -936,6 +948,7 @@ dependencies = [
         "next_action": next_action,
         "docs": docs,
     }, catalog_ui=False)
+    result = attach_env_change_note(result)
     if kind == "api":
         return _with_sample_build(cfg, result, "api")
     return result
