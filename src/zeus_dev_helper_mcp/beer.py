@@ -2707,9 +2707,12 @@ def _finish_beer_result(
         sync_bound_catalog_checklist(cfg, root)
     except Exception:  # noqa: BLE001, S110
         pass
+    from zeus_dev_helper_mcp.app_env import attach_env_change_note
     from zeus_dev_helper_mcp.serve_choice import annotate_serve_choice
 
-    return annotate_serve_choice(result, root, cfg=cfg, serve_with=serve_with)
+    return attach_env_change_note(
+        annotate_serve_choice(result, root, cfg=cfg, serve_with=serve_with)
+    )
 
 
 def write_beer_sample(

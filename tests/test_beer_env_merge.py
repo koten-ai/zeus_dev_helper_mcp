@@ -183,7 +183,39 @@ def test_fresh_clone_merges_the_sample_template(
     assert "LLM_MODEL" not in out["missing_process_settings"]
     _assert_coach(out)
     _assert_no_secrets(out)
+    assert out["env_change"] is False
+    assert out["app_env"]["created_env"] is True
+    assert "ZEUS_USERNAME" in out["settings_written"]
+    assert "LLM_BASE_URL" in out["settings_written"]
+    assert "LLM_MODEL" in out["settings_written"]
+    assert "Env report: created .env." in out["next_action"]
+    assert "Restart the app before run_turn." not in out["next_action"]
     assert "demo_travel_sample" not in str(out.get("repo"))
+
+
+def test_second_use_sample_of_a_stable_env_does_not_say_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear(monkeypatch)
+    _fake_clone(monkeypatch)
+    first = use_sample(
+        _cfg(tmp_path),
+        sample="beer",
+        parent_dir=str(tmp_path),
+        project_name="demo_beer_sample",
+    )
+    assert first["ok"] is True
+    second = use_sample(
+        _cfg(tmp_path),
+        sample="beer",
+        sample_dir=str(first["local_dir"]),
+    )
+    assert second["ok"] is True
+    assert second["env_change"] is False
+    action = str(second["next_action"])
+    assert "Env report: no env change." in action
+    assert "Restart the app before run_turn." not in action
+    assert "Restart the app after an env change." in action
 
 
 def test_existing_env_keeps_values_and_gains_template_keys(
@@ -218,6 +250,13 @@ def test_existing_env_keeps_values_and_gains_template_keys(
     assert stat.S_IMODE((root / ".env").stat().st_mode) == 0o600
     _assert_coach(out)
     _assert_no_secrets(out)
+    assert out["env_change"] is True
+    assert "LLM_BASE_URL" in out["settings_written"]
+    assert "LLM_MODEL" in out["settings_written"]
+    assert "ZEUS_URL" not in out["settings_written"]
+    assert "Env report: env change." in out["next_action"]
+    assert "Restart the app before run_turn." in out["next_action"]
+    assert "Restart the app after an env change." in out["next_action"]
 
 
 def test_openai_key_is_not_paired_with_the_xai_default(

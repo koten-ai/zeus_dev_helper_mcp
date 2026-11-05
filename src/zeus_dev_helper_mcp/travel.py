@@ -66,6 +66,10 @@ TRAVEL_RESULT_KEYS = (
     "configuration_policy",
     "missing_app_settings",
     "missing_process_settings",
+    "settings_written",
+    "settings_kept",
+    "secret_presence",
+    "env_change",
     "skipped_llm_alias",
     "missing_env",
     "relocated_from",
@@ -912,6 +916,9 @@ def travel_golden_path(
         "jira": "https://kotenai.atlassian.net/browse/ZDH-10",
     }
     copy_travel_fields(ensured, payload)
+    from zeus_dev_helper_mcp.app_env import attach_env_change_note
     from zeus_dev_helper_mcp.serve_choice import annotate_serve_choice
 
-    return annotate_serve_choice(payload, root, cfg=cfg, serve_with=serve_with)
+    return attach_env_change_note(
+        annotate_serve_choice(payload, root, cfg=cfg, serve_with=serve_with)
+    )

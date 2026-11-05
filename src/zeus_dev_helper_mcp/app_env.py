@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from zeus_dev_helper_mcp.config import HelperConfig, llm_key_in_process_env
+from zeus_dev_helper_mcp.error_log import scrub_text
 
 _POUR_OFF = (
     "Pour is disabled. Search calls rt.agent.run_turn and this process has no "
@@ -343,11 +344,29 @@ def _missing_settings(
     return app_missing, process_missing
 
 
+def _auth_mode_fill(cfg: HelperConfig, existing: Mapping[str, str]) -> dict[str, str]:
+    """Fill an empty ``ZEUS_AUTH_MODE``. A populated value stays put.
+
+    The default ``none`` is not invented. An explicit process value, including
+    ``none``, and a stored ``basic`` or ``bearer`` mode are written.
+    """
+    if (existing.get("ZEUS_AUTH_MODE") or "").strip():
+        return {}
+    explicit = (os.environ.get("ZEUS_AUTH_MODE") or "").strip().lower()
+    if explicit not in {"none", "basic", "bearer"}:
+        stored = (cfg.zeus_auth_mode or "").strip().lower()
+        explicit = stored if stored in {"basic", "bearer"} else ""
+    if not explicit:
+        return {}
+    return {"ZEUS_AUTH_MODE": explicit}
+
+
 def _env_lines(cfg: HelperConfig) -> tuple[list[str], list[str]]:
     """Lines for a new ``.env`` when the app has no template."""
     fills = _confirmed_routing(cfg)
     llm, _skipped = _llm_fills({}, {})
     fills.update(llm)
+    fills.update(_auth_mode_fill(cfg, {}))
     lines = [f"{key}={_format_value(value)}" for key, value in fills.items() if value.strip()]
     names = [key for key, _value in fills.items() if _value.strip()]
     return lines, names
@@ -395,15 +414,30 @@ def _ensure_gitignore(root: Path) -> bool:
     return True
 
 
-_OVERLAY_KEYS = ("ZEUS_URL", "ZEUS_USERNAME", "LLM_BASE_URL", "LLM_MODEL")
+_OVERLAY_KEYS = (
+    "ZEUS_AUTH_MODE",
+    "ZEUS_URL",
+    "ZEUS_USERNAME",
+    "LLM_BASE_URL",
+    "LLM_MODEL",
+)
+_TRACKED_SETTINGS = ("ZEUS_AUTH_MODE", "ZEUS_USERNAME", "LLM_BASE_URL", "LLM_MODEL")
+_SECRET_PRESENCE = ("ZEUS_PASSWORD", "ZEUS_BEARER_TOKEN", "LLM_API_KEY")
+ENV_REPORT_KEYS = (
+    "settings_written",
+    "settings_kept",
+    "secret_presence",
+    "env_change",
+)
+_ENV_NOTE_MARK = "Env report:"
 
 
 def overlay_nonsecret_env(root: str | Path, updates: Mapping[str, str]) -> None:
     """Replace accepted non-secret keys. Leave every other line unchanged.
 
-    ``ZEUS_PASSWORD`` and ``LLM_API_KEY`` stay as they are, including an
-    empty or quoted value. A missing ``.env`` is created with only the
-    accepted keys.
+    ``ZEUS_PASSWORD``, ``ZEUS_BEARER_TOKEN``, and ``LLM_API_KEY`` stay as
+    they are, including an empty or quoted value. A missing ``.env`` is
+    created with only the accepted keys.
     """
     chosen = {
         key: updates[key]
@@ -453,8 +487,11 @@ def ensure_app_env(
     """Create or merge a mode 600 ``.env`` from this app's ``.env.example``.
 
     Populated values already in ``.env`` stay. Missing template keys are added.
-    Confirmed Zeus routing and this process fill empty keys. The result lists
-    variable names only. A caller with no ``.env.example`` passes ``example_text``.
+    Confirmed Zeus routing and this process fill empty keys. The result names
+    which of ``ZEUS_AUTH_MODE``, ``ZEUS_USERNAME``, ``LLM_BASE_URL``, and
+    ``LLM_MODEL`` were written, and the populated values that were kept.
+    ``ZEUS_PASSWORD``, ``ZEUS_BEARER_TOKEN``, and ``LLM_API_KEY`` stay
+    presence-only. A caller with no ``.env.example`` passes ``example_text``.
     """
     root = Path(target_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -482,12 +519,15 @@ def ensure_app_env(
     fills = _confirmed_routing(cfg)
     llm_fills, skipped_alias = _llm_fills(template, existing_vals)
     fills.update(llm_fills)
+    fills.update(_auth_mode_fill(cfg, existing_vals))
     auth_mode = _auth_mode(cfg)
+    file_changed = False
     if path.is_symlink():
         names = _env_key_names(existing)
         written = existing_vals
     elif example:
         merged = _merge_env_text(example, existing, fills, auth_mode=auth_mode)
+        file_changed = bool(existing.strip()) and merged != existing
         if not path.exists():
             created = True
         if merged != existing or created:
@@ -533,9 +573,230 @@ def ensure_app_env(
         "missing_app_settings": app_missing,
         "missing_process_settings": process_missing,
     }
+    report.update(
+        settings_report(existing_vals, written, file_changed=file_changed)
+    )
     if skipped_alias:
         report["skipped_llm_alias"] = skipped_alias
     return report
+
+
+def _secret_presence(values: Mapping[str, str]) -> dict[str, bool]:
+    bearer = (values.get("ZEUS_BEARER_TOKEN") or values.get("ZEUS_TOKEN") or "").strip()
+    found = {
+        "ZEUS_PASSWORD": bool((values.get("ZEUS_PASSWORD") or "").strip()),
+        "ZEUS_BEARER_TOKEN": bool(bearer),
+        "LLM_API_KEY": bool((values.get("LLM_API_KEY") or "").strip()),
+    }
+    return {name: found[name] for name in _SECRET_PRESENCE}
+
+
+def settings_report(
+    before: Mapping[str, str],
+    after: Mapping[str, str],
+    *,
+    file_changed: bool,
+) -> dict[str, Any]:
+    """Names written, populated values kept, and whether an existing file changed.
+
+    Secret values are not copied. ``secret_presence`` is booleans only.
+    """
+    written: list[str] = []
+    kept: dict[str, str] = {}
+    for name in _TRACKED_SETTINGS:
+        previous = (before.get(name) or "").strip()
+        current = (after.get(name) or "").strip()
+        if current != previous:
+            written.append(name)
+        elif current:
+            shown = scrub_text(current).strip()
+            if shown:
+                kept[name] = shown
+    return {
+        "settings_written": written,
+        "settings_kept": kept,
+        "secret_presence": _secret_presence(after),
+        "env_change": file_changed,
+    }
+
+
+def _env_report_from(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The ensure report on a result, or on its ``app_env`` block.
+
+    A payload that never ran ``ensure_app_env`` has neither and returns
+    ``None``. Callers must not invent a report for that result.
+    """
+    source: Mapping[str, Any] | None = None
+    if "settings_written" in payload or "env_change" in payload:
+        source = payload
+    else:
+        nested = payload.get("app_env")
+        if isinstance(nested, dict) and (
+            "settings_written" in nested or "env_change" in nested
+        ):
+            source = nested
+    if source is None:
+        return None
+    written_in = source.get("settings_written")
+    written = (
+        [str(name) for name in written_in if isinstance(name, str)]
+        if isinstance(written_in, list)
+        else []
+    )
+    kept_in = source.get("settings_kept")
+    kept: dict[str, str] = {}
+    if isinstance(kept_in, dict):
+        for name in _TRACKED_SETTINGS:
+            raw = kept_in.get(name)
+            if not isinstance(raw, str) or not raw.strip():
+                continue
+            shown = scrub_text(raw).strip()
+            if shown:
+                kept[name] = shown
+    created = bool(payload.get("created_env"))
+    for block in (payload.get("app_env"), source):
+        if isinstance(block, dict):
+            created = created or bool(block.get("created_env"))
+    report: dict[str, Any] = {
+        "settings_written": [name for name in _TRACKED_SETTINGS if name in set(written)],
+        "settings_kept": {name: kept[name] for name in _TRACKED_SETTINGS if name in kept},
+        "env_change": bool(source.get("env_change")),
+        "created_env": created,
+    }
+    presence = source.get("secret_presence")
+    if isinstance(presence, dict):
+        report["secret_presence"] = dict(presence)
+    return report
+
+
+def _read_env_text(path: Path) -> str:
+    if path.is_file() and not path.is_symlink():
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            return ""
+    return ""
+
+
+def refresh_env_report(
+    payload: Mapping[str, Any],
+    before_text: str,
+    after_text: str,
+) -> dict[str, Any] | None:
+    """Merge an overlay diff into an ensure report.
+
+    ``settings_report`` is the only value diff. Names the ensure pass already
+    wrote stay written. A first create stays ``env_change`` false. A payload
+    with no ensure report returns ``None``.
+    """
+    prior = _env_report_from(payload)
+    if prior is None:
+        return None
+    overlay = settings_report(
+        dotenv_map(before_text),
+        dotenv_map(after_text),
+        file_changed=bool(before_text.strip()) and before_text != after_text,
+    )
+    written_set = set(prior["settings_written"]) | set(overlay["settings_written"])
+    kept = {
+        name: overlay["settings_kept"][name]
+        for name in _TRACKED_SETTINGS
+        if name not in written_set and name in overlay["settings_kept"]
+    }
+    env_change = False if prior["created_env"] else (
+        bool(prior["env_change"]) or bool(overlay["env_change"])
+    )
+    return {
+        "settings_written": [name for name in _TRACKED_SETTINGS if name in written_set],
+        "settings_kept": kept,
+        "secret_presence": overlay["secret_presence"],
+        "env_change": env_change,
+    }
+
+
+def apply_env_overlay(payload: dict[str, Any], updates: Mapping[str, str]) -> dict[str, Any]:
+    """Write accepted non-secrets and refresh the ensure report.
+
+    A payload that never ran ``ensure_app_env`` is returned unchanged. No
+    ``.env`` is created for that result, and no env report is attached.
+    """
+    if _env_report_from(payload) is None:
+        return payload
+    root = payload.get("local_dir") or payload.get("target_dir")
+    if not isinstance(root, str) or not root.strip() or not Path(root).is_dir():
+        return payload
+    env_path = Path(root) / ".env"
+    before = _read_env_text(env_path)
+    overlay_nonsecret_env(root, updates)
+    refreshed = refresh_env_report(payload, before, _read_env_text(env_path))
+    if refreshed is None:
+        return payload
+    assign_env_report(payload, refreshed)
+    return attach_env_change_note(payload)
+
+
+def assign_env_report(payload: dict[str, Any], report: Mapping[str, Any]) -> None:
+    """Copy the env report onto the tool result and its ``app_env`` block."""
+    app_env = payload.get("app_env")
+    for key in ENV_REPORT_KEYS:
+        if key not in report:
+            continue
+        payload[key] = report[key]
+        if isinstance(app_env, dict):
+            app_env[key] = report[key]
+
+
+def describe_env_change(report: Mapping[str, Any]) -> str:
+    """One suffix the agent can act on before ``run_turn``. No secret values."""
+    view = _env_report_from(report)
+    if view is None:
+        return ""
+    written = [
+        name
+        for name in _TRACKED_SETTINGS
+        if name in set(view["settings_written"])
+    ]
+    kept_in = view["settings_kept"]
+    kept_bits = [
+        f"{name}={kept_in[name]}"
+        for name in _TRACKED_SETTINGS
+        if name in kept_in
+    ]
+    wrote = ", ".join(written) if written else "none"
+    if view["env_change"]:
+        kept_note = f" Kept {', '.join(kept_bits)}." if kept_bits else ""
+        changed = ", ".join(written) if written else "other keys"
+        return (
+            f"{_ENV_NOTE_MARK} env change. Wrote {changed}.{kept_note} "
+            "Restart the app before run_turn."
+        )
+    if view["created_env"]:
+        return f"{_ENV_NOTE_MARK} created .env. Wrote {wrote}."
+    if kept_bits or written:
+        kept_note = ", ".join(kept_bits) if kept_bits else "none"
+        return f"{_ENV_NOTE_MARK} no env change. Wrote {wrote}. Kept {kept_note}."
+    return ""
+
+
+def attach_env_change_note(result: dict[str, Any]) -> dict[str, Any]:
+    """Replace any earlier env-report suffix. Other coaching stays in front.
+
+    The report is copied to the top level when it so far lives only on
+    ``app_env``. A result with no ensure report is unchanged.
+    """
+    view = _env_report_from(result)
+    if view is not None:
+        assign_env_report(result, view)
+    note = describe_env_change(result)
+    action = str(result.get("next_action") or "")
+    mark = action.find(_ENV_NOTE_MARK)
+    if mark >= 0:
+        action = action[:mark].rstrip()
+    if note:
+        action = f"{action} {note}".strip()
+    if action:
+        result["next_action"] = action
+    return result
 
 
 def strip_dotenv_copy(run: str) -> str:
@@ -565,6 +826,9 @@ def annotate_app_env(
         "env_keys": list(info["env_keys"]),
         "gitignore": info["gitignore"],
     }
+    for key in ENV_REPORT_KEYS:
+        result["app_env"][key] = info[key]
+        result[key] = info[key]
     if info["wrote_env"] and result.get("run"):
         result["run"] = strip_dotenv_copy(str(result["run"]))
     if info["wrote_env"] and result.get("next_action"):

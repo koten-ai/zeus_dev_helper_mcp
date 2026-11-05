@@ -139,6 +139,19 @@ def test_scaffold_api_fastapi(tmp_path: Path) -> None:
     assert '"app_kind": "api"' in meta
     assert "ZEUS_PASSWORD=" not in main
     assert "password_env" not in main
+    assert out["env_change"] is False
+    assert out["app_env"]["created_env"] is True
+    assert "Env report: created .env." in out["next_action"]
+    assert set(out["secret_presence"]) == {
+        "ZEUS_PASSWORD",
+        "ZEUS_BEARER_TOKEN",
+        "LLM_API_KEY",
+    }
+    env_text = (root / ".env").read_text(encoding="utf-8")
+    for line in env_text.splitlines():
+        key, _, value = line.partition("=")
+        if key in {"ZEUS_PASSWORD", "ZEUS_BEARER_TOKEN", "LLM_API_KEY"} and value.strip():
+            assert value.strip().strip('"') not in out["next_action"]
 
 
 def test_scaffold_rejects_unsupported_coding_language(tmp_path: Path) -> None:
