@@ -95,13 +95,21 @@ def test_probe_tri_state(monkeypatch) -> None:
 
 
 def test_connection_schema_has_no_secret_fields() -> None:
-    from mcp.server.elicitation import render_elicitation_schema
+    from mcp.server import elicitation
+    from mcp.server.mcpserver import resolve
 
+    from zeus_dev_helper_mcp import clarify
     from zeus_dev_helper_mcp.first_create import _connection_form, _llm_form
 
-    connection = render_elicitation_schema(
+    render = elicitation.render_elicitation_schema
+    assert render is resolve.render_elicitation_schema
+    assert render is clarify.render_elicitation_schema
+    connection = render(
         _connection_form("http://zeus-dev.local:8080", "pour-user", True)
     )
+    assert set(connection) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in connection
+    assert connection["properties"]["zeus_url"]["title"]
     assert set(connection["properties"]) == {
         "zeus_url",
         "zeus_username",
@@ -109,7 +117,9 @@ def test_connection_schema_has_no_secret_fields() -> None:
     }
     assert connection["properties"]["zeus_url"]["default"] == "http://zeus-dev.local:8080"
     assert connection["properties"]["zeus_username"]["default"] == "pour-user"
-    llm = render_elicitation_schema(_llm_form("grok", "grok-custom-model", False))
+    llm = render(_llm_form("grok", "grok-custom-model", False))
+    assert set(llm) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in llm
     assert set(llm["properties"]) == {"llm_provider", "llm_model", "llm_key_in_env"}
     assert llm["properties"]["llm_model"]["default"] == "grok-custom-model"
     assert llm["properties"]["llm_provider"]["default"] == "grok"

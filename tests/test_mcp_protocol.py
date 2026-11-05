@@ -357,7 +357,10 @@ def test_start_project_asks_for_zeus_url(tmp_path, monkeypatch) -> None:
     message = request.params.message
     assert "Zeus URL" in message
     assert "8080" in message
-    assert set(request.params.requested_schema["properties"]) == {"zeus_url"}
+    schema = request.params.requested_schema
+    assert set(schema["properties"]) == {"zeus_url"}
+    assert set(schema) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in schema
     assert not (tmp_path / "demo_beer_sample").exists()
     from zeus_dev_helper_mcp.config import reload_config
     from zeus_dev_helper_mcp.prereqs import load_prereqs
@@ -501,7 +504,10 @@ def test_auth_form_blocks_start_project_until_env_has_credentials(
     assert isinstance(second, InputRequiredResult)
     auth_key = next(iter(second.input_requests or {}))
     auth_request = second.input_requests[auth_key]
-    props = auth_request.params.requested_schema["properties"]
+    auth_schema = auth_request.params.requested_schema
+    assert set(auth_schema) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in auth_schema
+    props = auth_schema["properties"]
     assert set(props) == {"auth_mode", "credentials_ready"}
     assert "password" not in props
     assert "username" not in props
@@ -614,7 +620,10 @@ def test_first_beer_create_asks_connection_then_llm(tmp_path, monkeypatch) -> No
     assert calls["n"] == 0
     conn_key = next(iter(first.input_requests or {}))
     request = first.input_requests[conn_key]
-    props = request.params.requested_schema["properties"]
+    schema = request.params.requested_schema
+    assert set(schema) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in schema
+    props = schema["properties"]
     assert set(props) == {"zeus_url", "zeus_username", "password_in_env"}
     assert "zeus_password" not in props
     assert "llm_api_key" not in props
@@ -645,7 +654,10 @@ def test_first_beer_create_asks_connection_then_llm(tmp_path, monkeypatch) -> No
     assert isinstance(second, InputRequiredResult)
     assert calls["n"] == 0
     llm_key = next(iter(second.input_requests or {}))
-    llm_props = second.input_requests[llm_key].params.requested_schema["properties"]
+    llm_schema = second.input_requests[llm_key].params.requested_schema
+    assert set(llm_schema) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in llm_schema
+    llm_props = llm_schema["properties"]
     assert set(llm_props) == {"llm_provider", "llm_model", "llm_key_in_env"}
     assert llm_props["llm_model"]["default"] == "grok-custom-model"
     assert llm_props["llm_provider"]["default"] == "grok"

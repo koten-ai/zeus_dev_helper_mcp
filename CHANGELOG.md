@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **[ZDM-51](https://kotenai.atlassian.net/browse/ZDM-51)** Codex CLI 0.165.0 cancels a first-create elicitation card when `requestedSchema` has a top-level `title`. Pydantic adds that title, so the Zeus setup wizard never opens and the tool reports that setup was declined or cancelled. The wire schema now keeps `$schema`, `type`, `properties`, and `required`. Field titles, defaults, and descriptions stay on each property. Claude Code still shows the same cards.
+
 ## 0.7.11
 
 ### Added

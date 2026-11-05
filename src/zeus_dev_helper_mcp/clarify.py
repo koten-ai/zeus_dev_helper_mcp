@@ -46,6 +46,35 @@ except ImportError:  # mcp 1.x has no resolver elicitation
     Elicit = None  # type: ignore[misc, assignment]
     HAS_ELICIT = False
 
+# Codex 0.165.0 deserializes requestedSchema with deny_unknown_fields and
+# allows only these object keys. Pydantic's top-level title makes that parse
+# fail, and the CLI then cancels the card before the wizard is shown.
+_CODEX_FORM_OBJECT_KEYS = frozenset({"$schema", "type", "properties", "required"})
+
+
+def _codex_form_schema(schema: type[BaseModel]) -> dict[str, Any]:
+    """Render a form and drop object keys Codex CLI rejects."""
+    rendered = _sdk_render_elicitation_schema(schema)
+    return {
+        key: value
+        for key, value in rendered.items()
+        if key in _CODEX_FORM_OBJECT_KEYS
+    }
+
+
+def _install_codex_form_schema() -> None:
+    from mcp.server import elicitation
+    from mcp.server.mcpserver import resolve
+
+    elicitation.render_elicitation_schema = _codex_form_schema
+    resolve.render_elicitation_schema = _codex_form_schema
+
+
+if HAS_ELICIT:
+    _sdk_render_elicitation_schema = render_elicitation_schema
+    render_elicitation_schema = _codex_form_schema
+    _install_codex_form_schema()
+
 URL_MESSAGE = (
     "Enter the public Zeus URL (port 8080). If you do not have one, ask your admin."
 )
