@@ -34,16 +34,17 @@ def path_needs_llm_key(cfg: HelperConfig) -> bool:
 
     Beer lists are Direct, so a beer path does not block those gates.
     The question box still requires a key at smoke_test_agent and
-    verify_local_setup. ``has_llm_key=false`` on travel is the Direct opt-out.
+    verify_local_setup. Travel search has no Direct list, so 1.2 stays open
+    until this process has a key. A stored ``has_llm_key`` flag does not count.
     """
     from zeus_dev_helper_mcp.beer import prereqs_prefer_beer_direct
 
     sample, prefs = _sample_and_prefs(cfg)
+    if sample == "travel":
+        return True
     if sample == "beer" or prereqs_prefer_beer_direct(prefs):
         return False
-    if sample == "travel" and prefs.get("has_llm_key") is False:
-        return False
-    if sample in {"travel", "api", "demo_yelp"}:
+    if sample in {"api", "demo_yelp"}:
         return True
     return prefs.get("has_llm_key") is not False
 
@@ -56,11 +57,11 @@ def question_box_needs_llm_key(cfg: HelperConfig) -> bool:
     from zeus_dev_helper_mcp.beer import prereqs_prefer_beer_direct
 
     sample, prefs = _sample_and_prefs(cfg)
+    if sample == "travel":
+        return True
     if sample == "beer" or prereqs_prefer_beer_direct(prefs):
         return True
-    if sample == "travel" and prefs.get("has_llm_key") is False:
-        return False
-    if sample in {"travel", "api", "demo_yelp"}:
+    if sample in {"api", "demo_yelp"}:
         return True
     return prefs.get("has_llm_key") is not False
 
@@ -148,6 +149,38 @@ def _declared_api_key_envs(doc: dict[str, Any]) -> list[tuple[str, str]] | None:
     return found or None
 
 
+def _llm_block_present(doc: dict[str, Any]) -> bool:
+    return any(isinstance(doc.get(key), dict) for key in ("llm", "llm_provider"))
+
+
+def _undeclared_llm_key(root: Path) -> dict[str, Any]:
+    """An llm block names no ``api_key_env``. Any of the three names in ``.env`` counts."""
+    values = _dotenv_values(root / ".env")
+    present = [name for name in LLM_KEY_ENV_NAMES if (values.get(name) or "").strip()]
+    if present:
+        shown = ", ".join(present)
+        return {
+            "applies": True,
+            "ok": True,
+            "api_key_env": present[0] if len(present) == 1 else present,
+            "message": f"{shown} is set in .env.",
+            "evidence": f"api_key_env={shown} present in .env",
+        }
+    shown = ", ".join(LLM_KEY_ENV_NAMES)
+    return {
+        "applies": True,
+        "ok": False,
+        "api_key_env": list(LLM_KEY_ENV_NAMES),
+        "missing_env": list(LLM_KEY_ENV_NAMES),
+        "message": (
+            f"Set {shown} in .env. "
+            "Search stays off until one of those names is set. "
+            "Do not paste the secret into config.json. "
+            "Then verify_local_setup."
+        ),
+    }
+
+
 def inspect_app_llm_key(root: Path) -> dict[str, Any]:
     """Check the app directory. Report names and presence, never the secret."""
     root = Path(root)
@@ -174,6 +207,8 @@ def inspect_app_llm_key(root: Path) -> dict[str, Any]:
             }
         declared = _declared_api_key_envs(doc)
         if declared is None and not example_names:
+            if _llm_block_present(doc):
+                return _undeclared_llm_key(root)
             return {"applies": False, "ok": True, "message": ""}
         if declared is None:
             names = example_names

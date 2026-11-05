@@ -2,6 +2,10 @@
 
 The URL form runs only when ``prereqs.json`` has no ``zeus_url``. Host
 ``ZEUS_URL`` is a prefill. Passwords never appear in the form or the result.
+
+The first create of a sample app asks a separate connection card, then an
+LLM card when that sample's checklist needs a key. Those cards prefill
+non-secret values. The password and the API key stay in the app ``.env``.
 """
 
 from __future__ import annotations
@@ -41,6 +45,35 @@ except ImportError:  # mcp 1.x has no resolver elicitation
     Context = Any  # type: ignore[misc, assignment]
     Elicit = None  # type: ignore[misc, assignment]
     HAS_ELICIT = False
+
+# Codex 0.165.0 deserializes requestedSchema with deny_unknown_fields and
+# allows only these object keys. Pydantic's top-level title makes that parse
+# fail, and the CLI then cancels the card before the wizard is shown.
+_CODEX_FORM_OBJECT_KEYS = frozenset({"$schema", "type", "properties", "required"})
+
+
+def _codex_form_schema(schema: type[BaseModel]) -> dict[str, Any]:
+    """Render a form and drop object keys Codex CLI rejects."""
+    rendered = _sdk_render_elicitation_schema(schema)
+    return {
+        key: value
+        for key, value in rendered.items()
+        if key in _CODEX_FORM_OBJECT_KEYS
+    }
+
+
+def _install_codex_form_schema() -> None:
+    from mcp.server import elicitation
+    from mcp.server.mcpserver import resolve
+
+    elicitation.render_elicitation_schema = _codex_form_schema
+    resolve.render_elicitation_schema = _codex_form_schema
+
+
+if HAS_ELICIT:
+    _sdk_render_elicitation_schema = render_elicitation_schema
+    render_elicitation_schema = _codex_form_schema
+    _install_codex_form_schema()
 
 URL_MESSAGE = (
     "Enter the public Zeus URL (port 8080). If you do not have one, ask your admin."
@@ -122,6 +155,12 @@ class Clarification(BaseModel):
     save_auth: bool = False
     declined: bool = False
     next_action: str | None = None
+    zeus_username: str = ""
+    llm_provider: str = ""
+    llm_model: str = ""
+    llm_base_url: str = ""
+    first_create: bool = False
+    cards_accepted: bool = False
 
 
 class AuthModeForm(BaseModel):
@@ -148,6 +187,12 @@ class Gate:
     save_url: bool = False
     save_auth: bool = False
     next_action: str | None = None
+    zeus_username: str = ""
+    llm_provider: str = ""
+    llm_model: str = ""
+    llm_base_url: str = ""
+    first_create: bool = False
+    cards_accepted: bool = False
 
 
 def valid_public_url(url: str) -> bool:
@@ -315,14 +360,22 @@ def persist_gate(gate: Gate) -> None:
         payload["has_password"] = gate.has_password
     if gate.has_bearer is not None:
         payload["has_bearer"] = gate.has_bearer
-    if not payload:
-        return
-    stored = save_prereqs(reload_config(), payload)
-    for key, env_name in _ENV_MAP.items():
-        val = stored.get(key)
-        if val is not None and str(val).strip() != "":
-            os.environ[env_name] = str(val).strip()
-    reload_config()
+    if payload:
+        stored = save_prereqs(reload_config(), payload)
+        for key, env_name in _ENV_MAP.items():
+            val = stored.get(key)
+            if val is not None and str(val).strip() != "":
+                os.environ[env_name] = str(val).strip()
+        reload_config()
+    username = (gate.zeus_username or "").strip()
+    if username:
+        os.environ["ZEUS_USERNAME"] = username
+    base_url = (gate.llm_base_url or "").strip()
+    if base_url:
+        os.environ["LLM_BASE_URL"] = base_url
+    model = (gate.llm_model or "").strip()
+    if model:
+        os.environ["LLM_MODEL"] = model
 
 
 def interpret_gate(outcome: Any) -> Gate:
@@ -354,6 +407,12 @@ def interpret_gate(outcome: Any) -> Gate:
             has_bearer=data.has_bearer,
             save_url=bool(data.save_url and data.zeus_url),
             save_auth=bool(data.save_auth and data.auth_mode),
+            zeus_username=data.zeus_username,
+            llm_provider=data.llm_provider,
+            llm_model=data.llm_model,
+            llm_base_url=data.llm_base_url,
+            first_create=data.first_create,
+            cards_accepted=data.cards_accepted,
         )
     url = str(getattr(data, "zeus_url", "") or "").strip()
     if valid_public_url(url):
@@ -537,6 +596,18 @@ def _resolve_auth(ctx: Any, url_outcome: Any, sample: str, fn: Any) -> Any:
     return _apply_auth_flags(info, creds)
 
 
+def _is_api_kind(app_kind: str) -> bool:
+    from zeus_dev_helper_mcp.first_create import is_api_kind
+
+    return is_api_kind(app_kind)
+
+
+def create_needs_llm_card(sample: str) -> bool:
+    from zeus_dev_helper_mcp.first_create import create_needs_llm_card as _needs
+
+    return _needs(sample)
+
+
 if HAS_ELICIT:
 
     def clarify_url(ctx: Context) -> Elicit[Any] | Clarification:  # type: ignore[valid-type]
@@ -563,3 +634,104 @@ if HAS_ELICIT:
     ) -> Elicit[Any] | Clarification:  # type: ignore[valid-type]
         """Auth gate for scaffold_app, which has no sample argument."""
         return _resolve_auth(ctx, url, "", clarify_scaffold)
+
+    def clarify_sample_connection(
+        ctx: Context,
+        sample: str = "travel",
+        sample_dir: str = "",
+        project_name: str = "",
+        parent_dir: str = "",
+    ) -> Elicit[Any] | Clarification:  # type: ignore[valid-type]
+        """Connection card on the first sample create. Later calls keep the URL gate."""
+        from zeus_dev_helper_mcp.config import reload_config
+        from zeus_dev_helper_mcp.first_create import (
+            ask_connection,
+            sample_destination,
+            skip_cards,
+        )
+        from zeus_dev_helper_mcp.sample_log import first_create_pending
+
+        if not first_create_pending(reload_config(), sample):
+            return _resolve_url(ctx, "", clarify_sample_connection)
+        if not _can_elicit(ctx):
+            return skip_cards()
+        root = sample_destination(
+            sample,
+            sample_dir=sample_dir,
+            project_name=project_name,
+            parent_dir=parent_dir,
+        )
+        return ask_connection(ctx, clarify_sample_connection, sample=sample, root=root)
+
+    def clarify_sample_llm(
+        ctx: Context,
+        connection: Annotated[
+            ElicitationResult[Clarification], Resolve(clarify_sample_connection)
+        ],
+        sample: str = "travel",
+        sample_dir: str = "",
+        project_name: str = "",
+        parent_dir: str = "",
+    ) -> Elicit[Any] | Clarification:  # type: ignore[valid-type]
+        """LLM card after the connection card, when this sample needs a key."""
+        from zeus_dev_helper_mcp.first_create import (
+            finish_connection,
+            sample_destination,
+        )
+
+        root = sample_destination(
+            sample,
+            sample_dir=sample_dir,
+            project_name=project_name,
+            parent_dir=parent_dir,
+        )
+        return finish_connection(
+            ctx, clarify_sample_llm, connection, sample=sample, root=root
+        )
+
+    def clarify_api_connection(
+        ctx: Context,
+        target_dir: str = "",
+        app_kind: str = "cli",
+        project_name: str = "",
+    ) -> Elicit[Any] | Clarification:  # type: ignore[valid-type]
+        """Connection card on the first API scaffold. CLI scaffolds keep the URL gate."""
+        from zeus_dev_helper_mcp.config import reload_config
+        from zeus_dev_helper_mcp.first_create import ask_connection, skip_cards
+        from zeus_dev_helper_mcp.sample_log import first_create_pending
+        from zeus_dev_helper_mcp.scaffold import api_destination
+
+        if not _is_api_kind(app_kind) or not first_create_pending(
+            reload_config(), app_kind, api=True
+        ):
+            return _resolve_url(ctx, "", clarify_api_connection)
+        if not _can_elicit(ctx):
+            return skip_cards()
+        return ask_connection(
+            ctx,
+            clarify_api_connection,
+            sample="api",
+            root=api_destination(target_dir),
+        )
+
+    def clarify_api_llm(
+        ctx: Context,
+        connection: Annotated[
+            ElicitationResult[Clarification], Resolve(clarify_api_connection)
+        ],
+        target_dir: str = "",
+        app_kind: str = "cli",
+        project_name: str = "",
+    ) -> Elicit[Any] | Clarification:  # type: ignore[valid-type]
+        """LLM card for the first API scaffold. CLI scaffolds keep the auth gate."""
+        from zeus_dev_helper_mcp.first_create import finish_connection
+        from zeus_dev_helper_mcp.scaffold import api_destination
+
+        sample = "api" if _is_api_kind(app_kind) else ""
+        return finish_connection(
+            ctx,
+            clarify_api_llm,
+            connection,
+            sample=sample,
+            root=api_destination(target_dir),
+        )

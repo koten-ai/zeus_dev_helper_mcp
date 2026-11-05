@@ -113,6 +113,15 @@ def reset_memory() -> None:
     _BUFFERS.clear()
 
 
+_API_LOG = "api-sample-build.md"
+_API_CREATE = frozenset({"api", "rest", "api_only", "fastapi"})
+
+
+def _api_sample(name: str) -> bool:
+    text = (name or "").strip().lower().replace("-", "_")
+    return text in _API_CREATE
+
+
 def sample_kind(name: str) -> str | None:
     """Map a sample argument to beer, travel, or yelp-demo.
 
@@ -132,6 +141,55 @@ def sample_kind(name: str) -> str | None:
     if is_beer_sample(text):
         return "beer"
     return None
+
+
+def creation_log_file(cfg: HelperConfig, sample: str, *, api: bool = False) -> Path | None:
+    """Creation-log path for a first-create card.
+
+    Beer, travel, and yelp-demo use the write-once coach transcripts.
+    ``api=True`` selects ``api-sample-build.md`` for ``scaffold_app``.
+    ``use_sample(sample=api)`` is a redirect and is not a first create.
+    """
+    if api:
+        if not _api_sample(sample):
+            return None
+        return cfg.state_dir.expanduser() / _API_LOG
+    kind = sample_kind(sample)
+    if kind is None:
+        return None
+    return _log_path(cfg, kind)
+
+
+def first_create_pending(cfg: HelperConfig, sample: str, *, api: bool = False) -> bool:
+    """True when that sample's creation log file is absent."""
+    path = creation_log_file(cfg, sample, api=api)
+    if path is None:
+        return False
+    return not path.exists()
+
+
+def seal_creation_marker(cfg: HelperConfig, sample: str, *, api: bool = False) -> bool:
+    """Write the creation log once when a finished first create did not seal it.
+
+    ``observe_sample_build`` writes the transcript for a real create. An
+    existing directory that is already serving does not. This marker stops
+    the setup card from opening again. An existing file is left unchanged.
+    """
+    path = creation_log_file(cfg, sample, api=api)
+    if path is None:
+        return False
+    if api:
+        title = "api-sample"
+    else:
+        kind = sample_kind(sample)
+        if kind is None:
+            return False
+        title = _TITLES[kind]
+    text = (
+        f"# {title}\n\n"
+        "The first create finished. Later calls do not open the setup card.\n"
+    )
+    return _write_once(path, text)
 
 
 def bound_sample_dirs(cfg: HelperConfig) -> dict[str, str]:

@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **[ZDM-51](https://kotenai.atlassian.net/browse/ZDM-51)** Codex CLI 0.165.0 cancels a first-create elicitation card when `requestedSchema` has a top-level `title`. Pydantic adds that title, so the Zeus setup wizard never opens and the tool reports that setup was declined or cancelled. The wire schema now keeps `$schema`, `type`, `properties`, and `required`. Field titles, defaults, and descriptions stay on each property. Claude Code still shows the same cards.
+
+## 0.7.11
+
+### Added
+- `inject_business_rules` writes named business rules into the current Zeus app `config.json` `settings.rules` and does not edit application Python. An omitted app uses the current directory when that directory is a Zeus app, otherwise the checklist sample, so a beer app just created receives the rule. When neither is a Zeus app, the result is `app_required` and `ask_user`. An explicit path that is not a Zeus app returns `not_a_zeus_app` and the message `app is not a Zeus enabled app`. Jailbreak ids and secret-shaped sentences are refused and the file stays unchanged. `injected` is true when the app passes loaded settings (`settings=cfg.settings`, `settings=rt.config.settings`, or `settings=_runtime.config.settings`) and does not build `ClientSettings`. A hand-built `ClientSettings`, including travel and yelp, returns `wire_required` and leaves the Python unchanged. New CLI and API scaffolds pass the loaded settings. The core tool cap is 17.
+- When `serve_choice_required` is set, `use_sample` and `website_green` include `host_question` (Python and Docker, each with `label` and `description`). `ask_user` choice rows for `ZEUS_AUTH_MODE` and the LLM provider include `question` and `options`. `next_action` tells the model to call the host question tool and wait: Grok `ask_user_question`, Claude Code `AskUserQuestion`, Codex `request_user_input`. The selected Python or Docker label is `serve_with` on the next `use_sample` or `website_green`. Auth mode and the provider id are written to a mode-600 env file, then `load_process_login`. Password, bearer token, and API key stay out of the options. The first-create elicitation cards are unchanged.
+
+### Changed
+- **[ZD-26](https://kotenai.atlassian.net/browse/ZD-26)** `use_sample(sample=travel)` follows the beer creation procedure. The clone stays https://github.com/koten-ai/demo_travel_sample.git. The destination is `sample_dir`, or `parent_dir` plus `project_name`. A blank parent is the directory next to this Helper checkout. A foreign default directory moves to `demo_travel_sample-2` and so on. An explicit foreign `sample_dir` returns `foreign_sample_dir` and writes nothing. A recorded checkout that answers `GET /api/health` returns `already_serving` and is not relocated. Basic auth with no process login returns `login_not_in_process` before git clone. The create path does not rewrite the Dockerfile, compose file, or client pin. The standalone Docker rewriter is removed. TravelPlan stays `python -m travel_planner` on port 5000 unless `PORT` is set. A mode 600 `.env` keeps populated values and fills empty Zeus and LLM names. `ZEUS_USERNAME` defaults to `demo_1`. `website_green` installs with `pip install -e ".[dev]"`, loads that `.env` into the child process, and checks `GET /api/health`. Beer cards are not required. Search stays off until an LLM key is in the app `.env`. Checklist **1.2** stays open for travel because the page is search and has no Direct list. Checklist **3.2** stays open until `verify_local_setup` sees the key in the app `.env`. After the app is on disk, **5.1**, **5.2**, and **6.1** recommend `website_green`. Travel is one scope, so smoke-green does not recommend `handoff_to_multi` and does not write `jobs.host_url`.
+- The host-tool names live once, on `next_action`. An LLM provider option label is the display name and the id, for example `Grok (grok)`. First-create cards use the directory beer, travel, yelp, or `scaffold_app` will write.
+
 ## 0.7.10
 
 ### Added
@@ -73,7 +88,7 @@
 - Beer catalog search follows `demo_travel_sample`: `use_sample(sample=beer)` writes a BFF that calls `rt.agent.run_turn` and omits `chat_request`, so `catalog.load_for_turn` merges the live SCOPE BRIEF and MINI-SCHEMA into the model request. An LLM key is required. The BFF does not build a pipeline body. Cards are taken from the turn's tool results. `client_floor` is `client-floor-6.1`. An older pipeline BFF is rewritten on the next `use_sample(sample=beer)`. `plan_beer_query` stays for tests and diagnosis and is not inlined. The analytics template is copied from a local `zeus_chat_request` checkout when one is present, otherwise from the copy packaged with the Helper, into `data/chat_requests/chat_request_analytics_v2.json`.
 - `GET /api/beers` and `GET /api/breweries` page the catalog. `limit` defaults to 24 and `offset` selects the page. Each page is a Direct `find` ordered by id, then `get` for the card fields. Pour search stays on `run_turn`. A force-closed session is an error only when that turn returns no cards. The page shows Previous, page numbers, and Next.
 - `use_sample(sample=beer)` writes the Sample Tap page (tap-room header, hero, style chips, and glass cards) and refreshes that page when an existing catalog BFF is already current.
-- Standalone `demo_travel_sample` Docker pins `kotenai-zeus-client>=2.4.0,<2.5` so pipeline envelope recovery is in the SDK. The travel BFF keeps `rt.agent.run_turn` and does not `POST /pipeline`. A previous `>=2.3.0` pin is upgraded in place.
+- That release rewrote standalone `demo_travel_sample` Docker packaging and the client dependency so pipeline envelope recovery stayed in the SDK. The travel BFF kept `rt.agent.run_turn` and did not `POST /pipeline`. The current create path leaves the repo Docker files and client pin as shipped.
 
 ## 0.7.4
 

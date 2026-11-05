@@ -357,7 +357,10 @@ def test_start_project_asks_for_zeus_url(tmp_path, monkeypatch) -> None:
     message = request.params.message
     assert "Zeus URL" in message
     assert "8080" in message
-    assert set(request.params.requested_schema["properties"]) == {"zeus_url"}
+    schema = request.params.requested_schema
+    assert set(schema["properties"]) == {"zeus_url"}
+    assert set(schema) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in schema
     assert not (tmp_path / "demo_beer_sample").exists()
     from zeus_dev_helper_mcp.config import reload_config
     from zeus_dev_helper_mcp.prereqs import load_prereqs
@@ -463,7 +466,7 @@ def test_missing_elicitation_capability_returns_coach_text(
     assert getattr(result, "is_error", False) is False
 
 
-def test_auth_form_blocks_use_sample_until_env_has_credentials(
+def test_auth_form_blocks_start_project_until_env_has_credentials(
     tmp_path, monkeypatch
 ) -> None:
     from mcp_types import ElicitResult, InputRequiredResult, InputResponseRequestParams
@@ -476,19 +479,10 @@ def test_auth_form_blocks_use_sample_until_env_has_credentials(
         "zeus_dev_helper_mcp.clarify.probe_auth_required",
         lambda *args, **kwargs: "unauthorized",
     )
-
-    def _forbid_write(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        raise AssertionError("use_sample_impl called")
-
-    monkeypatch.setattr("zeus_dev_helper_mcp.server.use_sample_impl", _forbid_write)
     server = create_mcp_server(["core"])
-    args = {
-        "sample": "beer",
-        "parent_dir": str(tmp_path),
-        "project_name": "demo_beer_sample",
-    }
+    args = {"sample": "beer"}
     first = _run(
-        server.call_tool("use_sample", args, context=_elicit_ctx(server, form=True))
+        server.call_tool("start_project", args, context=_elicit_ctx(server, form=True))
     )
     assert isinstance(first, InputRequiredResult)
     url_key = next(iter(first.input_requests or {}))
@@ -502,7 +496,7 @@ def test_auth_form_blocks_use_sample_until_env_has_credentials(
     )
     second = _run(
         server.call_tool(
-            "use_sample",
+            "start_project",
             args,
             context=_elicit_ctx(server, form=True, params=url_answer),
         )
@@ -510,7 +504,10 @@ def test_auth_form_blocks_use_sample_until_env_has_credentials(
     assert isinstance(second, InputRequiredResult)
     auth_key = next(iter(second.input_requests or {}))
     auth_request = second.input_requests[auth_key]
-    props = auth_request.params.requested_schema["properties"]
+    auth_schema = auth_request.params.requested_schema
+    assert set(auth_schema) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in auth_schema
+    props = auth_schema["properties"]
     assert set(props) == {"auth_mode", "credentials_ready"}
     assert "password" not in props
     assert "username" not in props
@@ -529,12 +526,298 @@ def test_auth_form_blocks_use_sample_until_env_has_credentials(
     )
     result = _run(
         server.call_tool(
+            "start_project", args, context=_elicit_ctx(server, form=True, params=ready)
+        )
+    )
+    body = _structured(result)
+    assert body["ok"] is False
+    assert body["started"] is False
+    stored = load_prereqs(reload_config())
+    assert stored.get("has_password") is not True
+    assert not (tmp_path / "demo_beer_sample").exists()
+
+
+def _closed_port() -> str:
+    import socket
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return str(sock.getsockname()[1])
+
+
+def _env_values(path: Any) -> dict[str, str]:
+    from zeus_dev_helper_mcp.llm_key import _dotenv_values
+
+    return _dotenv_values(path)
+
+
+def _prepare_beer_tree(tmp_path: Any, monkeypatch: Any) -> Any:
+    """Existing beer checkout with a username, password, and model. No creation log."""
+    from zeus_dev_helper_mcp.beer import write_beer_sample
+    from zeus_dev_helper_mcp.config import HelperConfig, reload_config
+    from zeus_dev_helper_mcp.prereqs import save_prereqs
+
+    _isolate_prereqs(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "zeus_dev_helper_mcp.clarify.probe_auth_required",
+        lambda *args, **kwargs: "open",
+    )
+    state = tmp_path / "state"
+    cfg = HelperConfig(
+        state_dir=state,
+        zeus_url="http://zeus-dev.local:8080",
+        default_bucket="beer-sample",
+        default_scope="_default",
+    )
+    root = tmp_path / "demo_beer_sample"
+    assert write_beer_sample(cfg, root)["ok"] is True
+    env = root / ".env"
+    env.write_text(
+        "\n".join(
+            [
+                "ZEUS_USERNAME=pour-user",
+                "ZEUS_PASSWORD=keep-password",
+                "LLM_API_KEY=keep-llm-key",
+                "LLM_BASE_URL=https://api.x.ai/v1",
+                "LLM_MODEL=grok-custom-model",
+                f"PORT={_closed_port()}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env.chmod(0o600)
+    save_prereqs(reload_config(), {"zeus_url": "http://zeus-dev.local:8080"})
+    return root
+
+
+def _accept(content: dict[str, Any]) -> Any:
+    from mcp_types import ElicitResult
+
+    return ElicitResult(action="accept", content=content)
+
+
+def test_first_beer_create_asks_connection_then_llm(tmp_path, monkeypatch) -> None:
+    from mcp_types import InputRequiredResult, InputResponseRequestParams
+
+    from zeus_dev_helper_mcp.server import use_sample_impl
+
+    root = _prepare_beer_tree(tmp_path, monkeypatch)
+    calls = {"n": 0}
+    real = use_sample_impl
+
+    def _count(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.server.use_sample_impl", _count)
+    server = create_mcp_server(["core"])
+    args = {"sample": "beer", "sample_dir": str(root)}
+    first = _run(
+        server.call_tool("use_sample", args, context=_elicit_ctx(server, form=True))
+    )
+    assert isinstance(first, InputRequiredResult)
+    assert calls["n"] == 0
+    conn_key = next(iter(first.input_requests or {}))
+    request = first.input_requests[conn_key]
+    schema = request.params.requested_schema
+    assert set(schema) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in schema
+    props = schema["properties"]
+    assert set(props) == {"zeus_url", "zeus_username", "password_in_env"}
+    assert "zeus_password" not in props
+    assert "llm_api_key" not in props
+    assert "token" not in props
+    assert "password" not in props
+    assert props["zeus_url"]["default"] == "http://zeus-dev.local:8080"
+    assert props["zeus_username"]["default"] == "pour-user"
+    assert props["password_in_env"]["default"] is True
+    assert str(root / ".env") in request.params.message
+    assert "ZEUS_PASSWORD" in request.params.message
+    conn = InputResponseRequestParams(
+        input_responses={
+            conn_key: _accept(
+                {
+                    "zeus_url": "http://192.168.0.219:8080",
+                    "zeus_username": "edited-user",
+                    "password_in_env": True,
+                }
+            )
+        },
+        request_state=first.request_state,
+    )
+    second = _run(
+        server.call_tool(
+            "use_sample", args, context=_elicit_ctx(server, form=True, params=conn)
+        )
+    )
+    assert isinstance(second, InputRequiredResult)
+    assert calls["n"] == 0
+    llm_key = next(iter(second.input_requests or {}))
+    llm_schema = second.input_requests[llm_key].params.requested_schema
+    assert set(llm_schema) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in llm_schema
+    llm_props = llm_schema["properties"]
+    assert set(llm_props) == {"llm_provider", "llm_model", "llm_key_in_env"}
+    assert llm_props["llm_model"]["default"] == "grok-custom-model"
+    assert llm_props["llm_provider"]["default"] == "grok"
+    assert llm_props["llm_key_in_env"]["default"] is True
+    assert "LLM_API_KEY" in second.input_requests[llm_key].params.message
+    kept = _env_values(root / ".env")
+    assert kept["ZEUS_PASSWORD"] == "keep-password"
+    assert kept["LLM_API_KEY"] == "keep-llm-key"
+    assert "ZEUS_URL" not in kept
+    ready = InputResponseRequestParams(
+        input_responses={
+            conn_key: _accept(
+                {
+                    "zeus_url": "http://192.168.0.219:8080",
+                    "zeus_username": "edited-user",
+                    "password_in_env": True,
+                }
+            ),
+            llm_key: _accept(
+                {
+                    "llm_provider": "grok",
+                    "llm_model": "grok-custom-model",
+                    "llm_key_in_env": True,
+                }
+            ),
+        },
+        request_state=second.request_state,
+    )
+    result = _run(
+        server.call_tool(
             "use_sample", args, context=_elicit_ctx(server, form=True, params=ready)
+        )
+    )
+    assert not isinstance(result, InputRequiredResult)
+    body = _structured(result)
+    assert body["ok"] is True
+    assert calls["n"] == 1
+    assert "ask_user" not in body
+    written = _env_values(root / ".env")
+    assert written["ZEUS_URL"] == "http://192.168.0.219:8080"
+    assert written["ZEUS_USERNAME"] == "edited-user"
+    assert written["ZEUS_PASSWORD"] == "keep-password"
+    assert written["LLM_API_KEY"] == "keep-llm-key"
+    assert written["LLM_MODEL"] == "grok-custom-model"
+    assert written["LLM_BASE_URL"] == "https://api.x.ai/v1"
+    config = json.loads((root / "config.json").read_text(encoding="utf-8"))
+    assert config["llm"]["api_key_env"] == "LLM_API_KEY"
+    assert (tmp_path / "state" / "beer-sample-build.md").is_file()
+    again = _run(
+        server.call_tool("use_sample", args, context=_elicit_ctx(server, form=True))
+    )
+    assert not isinstance(again, InputRequiredResult)
+
+
+def test_sealed_beer_log_does_not_open_setup_cards(tmp_path, monkeypatch) -> None:
+    from mcp_types import InputRequiredResult
+
+    root = _prepare_beer_tree(tmp_path, monkeypatch)
+    (tmp_path / "state" / "beer-sample-build.md").write_text(
+        "# beer-sample\n\nsealed\n", encoding="utf-8"
+    )
+
+    def _impl(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"ok": True, "written": False, "local_dir": str(root)}
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.server.use_sample_impl", _impl)
+    server = create_mcp_server(["core"])
+    result = _run(
+        server.call_tool(
+            "use_sample",
+            {"sample": "beer", "sample_dir": str(root)},
+            context=_elicit_ctx(server, form=True),
+        )
+    )
+    assert not isinstance(result, InputRequiredResult)
+    body = _structured(result)
+    assert body["ok"] is True
+
+
+def test_beer_create_without_elicitation_keeps_ask_user(tmp_path, monkeypatch) -> None:
+    root = _prepare_beer_tree(tmp_path, monkeypatch)
+    server = create_mcp_server(["core"])
+    result = _run(
+        server.call_tool(
+            "use_sample",
+            {"sample": "beer", "sample_dir": str(root)},
+            context=_elicit_ctx(server, form=False),
+        )
+    )
+    body = _structured(result)
+    assert body["ok"] is True
+    assert isinstance(body.get("ask_user"), list)
+    assert body.get("sample_build_form") is True
+    assert "ask_user" in (body.get("next_action") or "")
+    blob = json.dumps(body)
+    assert "keep-password" not in blob
+    assert "keep-llm-key" not in blob
+
+
+def test_api_scaffold_asks_the_same_connection_card(tmp_path, monkeypatch) -> None:
+    from mcp_types import InputRequiredResult
+
+    _isolate_prereqs(tmp_path, monkeypatch)
+    server = create_mcp_server(["core"])
+    target = tmp_path / "zeus_first_api"
+    first = _run(
+        server.call_tool(
+            "scaffold_app",
+            {"target_dir": str(target), "app_kind": "api"},
+            context=_elicit_ctx(server, form=True),
+        )
+    )
+    assert isinstance(first, InputRequiredResult)
+    request = next(iter((first.input_requests or {}).values()))
+    assert set(request.params.requested_schema["properties"]) == {
+        "zeus_url",
+        "zeus_username",
+        "password_in_env",
+    }
+    assert not target.exists()
+    cli = _run(
+        server.call_tool(
+            "scaffold_app",
+            {"target_dir": str(tmp_path / "cli-app"), "app_kind": "cli"},
+            context=_elicit_ctx(server, form=True),
+        )
+    )
+    assert isinstance(cli, InputRequiredResult)
+    cli_request = next(iter((cli.input_requests or {}).values()))
+    assert set(cli_request.params.requested_schema["properties"]) == {"zeus_url"}
+
+
+def test_declined_connection_card_does_not_create(tmp_path, monkeypatch) -> None:
+    from mcp_types import ElicitResult, InputRequiredResult, InputResponseRequestParams
+
+    root = _prepare_beer_tree(tmp_path, monkeypatch)
+    before = (root / ".env").read_text(encoding="utf-8")
+
+    def _forbid(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise AssertionError("use_sample_impl called")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.server.use_sample_impl", _forbid)
+    server = create_mcp_server(["core"])
+    args = {"sample": "beer", "sample_dir": str(root)}
+    first = _run(
+        server.call_tool("use_sample", args, context=_elicit_ctx(server, form=True))
+    )
+    assert isinstance(first, InputRequiredResult)
+    key = next(iter(first.input_requests or {}))
+    declined = InputResponseRequestParams(
+        input_responses={key: ElicitResult(action="decline")},
+        request_state=first.request_state,
+    )
+    result = _run(
+        server.call_tool(
+            "use_sample", args, context=_elicit_ctx(server, form=True, params=declined)
         )
     )
     body = _structured(result)
     assert body["ok"] is False
     assert body["written"] is False
-    stored = load_prereqs(reload_config())
-    assert stored.get("has_password") is not True
-    assert not (tmp_path / "demo_beer_sample").exists()
+    assert (root / ".env").read_text(encoding="utf-8") == before
+    assert not (tmp_path / "state" / "beer-sample-build.md").exists()

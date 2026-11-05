@@ -72,7 +72,27 @@ def _assert_form(out: dict) -> None:
     assert BEARER not in blob
     assert LLM not in blob
     assert "load_process_login" in out["next_action"]
+    assert "ask_user_question" in out["next_action"]
+    assert "AskUserQuestion" in out["next_action"]
+    assert "request_user_input" in out["next_action"]
+    assert "Wait" in out["next_action"]
     assert "LLM_API_KEY" in out["next_action"]
+    auth = by_env["ZEUS_AUTH_MODE"]
+    assert auth["question"]
+    assert [item["label"] for item in auth["options"]] == ["none", "basic", "bearer"]
+    assert all(item["description"] for item in auth["options"])
+    assert "options" not in by_env["ZEUS_PASSWORD"]
+    assert "options" not in by_env["LLM_API_KEY"]
+    provider = next(row for row in rows if row.get("id") == "llm_provider")
+    assert provider["question"]
+    assert [item["label"] for item in provider["options"]] == [
+        "Grok (grok)",
+        "OpenAI (openai)",
+        "Anthropic (anthropic)",
+        "Gemini (gemini)",
+        "Other (other)",
+    ]
+    assert all("id=" not in item["description"] for item in provider["options"])
 
 
 def _closed_port() -> str:
@@ -157,6 +177,27 @@ def test_travel_and_yelp_ask_on_the_second_build(
     _assert_form(yelp_first)
     _assert_form(yelp_second)
     assert "ask_user" not in (yelp_first.get("app_config") or {})
+
+
+def test_travel_username_defaults_to_the_example(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zeus_dev_helper_mcp.env_questions import sample_build_questions
+
+    _clear(monkeypatch)
+    plain = sample_build_questions("travel")
+    username = next(row for row in plain if row.get("env") == "ZEUS_USERNAME")
+    assert username["default"] == "demo_1"
+    root = tmp_path / "demo_travel_sample"
+    root.mkdir()
+    (root / "config.example.json").write_text(
+        json.dumps({"zeus": {"username": "from-example", "password": ""}}),
+        encoding="utf-8",
+    )
+    named = sample_build_questions("travel", root=root)
+    username = next(row for row in named if row.get("env") == "ZEUS_USERNAME")
+    assert username["default"] == "from-example"
+    assert "password" not in username["default"]
 
 
 def test_other_samples_do_not_grow_the_build_form(

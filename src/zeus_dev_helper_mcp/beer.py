@@ -23,6 +23,8 @@ BEER_REPO = "https://github.com/koten-ai/demo_beer_sample"
 BEER_REPO_GIT = f"{BEER_REPO}.git"
 DEFAULT_BEER_DIR_NAME = "demo_beer_sample"
 ENV_BEER_DIR = "DEMO_BEER_SAMPLE_DIR"
+
+
 def beer_quick_start() -> str:
     """README start. The virtualenv interpreter is Python 3.11 or newer."""
     from zeus_dev_helper_mcp.python_runtime import venv_setup_shell
@@ -31,6 +33,8 @@ def beer_quick_start() -> str:
         f"{venv_setup_shell()} && "
         "pip install -r requirements.txt && python main.py"
     )
+
+
 _DIR_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 BEER_ALIASES = frozenset(
@@ -2444,26 +2448,9 @@ def missing_recorded_beer_dir(cfg: HelperConfig) -> str | None:
 
 def beer_listen_port(root: Path) -> int:
     """Port the generated catalog binds. ``.env`` wins over ``.env.example``."""
-    for name in (".env", ".env.example"):
-        path = root / name
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        for line in text.splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or not stripped.startswith("PORT="):
-                continue
-            raw = stripped.split("=", 1)[1].strip().strip('"').strip("'")
-            try:
-                port = int(raw)
-            except ValueError:
-                continue
-            if 1 <= port <= 65535:
-                return port
-    return 8090
+    from zeus_dev_helper_mcp.sample_place import env_listen_port
+
+    return env_listen_port(root, 8090)
 
 
 def _prereq_bucket(cfg: HelperConfig) -> str:
@@ -3039,24 +3026,47 @@ def _finish_cloned_beer(
     return _finish_beer_result(cfg, root, result, serve_with=serve_with)
 
 
-def _nonempty(path: Path) -> bool:
-    try:
-        return path.exists() and any(path.iterdir())
-    except OSError:
-        return False
+def beer_destination(
+    cfg: HelperConfig,
+    *,
+    sample_dir: str = "",
+    project_name: str = "",
+    parent_dir: str = "",
+    force: bool = False,
+):
+    """The path ``ensure_beer_sample`` uses, including a live checkout or a move."""
+    from zeus_dev_helper_mcp.sample_place import place_sample
 
-
-def _foreign_beer_dir(path: Path) -> bool:
-    return _nonempty(path) and not looks_like_beer_sample(path)
-
-
-def _next_open_beer_dir(parent: Path) -> Path | None:
-    """Next demo_beer_sample-N that is missing, empty, or already the generated tree."""
-    for n in range(2, 100):
-        candidate = parent / f"{DEFAULT_BEER_DIR_NAME}-{n}"
-        if not _foreign_beer_dir(candidate):
-            return candidate
-    return None
+    dest = resolve_beer_dest(
+        sample_dir=sample_dir,
+        project_name=project_name,
+        parent_dir=parent_dir,
+    )
+    named = project_name.strip()
+    explicit = bool(sample_dir.strip()) or (
+        bool(named) and sanitize_beer_dir_name(named) != DEFAULT_BEER_DIR_NAME
+    )
+    recorded = None
+    if not explicit and not force:
+        found = load_recorded_beer_dir(cfg)
+        if found is not None and found.is_dir() and looks_like_beer_sample(found):
+            try:
+                recorded_text = (found / "main.py").read_text(
+                    encoding="utf-8", errors="replace"
+                )
+            except OSError:
+                recorded_text = ""
+            if beer_bff_is_current(recorded_text):
+                recorded = found
+    return place_sample(
+        dest,
+        explicit=explicit,
+        default_name=DEFAULT_BEER_DIR_NAME,
+        looks_like=looks_like_beer_sample,
+        recorded=recorded,
+        serving_of=lambda root: catalog_port_verdict(root, cfg),
+        relocate=not force,
+    )
 
 
 def ensure_beer_sample(
@@ -3070,45 +3080,34 @@ def ensure_beer_sample(
 ) -> dict[str, Any]:
     """Locate an existing beer Direct UI or write a fresh template."""
     dir_name = sanitize_beer_dir_name(project_name)
-    dest = resolve_beer_dest(
+    target = beer_destination(
+        cfg,
         sample_dir=sample_dir,
         project_name=project_name,
         parent_dir=parent_dir,
+        force=force,
     )
-    named = project_name.strip()
-    explicit = bool(sample_dir.strip()) or (
-        bool(named) and sanitize_beer_dir_name(named) != DEFAULT_BEER_DIR_NAME
-    )
-    if not explicit and not force:
-        recorded = load_recorded_beer_dir(cfg)
-        if recorded is not None and recorded.is_dir() and looks_like_beer_sample(recorded):
-            try:
-                recorded_text = (recorded / "main.py").read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                recorded_text = ""
-            if beer_bff_is_current(recorded_text):
-                verdict = catalog_port_verdict(recorded, cfg)
-                if verdict is not None:
-                    return _attach_serving_verdict(cfg, recorded, verdict)
-    relocated_from = ""
-    if not explicit and not force and _foreign_beer_dir(dest) and dest.name == DEFAULT_BEER_DIR_NAME:
-        sibling = _next_open_beer_dir(dest.parent)
-        if sibling is None:
-            return {
-                "ok": False,
-                "failure_class": "foreign_sample_dir",
-                "error": f"target_dir not empty and does not look like beer sample: {dest}",
-                "local_dir": str(dest),
-                "next_action": (
-                    "Pass project_name for an empty directory. "
-                    "The default demo_beer_sample path was not written."
-                ),
-            }
-        relocated_from = str(dest)
-        dest = sibling
+    if target.serving_verdict is not None:
+        return _attach_serving_verdict(cfg, target.root, target.serving_verdict)
+    dest = target.root
+    relocated_from = target.relocated_from
+    if target.foreign_blocked:
+        return {
+            "ok": False,
+            "failure_class": "foreign_sample_dir",
+            "error": f"target_dir not empty and does not look like beer sample: {dest}",
+            "local_dir": str(dest),
+            "next_action": (
+                "Pass project_name for an empty directory. "
+                "The default demo_beer_sample path was not written."
+            ),
+        }
+    if relocated_from:
         dir_name = dest.name
 
-    if dest.is_dir() and not _nonempty(dest):
+    from zeus_dev_helper_mcp.sample_place import nonempty_dir
+
+    if dest.is_dir() and not nonempty_dir(dest):
         try:
             dest.rmdir()
         except OSError:

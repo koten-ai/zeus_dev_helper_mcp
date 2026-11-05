@@ -42,7 +42,11 @@ def test_use_sample_beer_writes_tree(tmp_path: Path) -> None:
         options = {item["id"]: item for item in out["serve_options"]}
         assert "python main.py" in options["python"]["run"]
         assert "docker compose up --build" in options["docker"]["run"]
-        assert "Ask the user whether to serve" in action
+        assert "ask_user_question" in action
+        assert [item["label"] for item in out["host_question"]["options"]] == [
+            "Python",
+            "Docker",
+        ]
         assert "python main.py" not in action
     else:
         assert "python main.py" in action

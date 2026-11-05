@@ -13,6 +13,8 @@ import os
 import subprocess
 import sys
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +31,11 @@ _YELP_PORT = 5000
 def _is_yelp_app(root: Path) -> bool:
     """LocalAI yelp-demo entry is ``python -m local_guide``, not ``uvicorn main:app``."""
     return (root / "src" / "local_guide" / "__main__.py").is_file()
+
+
+def _is_travel_app(root: Path) -> bool:
+    """TravelPlan entry is ``python -m travel_planner``."""
+    return (root / "src" / "travel_planner").is_dir()
 
 
 def _is_beer_app(root: Path) -> bool:
@@ -114,10 +121,28 @@ def _install_editable(root: Path) -> dict[str, Any]:
     )
 
 
+def _install_travel(root: Path) -> dict[str, Any]:
+    """``pip install -e ".[dev]"`` for the travel repo's own extra."""
+    if not (root / "pyproject.toml").is_file():
+        return {"ok": True, "installed": False}
+    return _pip(
+        root,
+        ["-m", "pip", "install", "-e", ".[dev]"],
+        fail_timeout=(
+            'pip install -e ".[dev]" did not finish. Then call website_green again.'
+        ),
+        fail_exit=(
+            'pip install -e ".[dev]" failed. Fix the travel checkout, then retry website_green.'
+        ),
+    )
+
+
 def install_app(root: Path) -> dict[str, Any]:
     """Install the app. Yelp uses ``pip install -e .``. Stdout stays out of the result."""
     if _is_yelp_app(root):
         return _install_editable(root)
+    if _is_travel_app(root):
+        return _install_travel(root)
     req = root / "requirements.txt"
     if not req.is_file():
         return {"ok": True, "installed": False}
@@ -129,14 +154,35 @@ def install_app(root: Path) -> dict[str, Any]:
     )
 
 
+def _child_env(root: Path, port: int) -> dict[str, str]:
+    """Process environment plus the app ``.env``. TravelPlan does not load that file."""
+    from zeus_dev_helper_mcp.app_env import dotenv_map
+
+    env = os.environ.copy()
+    path = root / ".env"
+    if path.is_file() and not path.is_symlink():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        for key, value in dotenv_map(text).items():
+            env[key] = value
+    env["PORT"] = str(port)
+    return env
+
+
 def start_app(root: Path, port: int) -> dict[str, Any]:
     """Start the app. Yelp is ``python -m local_guide``. Beer is ``python main.py``."""
     python = root / ".venv" / "bin" / "python"
     exe = str(python) if python.is_file() else sys.executable
     yelp = _is_yelp_app(root)
+    travel = _is_travel_app(root)
     beer = _is_beer_app(root)
     child_env = None
-    if yelp:
+    if travel:
+        cmd = [exe, "-m", "travel_planner"]
+        child_env = _child_env(root, port)
+    elif yelp:
         cmd = [exe, "-m", "local_guide"]
         child_env = os.environ.copy()
         child_env["PORT"] = str(port)
@@ -271,6 +317,10 @@ def _named_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
 def _listen_port(root: Path) -> int:
     if _is_yelp_app(root):
         return _YELP_PORT
+    if _is_travel_app(root):
+        from zeus_dev_helper_mcp.travel import travel_listen_port
+
+        return travel_listen_port(root)
     from zeus_dev_helper_mcp.beer import beer_listen_port
 
     for name in (".env", ".env.example"):
@@ -328,6 +378,11 @@ def _resolve_root(cfg: HelperConfig, target_dir: str) -> Path | None:
     yelp = recorded_yelp_sample_dir(cfg)
     if yelp is not None and yelp.is_dir():
         return yelp
+    from zeus_dev_helper_mcp.travel import recorded_travel_dir
+
+    travel = recorded_travel_dir(cfg)
+    if travel is not None and travel.is_dir():
+        return travel
     return None
 
 
@@ -362,29 +417,42 @@ def _remember(ids: list[str], header: str, body: dict[str, Any]) -> None:
             ids.append(item.strip())
 
 
-def _health(base: str, yelp: bool = False) -> str:
-    path = "/api/health" if yelp else "/healthz"
-    code, body, _header = _get_json(base + path)
+@dataclass(frozen=True)
+class AppHealth:
+    path: str
+    ok: Callable[[dict[str, Any]], bool]
+
+
+def _status_ok(body: dict[str, Any]) -> bool:
+    return str(body.get("status") or "") == "ok"
+
+
+def _yelp_ok(body: dict[str, Any]) -> bool:
+    return body.get("ok") is True
+
+
+BEER_HEALTH = AppHealth("/healthz", _status_ok)
+YELP_HEALTH = AppHealth("/api/health", _yelp_ok)
+TRAVEL_HEALTH = AppHealth("/api/health", _status_ok)
+
+
+def _health(base: str, kind: AppHealth = BEER_HEALTH) -> str:
+    code, body, _header = _get_json(base + kind.path)
     if code == 0:
         return "down"
-    if yelp and code == 200 and body.get("ok") is True:
-        return "up"
-    if not yelp and code == 200 and str(body.get("status") or "") == "ok":
+    if code == 200 and kind.ok(body):
         return "up"
     return "busy"
 
 
-def _probe_health(base: str, *, yelp: bool) -> str:
-    """One-arg ``_health`` for the beer path so existing test doubles stay valid."""
-    if yelp:
-        return _health(base, True)
-    return _health(base)
+def _probe_health(base: str, kind: AppHealth = BEER_HEALTH) -> str:
+    return _health(base, kind)
 
 
-def _poll_health(base: str, *, yelp: bool = False) -> str:
+def _poll_health(base: str, kind: AppHealth = BEER_HEALTH) -> str:
     state = "down"
     for attempt in range(POLL_TRIES):
-        state = _probe_health(base, yelp=yelp)
+        state = _probe_health(base, kind)
         if state != "down":
             return state
         if attempt + 1 < POLL_TRIES:
@@ -611,8 +679,8 @@ def _serve_choice_block(
 ) -> dict[str, Any] | None:
     """Stop before Python starts when the user has not chosen, or chose Docker."""
     from zeus_dev_helper_mcp.serve_choice import (
-        ASK,
         has_serve_choice,
+        open_serve_choice,
         parse_serve_with,
         remember_serve_with,
         serve_options,
@@ -649,12 +717,8 @@ def _serve_choice_block(
     if chosen not in {"python", "docker"}:
         return _result(
             failure_class="serve_choice_required",
-            next_action=ASK,
-            serve_choice_required=True,
-            serve_options=options,
-            serve_with="",
-            run="",
             recommended_tools=[],
+            **open_serve_choice(options),
         )
     remember_serve_with(cfg, root, chosen)
     if chosen == "python":
@@ -694,11 +758,15 @@ def _run_website_green(
                 "then website_green checks the page."
             ),
         )
-    yelp = _is_yelp_app(root)
+    if _is_travel_app(root):
+        kind = TRAVEL_HEALTH
+    elif _is_yelp_app(root):
+        kind = YELP_HEALTH
+    else:
+        kind = BEER_HEALTH
     port = _listen_port(root)
     base = f"http://127.0.0.1:{port}"
-    probe = "/api/health" if yelp else "/healthz"
-    state = _probe_health(base, yelp=yelp)
+    state = _probe_health(base, kind)
     if state == "busy":
         return _result(
             failure_class="port_in_use",
@@ -728,15 +796,43 @@ def _run_website_green(
                 url=base,
                 next_action=str(started.get("next_action") or ""),
             )
-        state = _poll_health(base, yelp=yelp)
+        state = _poll_health(base, kind)
     if state != "up":
         failure = "port_in_use" if state == "busy" else "health_timeout"
         return _result(
             failure_class=failure,
             url=base,
-            next_action=f"{base}{probe} did not answer for this app.",
+            next_action=f"{base}{kind.path} did not answer for this app.",
         )
-    if yelp:
+    if kind is TRAVEL_HEALTH:
+        from zeus_dev_helper_mcp.llm_key import inspect_app_llm_key
+
+        key = inspect_app_llm_key(root)
+        search_off = not (key.get("applies") and key.get("ok"))
+        if search_off:
+            action = (
+                f"TravelPlan health is up at {base}/api/health. "
+                "Beer cards are not required. "
+                "Search is off until LLM_API_KEY, XAI_API_KEY, or OPENAI_API_KEY "
+                "is in the app .env. "
+                "A describe 200 is not this check."
+            )
+        else:
+            action = (
+                f"TravelPlan health is up at {base}/api/health. "
+                "Beer cards are not required. "
+                "A describe 200 is not this check."
+            )
+        return _result(
+            ok=True,
+            url=base,
+            list_count=0,
+            search_skipped=search_off,
+            pour_enabled=not search_off,
+            next_action=action,
+            recommended_tools=[],
+        )
+    if kind is YELP_HEALTH:
         return _result(
             ok=True,
             url=base,
