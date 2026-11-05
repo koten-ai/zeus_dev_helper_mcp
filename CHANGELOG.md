@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.12
 
 ### Fixed
 - **[ZDM-48](https://kotenai.atlassian.net/browse/ZDM-48)** A rewrite of an existing app `.env` is `env_change` on the `use_sample` and `scaffold_app` result. `settings_written` names which of `ZEUS_AUTH_MODE`, `ZEUS_USERNAME`, `LLM_BASE_URL`, and `LLM_MODEL` changed. `settings_kept` gives the populated values that stayed. A kept `LLM_BASE_URL` is shown without URL userinfo. `ZEUS_PASSWORD`, `ZEUS_BEARER_TOKEN`, and `LLM_API_KEY` stay presence-only in `secret_presence`. Those values stay out of the tool result, `*-build.md`, and the support journal. A result that never wrote `.env` does not gain this report. `next_action` says to restart the app before `run_turn` only when `env_change` is true.
