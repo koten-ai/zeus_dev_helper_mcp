@@ -227,7 +227,7 @@ Secrets stay in the process environment. `set_prereq` stores presence flags only
 | `BUSINESS_IMAGES_BASE_URL` | Optional CDN prefix for the yelp photo download (no trailing slash). Default is the public `koten-yelp-demo-photos` Space. No API key |
 | `ZEUS_DEV_HELPER_SKIP_YELP_IMAGES` | Set to `1` to skip the yelp photo download during `use_sample(sample=demo_yelp)` |
 | `YELP_IMAGE_FETCH_WORKERS` | Parallel downloads for that photo set. Default `8` |
-| `ZEUS_DEV_HELPER_STATE_DIR` | Checklist, prereqs, local metrics, the write-once sample creation logs (`beer-sample-build.md`, `travel-sample-build.md`, `yelp-demo-build.md`), and the support journals (`beer-sample-support.md`, `travel-sample-support.md`, `yelp-demo-support.md`). Default `~/.config/zeus_dev_helper` |
+| `ZEUS_DEV_HELPER_STATE_DIR` | Checklist, prereqs, local metrics, the write-once sample creation logs (`beer-sample-build.md`, `travel-sample-build.md`, `yelp-demo-build.md`), the support journals (`beer-sample-support.md`, `travel-sample-support.md`, `yelp-demo-support.md`), and the wish files (`beer-sample-wish.md`, `travel-sample-wish.md`, `yelp-demo-wish.md`). Default `~/.config/zeus_dev_helper` |
 | `ZEUS_DEV_HELPER_TOOLSETS` | Static toolsets: `core` (default), plus `catalog,lint,travel,support,handoff` or `all` |
 
 ## Boundaries

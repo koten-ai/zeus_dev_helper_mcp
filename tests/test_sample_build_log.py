@@ -800,5 +800,5 @@ def test_wrapper_returns_non_dict_and_reraises_tool_exceptions(
     with pytest.raises(RuntimeError, match="clone failed"):
         _wrap_tool(use_sample)(sample="beer")
     names = _files(HelperConfig(state_dir=tmp_path / "state"))
-    assert names == ["beer-sample-support.md"]
+    assert names == ["beer-sample-support.md", "beer-sample-wish.md"]
     assert "beer-sample-build.md" not in names

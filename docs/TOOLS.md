@@ -24,7 +24,7 @@ This is not Zeus public API documentation (`find` / `search` / `describe` live i
 - Public API **`:8080`** only. Never Hub **`:9091`** from the app path.
 - Never invent `contract_hash`. Never `compute_local` for production bind.
 - `fetch_chat_request` is **TEMPLATE ONLY**. Prefer a live Zeus stamp.
-- No secrets in tool results, checklist evidence, support packs, or sample support journals.
+- No secrets in tool results, checklist evidence, support packs, sample support journals, or wish files. Passwords, bearer tokens, and API keys stay out of wish `what` and `why`.
 - Semantic cache stays **off**. Direct / typeahead must not call `agent_memory`.
 - Verb tools explain, lint, and draft. They do **not** POST `find` / `search` / `get` / `pipeline`.
 - `suggest_hooks` returns snippets with `executed=false`. Helper is not a policy engine.
@@ -68,7 +68,7 @@ Resources (not default tools): `zeus-helper://checklist` / `glossary/{topic}` / 
 | Tag | Meaning |
 | --- | --- |
 | `none` | No writes; no Zeus HTTP |
-| `state` | Checklist, prereqs, metrics, the write-once sample creation logs, and the support journals under `ZEUS_DEV_HELPER_STATE_DIR` (default `~/.config/zeus_dev_helper`) |
+| `state` | Checklist, prereqs, metrics, the write-once sample creation logs, the support journals, and the wish files under `ZEUS_DEV_HELPER_STATE_DIR` (default `~/.config/zeus_dev_helper`) |
 | `disk` | Writes under `target_dir` (never secret values) |
 | `live GET` | Public `:8080` GET (`/healthz`, `/readyz`, `/version`, `/v1/ai/bootstrap/…`) |
 | `live POST` | Public `:8080` read-only POST (`/v2/{bucket}/{scope}/describe` or one agent turn) |
@@ -85,7 +85,7 @@ The first time `use_sample` writes or binds beer-sample, travel-sample, or yelp-
 
 The file is the coach calls that led to that `use_sample`, in order, and the last section is the `use_sample` result. Each section has the Helper version, a UTC timestamp, the tool name, and the non-secret JSON arguments (`sample`, `parent_dir`, `project_name`, `target_dir`, `zeus_url`, `bucket`, `scope`, `auth_mode`, and the other non-secret arguments of that call). The result lines are `ok`, the path written or bound, `cloned`, `failure_class`, and the stamp hash prefix when that call read a live stamp. Replaying those arguments in order repeats the creation.
 
-An existing file is left unchanged. Calls after the sample exists (`smoke_test_zeus`, `smoke_test_agent`, `website_green`, `diagnose_error`, `bind_contract`, `verify_local_setup`, and later `next_step`) are not added. A second run, a no-op `use_sample`, `sample=api`, `scaffold_app`, and bare `sample=yelp` are not added. Passwords, tokens, LLM keys, prompt bodies, and catalog documents are not written. `metrics.jsonl` stays the name-only trail. Red gates after creation go to the support journal below.
+An existing file is left unchanged. Calls after the sample exists (`smoke_test_zeus`, `smoke_test_agent`, `website_green`, `diagnose_error`, `bind_contract`, `verify_local_setup`, and later `next_step`) are not added. A second run, a no-op `use_sample`, `sample=api`, `scaffold_app`, and bare `sample=yelp` are not added. Passwords, tokens, LLM keys, prompt bodies, and catalog documents are not written. `metrics.jsonl` stays the name-only trail. Red gates after creation go to the support journal and the wish file below.
 
 ## Sample support journal
 
@@ -97,7 +97,19 @@ A red gate for beer-sample, travel-sample, or yelp-demo appends one section unde
 
 `use_sample` appends when it finishes red or raises, including a create that never seals the creation log. `readiness_check`, `validate_env`, `load_process_login`, `verify_local_setup`, `smoke_test_zeus`, `smoke_test_agent`, and `website_green` append only after that creation log is a regular file. Each section has the Helper version, a UTC timestamp, the tool name, `failure_class`, and one scrubbed message (the same redaction and 2048-character cap as the stderr failure line). The file keeps the newest 40 sections. `diagnose_error` is not appended. `sample=api`, `scaffold_app`, and bare `sample=yelp` are not appended. An append does not modify `*-build.md`. Passwords, tokens, LLM keys, prompt bodies, catalog documents, and session ids stay out. `metrics.jsonl` and the stderr `zeus_dev_helper.tool.failed` line stay as they are.
 
-`sample_support_pack(sample=beer|travel|demo_yelp)` is a read-only core tool. It writes nothing and calls no Zeus API. The Markdown paste has the sample kind, the bound directory and whether it is still on disk, the Helper version, the creation-log path or a line that the creation log was never sealed, the public origin, auth mode, bucket, scope, and presence flags from `prereqs.json`, checklist rows in phases 1–5 that are `blocked` or `todo` with their evidence, the last `website_green` class, whether `last_smoke_agent.json` exists, process LLM key presence, app `.env` key presence, `config.json` `llm.api_key_env` when it is still a variable name, yelp API port 5000 and frontend port 5173, the last tool names from `metrics.jsonl`, and the last 8 support-journal sections. Smoke session ids stay in `support_pack_from_turn`.
+## Wish file
+
+A red gate for the same three samples appends one section under `ZEUS_DEV_HELPER_STATE_DIR`. The creation log and the support journal stay unchanged.
+
+- `beer-sample-wish.md` for `use_sample(sample=beer)`
+- `travel-sample-wish.md` for `use_sample(sample=travel)`
+- `yelp-demo-wish.md` for `use_sample(sample=demo_yelp)` and the aliases `yelp-demo`, `demo-yelp`, `yelp_demo`, and `yelpdemo`
+
+`use_sample` appends when it finishes red or raises, including a create that never seals the creation log. `readiness_check`, `validate_env`, `load_process_login`, `verify_local_setup`, `smoke_test_zeus`, `smoke_test_agent`, and `website_green` append only after that creation log is a regular file. Each section has the Helper version, a UTC timestamp, the tool name, `failure_class`, and at most three `wish_i_knew` items. An item has `what` and `kind`. `why` and `severity` (`low`, `med`, `high`) are optional. Kinds, in the order kept when more than three gaps match, are `file` (the missing required file), `bucket` (the hop bucket is not the stored prereq; `auth_default_bucket`), `env` (a required non-secret setting, the variable name only), `catalog` (`empty_tool_catalog`, `stamp_fetch_failed`, or a missing chat-request or catalog path), and `other`. `ZEUS_PASSWORD`, `ZEUS_BEARER_TOKEN`, `LLM_API_KEY`, `XAI_API_KEY`, and `OPENAI_API_KEY` are not items. The file keeps the newest 40 sections. A symlink or other non-file path is left unchanged, and a file whose first line is not `# {title} wish` is not overwritten. `diagnose_error`, `sample=api`, `scaffold_app`, and bare `sample=yelp` add nothing. A green result adds nothing. An append does not modify `*-build.md` or `*-support.md`. Each `what` and `why` line uses the same scrub and 2048-character cap as the support journal, including session ids. A journal write failure does not raise.
+
+The red tool result sets `wish_file` to that path and does not include a `wish_i_knew` array. `failure_class` and `next_action` stay. A green result gains neither field. A raised `use_sample` still appends the file and is re-raised unchanged.
+
+`sample_support_pack(sample=beer|travel|demo_yelp)` is a read-only core tool. It writes nothing and calls no Zeus API. The Markdown paste has the sample kind, the bound directory and whether it is still on disk, the Helper version, the creation-log path or a line that the creation log was never sealed, the public origin, auth mode, bucket, scope, and presence flags from `prereqs.json`, checklist rows in phases 1–5 that are `blocked` or `todo` with their evidence, the last `website_green` class, whether `last_smoke_agent.json` exists, process LLM key presence, app `.env` key presence, `config.json` `llm.api_key_env` when it is still a variable name, yelp API port 5000 and frontend port 5173, the last tool names from `metrics.jsonl`, the last 8 support-journal sections, and then the last 8 wish sections. Smoke session ids stay in `support_pack_from_turn`. `sample=api` and bare `sample=yelp` stay `sample_not_supported`.
 
 ---
 
@@ -219,7 +231,7 @@ Verbs Helper can explain (not call): `explain`, `return`, `describe`, `analyze`,
 | `suggest_demo_prompts` | Advice-shaped starter questions | — | none | Before 5.2. Prefer NL over raw SQL. |
 | `describe_scope` | Live MINI-SCHEMA: entity types + field names | `bucket`, `scope` (else env) | `live POST` | Schema for lint / UI. **No document samples.** Cap applied. |
 | `diagnose_error` | Map a symptom, hop name, HTTP status, and top-level result keys to `failure_class` plus one generated-file change | `symptom`, `hop_name`, `hop_bucket`, `status`, `result_keys`, `item_keys`, `node_keys`, `message`, `error_code`, `error_class`, `req_id`, `chat_id`, `turn_id`, `zeus_url` | none (Detective **URLs only**) | On any red path, and after `website_green` fails (`next_step` recommends this tool and no scaffold tool). A search hop of `{node, score}` with node key `doc_key` is `fts_doc_key_only`. A basic login against a bucket other than the prereq is `auth_default_bucket`. Does not accept a document body and does not echo a password, session id, or document. Does not import `zeus_client` on the default extra. A diagnosis is not appended to the support journal. |
-| `sample_support_pack` | One Markdown paste of the beer, travel, or yelp-demo support journal and the local gate state | `sample=beer\|travel\|demo_yelp` | none | When a created sample is red and someone needs the error, the setup gate, and the other factors. Writes nothing and calls no Zeus API. Session ids stay in `support_pack_from_turn`. |
+| `sample_support_pack` | One Markdown paste of the beer, travel, or yelp-demo support journal, the last 8 wish sections, and the local gate state | `sample=beer\|travel\|demo_yelp` | none | When a created sample is red and someone needs the error, the setup gate, and the other factors. Writes nothing and calls no Zeus API. The wish block follows the support journal. Session ids stay in `support_pack_from_turn`. `sample=api` and bare `sample=yelp` return `sample_not_supported`. |
 
 **Do not:** paste secrets into `diagnose_error` bodies if you can redact first. Do not scrape Hub Detective. `describe_scope` must not be used to dump rows.
 

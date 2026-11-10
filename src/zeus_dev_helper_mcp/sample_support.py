@@ -92,7 +92,10 @@ def observe_sample_support(
 
 
 def sample_support_pack(cfg: HelperConfig, sample: str) -> dict[str, Any]:
-    """One Markdown paste. Writes nothing and calls no Zeus API."""
+    """One Markdown paste. Writes nothing and calls no Zeus API.
+
+    The paste ends with the last 8 wish sections when that file exists.
+    """
     kind = sample_kind(sample or "")
     if kind is None:
         return {
@@ -298,6 +301,9 @@ def _render_pack(cfg: HelperConfig, kind: str) -> str:
         lines.append("\n\n".join(part.rstrip("\n") for part in rendered))
     else:
         lines.append("- (none)")
+    from zeus_dev_helper_mcp.sample_wish import wish_pack_lines
+
+    lines.extend(wish_pack_lines(cfg, kind))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -598,3 +604,20 @@ def _stamp(now: datetime | None) -> str:
     if current.tzinfo is None:
         return current.replace(tzinfo=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     return current.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+SAMPLE_GATE_TOOLS = _GATE_TOOLS
+sample_gate_kind = _kind_for
+creation_log_sealed = _creation_sealed
+result_is_red = _is_red
+result_failure_class = _failure_class
+result_message = _message
+scrub_public_line = _public_line
+read_state_text = _read_text
+write_state_text = _write_text
+utc_stamp = _stamp
+
+
+def scrub_public_text(value: str) -> str:
+    """Scrub one block line without the single-line length cap."""
+    return _strip_sessions(scrub_text(value))
