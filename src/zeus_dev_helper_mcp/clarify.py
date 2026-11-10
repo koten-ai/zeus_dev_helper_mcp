@@ -216,6 +216,14 @@ def valid_public_url(url: str) -> bool:
     return "@" not in host
 
 
+def query_url_has_userinfo(url: str) -> bool:
+    """True when the query URL authority contains ``user:password@host``."""
+    raw = (url or "").strip()
+    rest = raw.split("://", 1)[1] if "://" in raw else raw
+    host = rest.split("/", 1)[0]
+    return "@" in host
+
+
 def url_decision(argument: str, stored: str) -> str:
     """``use``, ``ask``, or ``reject``. Env ``ZEUS_URL`` is not an input."""
     arg = (argument or "").strip()
@@ -382,8 +390,6 @@ def persist_gate(gate: Gate) -> None:
     model = (gate.llm_model or "").strip()
     if model:
         os.environ["LLM_MODEL"] = model
-    from zeus_dev_helper_mcp.first_create import query_url_has_userinfo
-
     query_url = (gate.couchbase_query_url or "").strip()
     if query_url and not query_url_has_userinfo(query_url):
         os.environ["COUCHBASE_QUERY_URL"] = query_url
@@ -692,7 +698,7 @@ if HAS_ELICIT:
     ) -> Elicit[Any] | Clarification:  # type: ignore[valid-type]
         """Yelp Couchbase card after the connection card. Other samples pass through."""
         from zeus_dev_helper_mcp.first_create import (
-            finish_connection,
+            ask_yelp_couchbase,
             sample_destination,
         )
 
@@ -702,13 +708,12 @@ if HAS_ELICIT:
             project_name=project_name,
             parent_dir=parent_dir,
         )
-        return finish_connection(
+        return ask_yelp_couchbase(
             ctx,
             clarify_sample_couchbase,
             connection,
             sample=sample,
             root=root,
-            phase="couchbase",
         )
 
     def clarify_sample_llm(

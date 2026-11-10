@@ -510,138 +510,6 @@ def ensure_yelp_sample(
 _CB_URL = "COUCHBASE_QUERY_URL"
 _CB_USER = "COUCHBASE_USERNAME"
 _CB_PASSWORD = "COUCHBASE_PASSWORD"
-_CB_ASSIGN = re.compile(
-    r"^(?P<export>export\s+)?(?P<key>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>.*)$"
-)
-_CB_SAFE = re.compile(r"^[A-Za-z0-9_./:%+\-]+$")
-
-
-def _cb_format(value: str) -> str:
-    if value == "" or _CB_SAFE.fullmatch(value):
-        return value
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
-
-
-def _cb_unquote(value: str) -> str:
-    text = value.strip()
-    if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
-        return text[1:-1]
-    return text
-
-
-def _write_env_private(path: Path, text: str) -> None:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-    fd = os.open(path, flags, 0o600)
-    try:
-        os.write(fd, text.encode("utf-8"))
-    finally:
-        os.close(fd)
-    os.chmod(path, 0o600)
-
-
-def _ensure_env_ignore(root: Path) -> None:
-    path = root / ".gitignore"
-    try:
-        existing = path.read_text(encoding="utf-8") if path.is_file() else ""
-    except OSError:
-        return
-    if ".env" in {line.strip() for line in existing.splitlines()}:
-        return
-    if not existing:
-        path.write_text(".env\n", encoding="utf-8")
-        return
-    suffix = "" if existing.endswith("\n") else "\n"
-    path.write_text(existing + suffix + ".env\n", encoding="utf-8")
-
-
-def write_yelp_couchbase_env(root: Path, query_url: str, username: str) -> dict[str, Any]:
-    """Write the two strings into mode-600 ``.env``. Leave the password line.
-
-    A missing ``.env`` is created from ``.env.example``. A missing
-    ``COUCHBASE_PASSWORD`` line is added empty. The password value is not
-    an argument and is not returned.
-    """
-    root = Path(root)
-    env_path = root / ".env"
-    if env_path.is_symlink():
-        return {
-            "settings_written": [],
-            "secret_presence": {_CB_PASSWORD: False},
-            "env_change": False,
-        }
-    existed = env_path.is_file()
-    if existed:
-        try:
-            text = env_path.read_text(encoding="utf-8")
-        except OSError:
-            text = ""
-    else:
-        example = root / ".env.example"
-        text = ""
-        if example.is_file() and not example.is_symlink():
-            try:
-                text = example.read_text(encoding="utf-8")
-            except OSError:
-                text = ""
-    merged, written, password_set = _merge_couchbase_text(
-        text, query_url.strip(), username.strip()
-    )
-    if merged and not merged.endswith("\n"):
-        merged += "\n"
-    before = text if text.endswith("\n") or not text else text + "\n"
-    changed = existed and merged != before
-    _write_env_private(env_path, merged)
-    _ensure_env_ignore(root)
-    return {
-        "settings_written": written,
-        "secret_presence": {_CB_PASSWORD: password_set},
-        "env_change": bool(existed and changed),
-    }
-
-
-def _merge_couchbase_text(
-    text: str, query_url: str, username: str
-) -> tuple[str, list[str], bool]:
-    """Replace the two strings. Keep an existing password line byte-for-byte."""
-    updates = {_CB_URL: query_url, _CB_USER: username}
-    seen: set[str] = set()
-    previous: dict[str, str] = {}
-    password_set = False
-    out: list[str] = []
-    for raw in text.splitlines():
-        match = _CB_ASSIGN.match(raw.strip())
-        if match is None:
-            out.append(raw)
-            continue
-        key = match.group("key")
-        if key == _CB_PASSWORD:
-            seen.add(key)
-            password_set = bool(_cb_unquote(match.group("value")).strip())
-            out.append(raw)
-            continue
-        if key in updates:
-            seen.add(key)
-            previous[key] = _cb_unquote(match.group("value")).strip()
-            prefix = "export " if match.group("export") else ""
-            out.append(f"{prefix}{key}={_cb_format(updates[key])}")
-            continue
-        out.append(raw)
-    for key in (_CB_URL, _CB_USER):
-        if key not in seen:
-            previous[key] = ""
-            out.append(f"{key}={_cb_format(updates[key])}")
-    if _CB_PASSWORD not in seen:
-        out.append(f"{_CB_PASSWORD}=")
-    written = [
-        key
-        for key in (_CB_URL, _CB_USER)
-        if previous.get(key, "") != updates[key]
-    ]
-    body = "\n".join(out)
-    if body and not body.endswith("\n"):
-        body += "\n"
-    return body, written, password_set
 
 
 def _payload_is_yelp(payload: dict[str, Any]) -> bool:
@@ -664,20 +532,51 @@ def apply_couchbase_env(payload: dict[str, Any], gate: Any) -> dict[str, Any]:
     root = payload.get("local_dir") or payload.get("target_dir")
     if not isinstance(root, str) or not root.strip() or not Path(root).is_dir():
         return payload
-    from zeus_dev_helper_mcp.first_create import query_url_has_userinfo
+    from zeus_dev_helper_mcp.app_env import (
+        _ensure_gitignore,
+        apply_env_overlay,
+        assign_env_report,
+        ensure_app_env,
+    )
+    from zeus_dev_helper_mcp.clarify import query_url_has_userinfo
+    from zeus_dev_helper_mcp.config import reload_config
 
     query_url = str(getattr(gate, "couchbase_query_url", "") or "").strip()
     if query_url_has_userinfo(query_url):
         return payload
-    report = write_yelp_couchbase_env(
-        Path(root),
-        query_url,
-        str(getattr(gate, "couchbase_username", "") or ""),
+    env_path = Path(root) / ".env"
+    if env_path.is_symlink():
+        return payload
+    # An existing file is overlaid in place. Seeding through ensure_app_env
+    # would reformat a password line from .env.example.
+    if not env_path.is_file():
+        info = ensure_app_env(reload_config(), root)
+        payload["app_env"] = info
+        assign_env_report(payload, info)
+    elif "settings_written" not in payload and not (
+        isinstance(payload.get("app_env"), dict)
+        and (
+            "settings_written" in payload["app_env"]
+            or "env_change" in payload["app_env"]
+        )
+    ):
+        payload["app_env"] = {
+            "settings_written": [],
+            "settings_kept": {},
+            "secret_presence": {},
+            "env_change": False,
+            "created_env": False,
+        }
+        assign_env_report(payload, payload["app_env"])
+    apply_env_overlay(
+        payload,
+        {
+            _CB_URL: query_url,
+            _CB_USER: str(getattr(gate, "couchbase_username", "") or "").strip(),
+        },
+        ensure_empty=(_CB_PASSWORD,),
     )
-    payload["settings_written"] = list(report["settings_written"])
-    payload["secret_presence"] = dict(report["secret_presence"])
-    if report.get("env_change"):
-        payload["env_change"] = True
+    _ensure_gitignore(Path(root))
     if gate.couchbase_password_in_env is False:
         env_path = Path(root) / ".env"
         note = (

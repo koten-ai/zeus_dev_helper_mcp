@@ -23,12 +23,10 @@ from zeus_dev_helper_mcp.clarify import (
     DeclinedElicitation,
     Elicit,
     _can_elicit,
-    _decode_state,
-    _digest,
     _peek,
     _resolve_auth,
-    _wire_key,
     env_prefill,
+    query_url_has_userinfo,
     stored_zeus_url,
     valid_public_url,
 )
@@ -281,14 +279,6 @@ def _declined_create(
     )
 
 
-def query_url_has_userinfo(url: str) -> bool:
-    """True when the query URL authority contains ``user:password@host``."""
-    raw = (url or "").strip()
-    rest = raw.split("://", 1)[1] if "://" in raw else raw
-    host = rest.split("/", 1)[0]
-    return "@" in host
-
-
 def skip_cards() -> Clarification:
     """Proceed when the client cannot show the card. ``ask_user`` stays."""
     stored = stored_zeus_url()
@@ -435,20 +425,6 @@ def _couchbase_message(env_path: Path, exists: bool, *, userinfo: bool = False) 
     return f"{lead} {where} Do not type the password into this form."
 
 
-def _stored_elicit_message(
-    ctx: Any, fn: Any, form: type[BaseModel], messages: tuple[str, ...]
-) -> str | None:
-    """Message whose accepted outcome is already in ``request_state``."""
-    state = _decode_state(getattr(ctx, "request_state", None))
-    entry = state.outcomes.get(_wire_key(fn))
-    if entry is None or entry.action != "accept" or not entry.q:
-        return None
-    for message in messages:
-        if entry.q == _digest(message, form):
-            return message
-    return None
-
-
 def _couchbase_url_of(answer: Any) -> str:
     return str(_content(answer).get("couchbase_query_url") or "")
 
@@ -457,8 +433,8 @@ def _ask_couchbase(ctx: Any, fn: Any, *, root: Path) -> Any:
     """Yelp Couchbase card. Decline, cancel, or userinfo writes nothing.
 
     A query URL with userinfo is asked once more. A second userinfo answer
-    stops the create. A stored accept is returned as the same card so the
-    SDK restores it on the LLM round.
+    stops the create. An accept returns the same card so the SDK restores it.
+    The retry is peeked first: that answer replaced the normal digest.
     """
     exists = _nonempty_dir(root)
     env_root = root if exists else None
@@ -470,9 +446,6 @@ def _ask_couchbase(ctx: Any, fn: Any, *, root: Path) -> Any:
     env_path = root / ".env"
     normal = _couchbase_message(env_path, exists)
     retry = _couchbase_message(env_path, exists, userinfo=True)
-    stored = _stored_elicit_message(ctx, fn, form, (normal, retry))
-    if stored is not None:
-        return Elicit(stored, form)
     retry_answer = _peek(ctx, fn, retry, form)
     if retry_answer is not None:
         if retry_answer.action != "accept":
@@ -492,7 +465,7 @@ def _ask_couchbase(ctx: Any, fn: Any, *, root: Path) -> Any:
     return Elicit(normal, form)
 
 
-def _yelp_couchbase_card(
+def ask_yelp_couchbase(
     ctx: Any,
     fn: Any,
     outcome: Any,
@@ -671,16 +644,12 @@ def finish_connection(
     *,
     sample: str,
     root: Path,
-    phase: str = "llm",
     couchbase: Any = None,
 ) -> Any:
-    """Turn a connection result into the Couchbase card, then the LLM card.
+    """Turn a connection result into the LLM card.
 
-    ``phase="couchbase"`` asks the yelp card and stops. The LLM resolver
-    passes the accepted card as ``couchbase`` and continues to the LLM card.
+    The yelp resolver passes the accepted Couchbase card as ``couchbase``.
     """
-    if phase == "couchbase":
-        return _yelp_couchbase_card(ctx, fn, outcome, sample=sample, root=root)
     if DeclinedElicitation is not None and isinstance(outcome, DeclinedElicitation):
         return _declined_create("decline")
     if CancelledElicitation is not None and isinstance(outcome, CancelledElicitation):

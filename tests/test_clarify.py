@@ -160,8 +160,8 @@ def test_gate_copies_couchbase_strings_and_not_a_password(monkeypatch) -> None:
         Gate,
         interpret_gate,
         persist_gate,
+        query_url_has_userinfo,
     )
-    from zeus_dev_helper_mcp.first_create import query_url_has_userinfo
 
     assert query_url_has_userinfo("http://user:secret@localhost:8093") is True
     assert query_url_has_userinfo("http://localhost:8093") is False
