@@ -285,3 +285,83 @@ def test_journals_keep_the_secret_values_out(
     assert BEARER not in written
     assert LLM not in written
     assert PASSWORD not in json.dumps(result)
+
+
+def test_yelp_asks_couchbase_text_and_other_samples_do_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zeus_dev_helper_mcp.env_questions import (
+        _NONSECRET_KEYS,
+        _PRESENCE_KEYS,
+        _TEXT_PREFILL,
+        attach_sample_build_ask,
+        sample_build_questions,
+    )
+
+    _clear(monkeypatch)
+    monkeypatch.delenv("COUCHBASE_QUERY_URL", raising=False)
+    monkeypatch.delenv("COUCHBASE_USERNAME", raising=False)
+    monkeypatch.delenv("COUCHBASE_PASSWORD", raising=False)
+    assert "COUCHBASE_QUERY_URL" in _TEXT_PREFILL
+    assert "COUCHBASE_USERNAME" in _TEXT_PREFILL
+    assert "COUCHBASE_QUERY_URL" in _NONSECRET_KEYS
+    assert "COUCHBASE_USERNAME" in _NONSECRET_KEYS
+    assert "COUCHBASE_PASSWORD" in _PRESENCE_KEYS
+    assert "COUCHBASE_PASSWORD" not in _NONSECRET_KEYS
+    assert "COUCHBASE_PASSWORD" not in _TEXT_PREFILL
+
+    for sample in ("demo_yelp", "yelp-demo", "demo-yelp", "yelp_demo", "yelpdemo"):
+        rows = sample_build_questions(sample)
+        envs = [row["env"] for row in rows if row.get("env")]
+        assert envs[0] == "ZEUS_AUTH_MODE"
+        assert envs[-3:-1] == ["COUCHBASE_QUERY_URL", "COUCHBASE_USERNAME"]
+        assert envs[-1] == "LLM_API_KEY"
+        assert "COUCHBASE_PASSWORD" not in envs
+        by_env = {row["env"]: row for row in rows if row.get("env")}
+        assert by_env["COUCHBASE_QUERY_URL"]["kind"] == "text"
+        assert by_env["COUCHBASE_USERNAME"]["kind"] == "text"
+        assert by_env["COUCHBASE_QUERY_URL"]["default"] == "http://localhost:8093"
+        assert by_env["COUCHBASE_USERNAME"]["default"] == "Administrator"
+        assert "Write COUCHBASE_PASSWORD in the app .env" in by_env["COUCHBASE_QUERY_URL"]["prompt"]
+        assert "Do not ask for the password" in by_env["COUCHBASE_USERNAME"]["prompt"]
+
+    for sample in ("beer", "travel", "api", "yelp"):
+        envs = [
+            row["env"]
+            for row in sample_build_questions(sample)
+            if row.get("env")
+        ]
+        assert "COUCHBASE_QUERY_URL" not in envs
+        assert "COUCHBASE_USERNAME" not in envs
+        assert "COUCHBASE_PASSWORD" not in envs
+
+    root = tmp_path / "demo_yelp"
+    root.mkdir()
+    (root / ".env").write_text(
+        "COUCHBASE_QUERY_URL=http://from-file:8093\n"
+        "COUCHBASE_USERNAME=file-user\n"
+        "COUCHBASE_PASSWORD=not-a-prefill\n",
+        encoding="utf-8",
+    )
+    prefilled = sample_build_questions("demo_yelp", root=root)
+    by_env = {row["env"]: row for row in prefilled if row.get("env")}
+    assert by_env["COUCHBASE_QUERY_URL"]["default"] == "http://from-file:8093"
+    assert by_env["COUCHBASE_USERNAME"]["default"] == "file-user"
+    assert "not-a-prefill" not in json.dumps(prefilled)
+
+    monkeypatch.setenv("COUCHBASE_QUERY_URL", "http://from-proc:8093")
+    monkeypatch.setenv("COUCHBASE_USERNAME", "proc-user")
+    from_proc = sample_build_questions("yelp-demo", root=root)
+    by_env = {row["env"]: row for row in from_proc if row.get("env")}
+    assert by_env["COUCHBASE_QUERY_URL"]["default"] == "http://from-proc:8093"
+    assert by_env["COUCHBASE_USERNAME"]["default"] == "proc-user"
+
+    yelp_ask = attach_sample_build_ask({"next_action": "run"}, sample="demo_yelp")
+    beer_ask = attach_sample_build_ask({"next_action": "run"}, sample="beer")
+    travel_ask = attach_sample_build_ask({"next_action": "run"}, sample="travel")
+    api_ask = attach_sample_build_ask({"next_action": "run"}, sample="api")
+    assert "Ask COUCHBASE_QUERY_URL and COUCHBASE_USERNAME as text" in yelp_ask["next_action"]
+    assert "Write COUCHBASE_PASSWORD in the app .env" in yelp_ask["next_action"]
+    for payload in (beer_ask, travel_ask, api_ask):
+        assert "COUCHBASE_QUERY_URL" not in payload["next_action"]
+        assert "COUCHBASE_PASSWORD" not in payload["next_action"]

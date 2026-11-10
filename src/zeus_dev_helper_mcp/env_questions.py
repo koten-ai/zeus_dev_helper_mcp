@@ -246,7 +246,13 @@ _TRAVEL_USERNAME = "demo_1"
 _TRAVEL_SAMPLES = frozenset(
     {"travel", "demo_travel", "travel_sample", "demo_travel_sample", "ui"}
 )
-_TEXT_PREFILL = ("ZEUS_USERNAME", "LLM_BASE_URL", "LLM_MODEL")
+_TEXT_PREFILL = (
+    "ZEUS_USERNAME",
+    "LLM_BASE_URL",
+    "LLM_MODEL",
+    "COUCHBASE_QUERY_URL",
+    "COUCHBASE_USERNAME",
+)
 _NONSECRET_KEYS = frozenset(_TEXT_PREFILL) | {"ZEUS_URL"}
 _PRESENCE_KEYS = frozenset(
     {
@@ -255,6 +261,7 @@ _PRESENCE_KEYS = frozenset(
         "LLM_API_KEY",
         "XAI_API_KEY",
         "OPENAI_API_KEY",
+        "COUCHBASE_PASSWORD",
     }
 )
 
@@ -325,6 +332,13 @@ def dotenv_nonsecret(root: Path | None, key: str) -> str:
     if root is None or key not in _NONSECRET_KEYS:
         return ""
     return _file_value(Path(root) / ".env", key).strip()
+
+
+def dotenv_example_nonsecret(root: Path | None, key: str) -> str:
+    """Text value from ``.env.example``. Password, token, and API key stay out."""
+    if root is None or key not in _NONSECRET_KEYS:
+        return ""
+    return _file_value(Path(root) / ".env.example", key).strip()
 
 
 def dotenv_present(root: Path | None, key: str) -> bool:
@@ -417,6 +431,15 @@ def sample_build_ask_text() -> str:
         "Call set_prereq with auth_mode and the presence flags has_username, "
         "has_password, has_bearer, and has_llm_key. Do not pass the password, "
         "bearer token, or API key as a tool argument."
+    )
+
+
+def _couchbase_ask_text() -> str:
+    """Yelp-only instruction. The password is not collected here."""
+    return (
+        "Ask COUCHBASE_QUERY_URL and COUCHBASE_USERNAME as text. "
+        "Write COUCHBASE_PASSWORD in the app .env. "
+        "Do not ask for that password and do not pass it as a tool argument."
     )
 
 
@@ -594,7 +617,47 @@ def sample_build_questions(
             ),
         },
     ]
+    from zeus_dev_helper_mcp.yelp import is_yelp_demo_sample
+
+    if is_yelp_demo_sample(sample_name):
+        spot = next(
+            index
+            for index, row in enumerate(questions)
+            if row.get("env") == "LLM_API_KEY"
+        )
+        questions[spot:spot] = _couchbase_question_rows(root)
     return questions
+
+
+def _couchbase_question_rows(root: Path | None) -> list[dict[str, Any]]:
+    """Two text rows. No password row. The user writes the password in ``.env``."""
+    url = _text_prefill("COUCHBASE_QUERY_URL", root) or "http://localhost:8093"
+    username = _text_prefill("COUCHBASE_USERNAME", root) or "Administrator"
+    password_note = "Write COUCHBASE_PASSWORD in the app .env. Do not ask for the password."
+    return [
+        _with_default(
+            {
+                "env": "COUCHBASE_QUERY_URL",
+                "kind": "text",
+                "prompt": (
+                    "Ask for COUCHBASE_QUERY_URL through the host question "
+                    f"tool's text field. {password_note} This row has no options."
+                ),
+            },
+            url,
+        ),
+        _with_default(
+            {
+                "env": "COUCHBASE_USERNAME",
+                "kind": "text",
+                "prompt": (
+                    "Ask for COUCHBASE_USERNAME through the host question "
+                    f"tool's text field. {password_note} This row has no options."
+                ),
+            },
+            username,
+        ),
+    ]
 
 
 def attach_sample_build_ask(
@@ -615,6 +678,12 @@ def attach_sample_build_ask(
         kept.pop("ask_user", None)
         payload["app_config"] = kept
     text = sample_build_ask_text()
+    from zeus_dev_helper_mcp.yelp import is_yelp_demo_sample
+
+    if is_yelp_demo_sample(sample):
+        extra = _couchbase_ask_text()
+        if extra not in text:
+            text = f"{text} {extra}"
     prior = str(payload.get("next_action") or "").strip()
     if text not in prior:
         payload["next_action"] = f"{text} {prior}".strip()
