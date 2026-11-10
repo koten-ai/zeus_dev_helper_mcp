@@ -1,7 +1,8 @@
 """Wish file for a red beer, travel, or yelp-demo gate (ZDM-58).
 
 The creation log and the support journal stay unchanged. A red tool result
-names this file and does not copy the items into the result.
+names this file and does not copy the items into the result. Sections are
+appended as heading blocks. This module does not parse them back.
 """
 
 from __future__ import annotations
@@ -15,17 +16,17 @@ from typing import Any
 from zeus_dev_helper_mcp import __version__
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.sample_support import (
-    _GATE_TOOLS,
-    _TITLES,
-    _creation_sealed,
-    _failure_class,
-    _is_red,
-    _kind_for,
-    _message,
-    _public_line,
-    _read_text,
-    _stamp,
-    _write_text,
+    SAMPLE_GATE_TOOLS,
+    creation_log_sealed,
+    read_state_text,
+    result_failure_class,
+    result_is_red,
+    result_message,
+    sample_gate_kind,
+    scrub_public_line,
+    scrub_public_text,
+    utc_stamp,
+    write_state_text,
 )
 
 SECTION_CAP = 40
@@ -36,6 +37,11 @@ _FILES = {
     "beer": "beer-sample-wish.md",
     "travel": "travel-sample-wish.md",
     "yelp-demo": "yelp-demo-wish.md",
+}
+_TITLES = {
+    "beer": "beer-sample",
+    "travel": "travel-sample",
+    "yelp-demo": "yelp-demo",
 }
 _INTRO = (
     "Gaps the coding agent lacked on a red gate. "
@@ -63,7 +69,7 @@ _BUCKET_WHAT = "bucket on the hop is not the stored prereq bucket"
 _BUCKET_WHY = "login was sent to the wrong bucket"
 _ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]+$")
 _NOT_A_FILE = re.compile(r"not a file:\s*(\S+)")
-_HEADER = re.compile(r"^## (\d+)\. ([a-z][a-z0-9_]*)$")
+_HEADER = re.compile(r"^## (\d+)\. [a-z][a-z0-9_]*$")
 _CATALOG_PARTS = frozenset({"chat_requests", "catalog", "catalogs"})
 
 
@@ -91,15 +97,11 @@ def observe_sample_wish(
 def wish_pack_lines(cfg: HelperConfig, kind: str) -> list[str]:
     """Last wish sections for the support paste. Reads only."""
     lines = ["", "## Wish journal", ""]
-    tail = _parse_sections(_read_text(_wish_path(cfg, kind)))[-PACK_TAIL:]
-    if not tail:
+    blocks = _section_blocks(read_state_text(_wish_path(cfg, kind)))[-PACK_TAIL:]
+    if not blocks:
         lines.append("- (none)")
         return lines
-    rendered = [
-        _render_section(_section_index(item, index), _public_section(item)).rstrip("\n")
-        for index, item in enumerate(tail, start=1)
-    ]
-    lines.append("\n\n".join(rendered))
+    lines.append("\n\n".join(_scrub_block(block) for block in blocks))
     return lines
 
 
@@ -112,23 +114,23 @@ def _observe(
     exc: BaseException | None,
     now: datetime | None,
 ) -> str | None:
-    if tool not in _GATE_TOOLS:
+    if tool not in SAMPLE_GATE_TOOLS:
         return None
-    if exc is None and not _is_red(result):
+    if exc is None and not result_is_red(result):
         return None
-    kind = _kind_for(cfg, tool, args or {})
+    kind = sample_gate_kind(cfg, tool, args or {})
     if kind is None or kind not in _FILES:
         return None
-    if tool != "use_sample" and not _creation_sealed(cfg, kind):
+    if tool != "use_sample" and not creation_log_sealed(cfg, kind):
         return None
-    failure = _failure_class(result, exc)
+    failure = result_failure_class(result, exc)
     return _append(
         cfg,
         kind,
         {
             "tool": tool,
             "version": __version__,
-            "stamp": _stamp(now),
+            "stamp": utc_stamp(now),
             "failure": failure,
             "items": _items(result, exc, failure),
         },
@@ -142,7 +144,9 @@ def _items(
 ) -> list[dict[str, str]]:
     found = _Found()
     if isinstance(result, Mapping):
-        _walk(result, found)
+        _take_record(result, found)
+        _take_issues(result.get("issues"), found)
+        _take_gates(result.get("gates"), found)
     items: list[dict[str, str]] = []
     for name in found.files:
         cleaned = _clean_item(
@@ -193,20 +197,34 @@ class _Found:
         self._paths: set[str] = set()
 
 
-def _walk(node: Any, found: _Found) -> None:
-    if isinstance(node, Mapping):
-        _take_failure(node, found)
-        _take_bucket_probe(node, found)
-        _take_settings(node, found)
-        message = node.get("message")
-        if isinstance(message, str):
-            _take_not_a_file(message, found)
-        for value in node.values():
-            _walk(value, found)
+def _take_record(node: Mapping[str, Any], found: _Found) -> None:
+    _take_failure(node, found)
+    _take_bucket_probe(node, found)
+    _take_settings(node, found)
+    message = node.get("message")
+    if isinstance(message, str):
+        _take_not_a_file(message, found)
+
+
+def _take_issues(issues: Any, found: _Found) -> None:
+    if not isinstance(issues, list):
         return
-    if isinstance(node, list):
-        for value in node:
-            _walk(value, found)
+    for issue in issues:
+        if isinstance(issue, Mapping):
+            _take_record(issue, found)
+
+
+def _take_gates(gates: Any, found: _Found) -> None:
+    if not isinstance(gates, list):
+        return
+    for gate in gates:
+        if not isinstance(gate, Mapping):
+            continue
+        _take_record(gate, found)
+        evidence = gate.get("evidence")
+        if isinstance(evidence, Mapping):
+            _take_failure(evidence, found)
+            _take_bucket_probe(evidence, found)
 
 
 def _take_failure(node: Mapping[str, Any], found: _Found) -> None:
@@ -304,9 +322,9 @@ def _covered_by_item(what: str, items: list[dict[str, str]]) -> bool:
     if not raw:
         return False
     if _is_catalog_path(raw):
-        expected = _public_line(f"missing catalog path {raw}")
+        expected = scrub_public_line(f"missing catalog path {raw}")
     else:
-        expected = _public_line(f"missing required file {_base_name(raw)}")
+        expected = scrub_public_line(f"missing required file {_base_name(raw)}")
     if not any(item["what"] == expected for item in items):
         return False
     remainder = _NOT_A_FILE.sub(" ", what)
@@ -320,22 +338,22 @@ def _other_item(
 ) -> dict[str, str] | None:
     if failure in _SPECIFIC_FAILURES:
         return None
-    message = _message(result, exc)
+    message = result_message(result, exc)
     if (not message or message == "tool failed") and failure not in {"failed", "exception"}:
-        message = _public_line(failure)
+        message = scrub_public_line(failure)
     if not message or message == "tool failed":
         return None
     return _clean_item({"what": message, "kind": "other"})
 
 
 def _clean_item(item: Mapping[str, str]) -> dict[str, str] | None:
-    what = _public_line(str(item.get("what") or ""))
+    what = scrub_public_line(str(item.get("what") or ""))
     kind = str(item.get("kind") or "").strip()
     if not what or kind not in _KINDS:
         return None
     out = {"what": what, "kind": kind}
     if item.get("why"):
-        why = _public_line(str(item.get("why") or ""))
+        why = scrub_public_line(str(item.get("why") or ""))
         if why:
             out["why"] = why
     severity = str(item.get("severity") or "").strip()
@@ -348,14 +366,16 @@ def _append(cfg: HelperConfig, kind: str, section: dict[str, Any]) -> str | None
     path = _wish_path(cfg, kind)
     if path.is_symlink() or (path.exists() and not path.is_file()):
         return None
-    existing = _read_text(path)
+    existing = read_state_text(path)
     if existing and not _owned(existing, kind):
         return None
-    sections = _parse_sections(existing)
-    sections.append(section)
-    if len(sections) > SECTION_CAP:
-        sections = sections[-SECTION_CAP:]
-    if not _write_text(path, _render_journal(kind, sections)):
+    blocks = _section_blocks(existing)
+    rendered = _render_section(_next_index(blocks), section).rstrip("\n")
+    blocks.append(_scrub_block(rendered))
+    if len(blocks) > SECTION_CAP:
+        blocks = blocks[-SECTION_CAP:]
+    text = _preamble(kind) + "\n\n" + "\n\n".join(blocks) + "\n"
+    if not write_state_text(path, text):
         return None
     return str(path)
 
@@ -364,105 +384,55 @@ def _wish_path(cfg: HelperConfig, kind: str) -> Path:
     return cfg.state_dir.expanduser() / _FILES[kind]
 
 
+def _preamble(kind: str) -> str:
+    return f"# {_TITLES[kind]} wish\n\n{_INTRO}"
+
+
 def _owned(text: str, kind: str) -> bool:
     lines = text.lstrip("\ufeff").splitlines()
     return bool(lines) and lines[0] == f"# {_TITLES[kind]} wish"
 
 
-def _parse_sections(text: str) -> list[dict[str, Any]]:
-    lines = text.splitlines()
-    found: list[dict[str, Any]] = []
-    index = 0
-    total = len(lines)
-    while index < total:
-        match = _HEADER.match(lines[index])
-        if not match:
-            index += 1
+def _section_blocks(text: str) -> list[str]:
+    if not text:
+        return []
+    blocks: list[str] = []
+    for index, part in enumerate(text.split("\n## ")):
+        chunk = part.strip("\n")
+        if not chunk:
             continue
-        number, tool = match.group(1), match.group(2)
-        start = index
-        index += 1
-        if index < total and lines[index] == "":
-            index += 1
-        fields, index, ok = _header_fields(lines, index)
-        if not ok or fields.get("shown") != tool:
-            index = start + 1
+        if index == 0:
+            if chunk.startswith("## "):
+                blocks.append(chunk)
             continue
-        items: list[dict[str, str]] = []
-        if index < total and lines[index] == "- wish_i_knew:":
-            index += 1
-            while index < total and lines[index].startswith("  - what:"):
-                item, index = _parse_item(lines, index)
-                if item:
-                    items.append(item)
-        found.append(
-            {
-                "index": number,
-                "tool": tool,
-                "version": fields.get("version", "").strip(),
-                "stamp": fields.get("stamp", "").strip(),
-                "failure": fields.get("failure", "").strip() or "failed",
-                "items": items[:ITEM_CAP],
-            }
-        )
-    return found
+        blocks.append(f"## {chunk}")
+    return blocks
 
 
-def _header_fields(
-    lines: list[str], index: int
-) -> tuple[dict[str, str], int, bool]:
-    labels = (
-        ("version", "- Helper version: "),
-        ("stamp", "- UTC timestamp: "),
-        ("shown", "- Tool: `"),
-        ("failure", "- failure_class: "),
-    )
-    fields: dict[str, str] = {}
-    for key, prefix in labels:
-        if index >= len(lines) or not lines[index].startswith(prefix):
-            return fields, index, False
-        if key == "shown":
-            if not lines[index].endswith("`"):
-                return fields, index, False
-            fields[key] = lines[index][len(prefix) : -1]
-        else:
-            fields[key] = lines[index][len(prefix) :].strip()
-        index += 1
-    return fields, index, True
+def _next_index(blocks: list[str]) -> int:
+    if not blocks:
+        return 1
+    match = _HEADER.match(blocks[-1].splitlines()[0])
+    if not match:
+        return len(blocks) + 1
+    return int(match.group(1)) + 1
 
 
-def _parse_item(lines: list[str], index: int) -> tuple[dict[str, str] | None, int]:
-    raw = lines[index].split(": ", 1)[1] if ": " in lines[index] else ""
-    item: dict[str, str] = {"what": raw.strip()}
-    index += 1
-    while index < len(lines) and lines[index].startswith("    "):
-        text = lines[index].strip()
-        if ": " not in text:
-            break
-        key, value = text.split(": ", 1)
-        if key not in {"kind", "why", "severity"}:
-            break
-        item[key] = value.strip()
-        index += 1
-    return _clean_item(item), index
-
-
-def _render_journal(kind: str, sections: list[dict[str, Any]]) -> str:
-    chunks = [f"# {_TITLES[kind]} wish", "", _INTRO, ""]
-    for index, section in enumerate(sections, start=1):
-        chunks.append(_render_section(index, _public_section(section)).rstrip("\n"))
-        chunks.append("")
-    return "\n".join(chunks).rstrip() + "\n"
+def _scrub_block(block: str) -> str:
+    return "\n".join(scrub_public_text(line) for line in block.splitlines())
 
 
 def _render_section(index: int, section: Mapping[str, Any]) -> str:
+    tool = str(section["tool"])
+    version = scrub_public_line(str(section.get("version") or "")) or __version__
+    failure = scrub_public_line(str(section.get("failure") or "")) or "failed"
     lines = [
-        f"## {index}. {section['tool']}",
+        f"## {index}. {tool}",
         "",
-        f"- Helper version: {section['version']}",
+        f"- Helper version: {version}",
         f"- UTC timestamp: {section['stamp']}",
-        f"- Tool: `{section['tool']}`",
-        f"- failure_class: {section['failure']}",
+        f"- Tool: `{tool}`",
+        f"- failure_class: {failure}",
         "- wish_i_knew:",
     ]
     for item in section.get("items") or []:
@@ -475,27 +445,3 @@ def _render_section(index: int, section: Mapping[str, Any]) -> str:
         if item.get("severity"):
             lines.append(f"    severity: {item['severity']}")
     return "\n".join(lines) + "\n"
-
-
-def _public_section(section: Mapping[str, Any]) -> dict[str, Any]:
-    items: list[dict[str, str]] = []
-    for item in section.get("items") or []:
-        if not isinstance(item, Mapping):
-            continue
-        cleaned = _clean_item(item)
-        if cleaned:
-            items.append(cleaned)
-    return {
-        "tool": section["tool"],
-        "version": _public_line(str(section.get("version") or "")) or __version__,
-        "stamp": str(section.get("stamp") or ""),
-        "failure": _public_line(str(section.get("failure") or "")) or "failed",
-        "items": items[:ITEM_CAP],
-    }
-
-
-def _section_index(section: Mapping[str, Any], fallback: int) -> int:
-    raw = str(section.get("index") or "")
-    if raw.isdigit():
-        return int(raw)
-    return fallback

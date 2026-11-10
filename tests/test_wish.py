@@ -428,7 +428,7 @@ def test_foreign_heading_directory_and_write_failure_leave_the_tool_result(
     def _boom(*args: Any, **kwargs: Any) -> bool:
         raise OSError("disk")
 
-    monkeypatch.setattr(wish, "_write_text", _boom)
+    monkeypatch.setattr(wish, "write_state_text", _boom)
     assert _call(cfg, "use_sample", {"sample": "demo_yelp"}, _red()) is None
     assert not (cfg.state_dir / _WISH["yelp-demo"]).exists()
 
