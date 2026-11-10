@@ -105,6 +105,7 @@ from zeus_dev_helper_mcp.sample_support import observe_sample_support
 from zeus_dev_helper_mcp.sample_support import (
     sample_support_pack as sample_support_pack_impl,
 )
+from zeus_dev_helper_mcp.sample_wish import observe_sample_wish
 from zeus_dev_helper_mcp.scaffold import (
     scaffold_app as scaffold_app_impl,
 )
@@ -283,8 +284,9 @@ INSTRUCTIONS = (
     "Knowledge is resources under zeus-helper:// (checklist, glossary, verbs, policies, catalog modes). "
     "Walkthroughs are prompts: first_green, smoke_question, support_pack. "
     "sample_support_pack(sample=beer|travel|demo_yelp) pastes the support journal "
-    "for a red beer, travel, or yelp-demo gate. It writes nothing and calls no "
-    "Zeus API. Session ids stay in support_pack_from_turn. "
+    "and the last 8 wish sections for a red beer, travel, or yelp-demo gate. "
+    "It writes nothing and calls no Zeus API. Session ids stay in "
+    "support_pack_from_turn. "
     "When the user asks to add or inject a business rule and does not name an app, "
     "call inject_business_rules. When the result has ask_user, ask and wait, then "
     "call again with app_dir or sample. wire_required means the app builds "
@@ -1465,8 +1467,8 @@ def sample_support_pack(sample: str = "") -> dict[str, Any]:
     Writes nothing and calls no Zeus API. Returns one Markdown paste: sample
     kind, bound directory, creation log, prereqs, open checklist rows in
     phases 1–5, the last website_green class, local setup, recent tool names,
-    and the support-journal tail. Session ids stay in support_pack_from_turn.
-    sample=api and bare sample=yelp are refused.
+    the support-journal tail, and the last 8 wish sections. Session ids stay
+    in support_pack_from_turn. sample=api and bare sample=yelp are refused.
     """
     return sample_support_pack_impl(_cfg(), sample)
 
@@ -1649,17 +1651,34 @@ def _journal_sample_support(
     result: dict[str, Any] | None,
     exc: BaseException | None,
 ) -> None:
-    """Append the support journal before the tool error leaves this process."""
+    """Append the support journal and wish file before a tool error leaves."""
+    try:
+        arguments = public_arguments(fn, args, kwargs)
+    except Exception:  # noqa: BLE001 — argument scrubbing must not hide the tool
+        arguments = {}
     try:
         observe_sample_support(
             _cfg(),
             fn.__name__,
-            public_arguments(fn, args, kwargs),
+            arguments,
             result,
             exc=exc,
         )
-    except Exception:  # noqa: BLE001 — the journal must not hide the tool result
-        return
+    except Exception:  # noqa: BLE001, S110 — the journal must not hide the tool result
+        pass
+    written: str | None = None
+    try:
+        written = observe_sample_wish(
+            _cfg(),
+            fn.__name__,
+            arguments,
+            result,
+            exc=exc,
+        )
+    except Exception:  # noqa: BLE001 — a wish-writer failure must not hide the tool
+        written = None
+    if written and isinstance(result, dict):
+        result["wish_file"] = written
 
 
 _MCP_OVERRIDES: dict[str, Any] = {}

@@ -92,7 +92,10 @@ def observe_sample_support(
 
 
 def sample_support_pack(cfg: HelperConfig, sample: str) -> dict[str, Any]:
-    """One Markdown paste. Writes nothing and calls no Zeus API."""
+    """One Markdown paste. Writes nothing and calls no Zeus API.
+
+    The paste ends with the last 8 wish sections when that file exists.
+    """
     kind = sample_kind(sample or "")
     if kind is None:
         return {
@@ -298,6 +301,9 @@ def _render_pack(cfg: HelperConfig, kind: str) -> str:
         lines.append("\n\n".join(part.rstrip("\n") for part in rendered))
     else:
         lines.append("- (none)")
+    from zeus_dev_helper_mcp.sample_wish import wish_pack_lines
+
+    lines.extend(wish_pack_lines(cfg, kind))
     return "\n".join(lines).rstrip() + "\n"
 
 

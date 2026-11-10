@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **[ZDM-58](https://kotenai.atlassian.net/browse/ZDM-58)** A red gate for beer-sample, travel-sample, or yelp-demo appends `beer-sample-wish.md`, `travel-sample-wish.md`, or `yelp-demo-wish.md` under `ZEUS_DEV_HELPER_STATE_DIR`. `use_sample` appends when it finishes red or raises, including a create that never seals the creation log. `readiness_check`, `validate_env`, `load_process_login`, `verify_local_setup`, `smoke_test_zeus`, `smoke_test_agent`, and `website_green` append only after that creation log is a regular file. Each section has the Helper version, a UTC timestamp, the tool name, `failure_class`, and at most three `wish_i_knew` items (`what`, `kind`, and optional `why` and `severity`). Kinds are `file`, `bucket`, `env`, `catalog`, and `other`, and only the first three gaps are kept in that order. The file keeps the newest 40 sections. The red tool result names `wish_file` and does not include the items. A green result does not write and does not gain that field. `diagnose_error`, `sample=api`, `scaffold_app`, and bare `sample=yelp` add nothing. An append does not modify `*-build.md` or `*-support.md`. Passwords, bearer tokens, and API keys stay out of `what` and `why`. `sample_support_pack` includes the last 8 wish sections after the support journal and still writes nothing.
+
 ## 0.7.12
 
 ### Fixed
