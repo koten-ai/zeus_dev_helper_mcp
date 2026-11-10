@@ -161,6 +161,9 @@ class Clarification(BaseModel):
     llm_base_url: str = ""
     first_create: bool = False
     cards_accepted: bool = False
+    couchbase_query_url: str = ""
+    couchbase_username: str = ""
+    couchbase_password_in_env: bool | None = None
 
 
 class AuthModeForm(BaseModel):
@@ -193,6 +196,9 @@ class Gate:
     llm_base_url: str = ""
     first_create: bool = False
     cards_accepted: bool = False
+    couchbase_query_url: str = ""
+    couchbase_username: str = ""
+    couchbase_password_in_env: bool | None = None
 
 
 def valid_public_url(url: str) -> bool:
@@ -208,6 +214,14 @@ def valid_public_url(url: str) -> bool:
         return False
     host = rest.split("/", 1)[0]
     return "@" not in host
+
+
+def query_url_has_userinfo(url: str) -> bool:
+    """True when the query URL authority contains ``user:password@host``."""
+    raw = (url or "").strip()
+    rest = raw.split("://", 1)[1] if "://" in raw else raw
+    host = rest.split("/", 1)[0]
+    return "@" in host
 
 
 def url_decision(argument: str, stored: str) -> str:
@@ -376,6 +390,12 @@ def persist_gate(gate: Gate) -> None:
     model = (gate.llm_model or "").strip()
     if model:
         os.environ["LLM_MODEL"] = model
+    query_url = (gate.couchbase_query_url or "").strip()
+    if query_url and not query_url_has_userinfo(query_url):
+        os.environ["COUCHBASE_QUERY_URL"] = query_url
+    cb_user = (gate.couchbase_username or "").strip()
+    if cb_user:
+        os.environ["COUCHBASE_USERNAME"] = cb_user
 
 
 def interpret_gate(outcome: Any) -> Gate:
@@ -413,6 +433,9 @@ def interpret_gate(outcome: Any) -> Gate:
             llm_base_url=data.llm_base_url,
             first_create=data.first_create,
             cards_accepted=data.cards_accepted,
+            couchbase_query_url=data.couchbase_query_url,
+            couchbase_username=data.couchbase_username,
+            couchbase_password_in_env=data.couchbase_password_in_env,
         )
     url = str(getattr(data, "zeus_url", "") or "").strip()
     if valid_public_url(url):
@@ -663,10 +686,43 @@ if HAS_ELICIT:
         )
         return ask_connection(ctx, clarify_sample_connection, sample=sample, root=root)
 
+    def clarify_sample_couchbase(
+        ctx: Context,
+        connection: Annotated[
+            ElicitationResult[Clarification], Resolve(clarify_sample_connection)
+        ],
+        sample: str = "travel",
+        sample_dir: str = "",
+        project_name: str = "",
+        parent_dir: str = "",
+    ) -> Elicit[Any] | Clarification:  # type: ignore[valid-type]
+        """Yelp Couchbase card after the connection card. Other samples pass through."""
+        from zeus_dev_helper_mcp.first_create import (
+            ask_yelp_couchbase,
+            sample_destination,
+        )
+
+        root = sample_destination(
+            sample,
+            sample_dir=sample_dir,
+            project_name=project_name,
+            parent_dir=parent_dir,
+        )
+        return ask_yelp_couchbase(
+            ctx,
+            clarify_sample_couchbase,
+            connection,
+            sample=sample,
+            root=root,
+        )
+
     def clarify_sample_llm(
         ctx: Context,
         connection: Annotated[
             ElicitationResult[Clarification], Resolve(clarify_sample_connection)
+        ],
+        couchbase: Annotated[
+            ElicitationResult[Clarification], Resolve(clarify_sample_couchbase)
         ],
         sample: str = "travel",
         sample_dir: str = "",
@@ -686,7 +742,12 @@ if HAS_ELICIT:
             parent_dir=parent_dir,
         )
         return finish_connection(
-            ctx, clarify_sample_llm, connection, sample=sample, root=root
+            ctx,
+            clarify_sample_llm,
+            connection,
+            sample=sample,
+            root=root,
+            couchbase=couchbase,
         )
 
     def clarify_api_connection(

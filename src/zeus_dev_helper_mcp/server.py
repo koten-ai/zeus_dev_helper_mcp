@@ -1149,7 +1149,7 @@ def use_sample(
     sample=travel — shallow-clone https://github.com/koten-ai/demo_travel_sample.git when the destination is missing. The destination is sample_dir, or parent_dir plus project_name. A blank parent is the directory next to this Helper checkout. Start with python -m travel_planner on port 5000 unless PORT is set. The create path does not rewrite Docker files. Set DEMO_TRAVEL_SAMPLE_DIR. A mode 600 .env keeps populated values and fills empty Zeus and LLM names. ZEUS_USERNAME defaults to demo_1. A rewrite of an existing .env sets env_change. settings_written names which of ZEUS_AUTH_MODE, ZEUS_USERNAME, LLM_BASE_URL, and LLM_MODEL changed. settings_kept gives the populated values that stayed. ZEUS_PASSWORD, ZEUS_BEARER_TOKEN, and LLM_API_KEY stay presence-only in secret_presence. Restart the app before run_turn when env_change is true.
     sample=beer — shallow-clone https://github.com/koten-ai/demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR. Start with python main.py after a Python 3.11+ virtualenv (python3 -m venv only when python3 is 3.11 or newer) and pip install -r requirements.txt. use_sample writes mode 600 .env from .env.example, keeps populated values, and adds missing template keys. LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL are resolved together. The clone keeps LLM_MODEL=grok-4.5-latest. Do not copy .env.example over a .env that already has values. A rewrite of an existing .env sets env_change. settings_written names which of ZEUS_AUTH_MODE, ZEUS_USERNAME, LLM_BASE_URL, and LLM_MODEL changed. settings_kept gives the populated values that stayed. ZEUS_PASSWORD, ZEUS_BEARER_TOKEN, and LLM_API_KEY stay presence-only in secret_presence. Restart the app before run_turn when env_change is true. Lists are Direct and need no LLM key. Pour is rt.agent.run_turn with chat_request omitted (catalog.load_for_turn merges MINI-SCHEMA) and max_rounds 4. Pour stays off until an LLM key is in the app .env. No pipeline body. Do not write a job for this one-scope page. Clone success is not website_green. When the checkout has both a Dockerfile and a compose file, serve_choice_required is true, serve_options lists Python and Docker, host_question is the selection, and run is empty until serve_with is python or docker. Follow host_question and next_action on that result. The helper does not run Docker. Pass serve_with on a later use_sample or website_green call. An already-serving checkout does not ask.
     sample=catalog — write demo_catalog_sample from explain_scope. A beer-sample bucket, or entity types that are exactly Beer and Brewery, still writes the beer UI.
-    sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: pip install -e . && python -m local_guide on http://127.0.0.1:5000, and cd frontend && npm install && npm run dev on http://localhost:5173 (the SPA proxies /api to port 5000). Writes gitignored mode-600 config.json from this process. llm.api_key_env stays the name LLM_API_KEY. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. A 401 stays red. Search cards get latitude and longitude from biz:yelp:<id> when the project step omits them, including a cached business page. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
+    sample=demo_yelp — locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp (aliases yelp-demo, demo-yelp, yelp_demo, yelpdemo); set DEMO_YELP_SAMPLE_DIR. When parent_dir is set, clone into that directory. The checkout is the app: pip install -e . && python -m local_guide on http://127.0.0.1:5000, and cd frontend && npm install && npm run dev on http://localhost:5173 (the SPA proxies /api to port 5000). Writes gitignored mode-600 config.json from this process. llm.api_key_env stays the name LLM_API_KEY. The first yelp-demo create, while yelp-demo-build.md is absent and the host shows a form, asks a Couchbase card after the Zeus connection card and before the LLM card. That card is yelp-only. couchbase_query_url and couchbase_username are strings. COUCHBASE_PASSWORD stays in the app .env and is not collected on the form or as a tool argument. An accepted card writes the two strings into a mode-600 .env (created from .env.example when missing) and leaves an existing COUCHBASE_PASSWORD line unchanged. Beer, travel, the API scaffold, and bare sample=yelp do not ask it. When the card is not shown, ask_user adds text rows for COUCHBASE_QUERY_URL and COUCHBASE_USERNAME and tells the user to write COUCHBASE_PASSWORD in the app .env. Search POSTs /api/search and sends the live chat_request.json for yelp-demo/_default mode analytics as the session body. A 401 stays red. Search cards get latitude and longitude from biz:yelp:<id> when the project step omits them, including a cached business page. The business page GETs /api/business/{id} when the id is not in the bundled catalog. Review text is the source document, not the rev: doc key. Also downloads the public business photo set into frontend/public/business-images/<id>/{1,2,3}.png (no biz: prefix, no API key). Do not write a replacement or copy demo_beer_sample. Bare sample=yelp stays the multi-agent handoff.
     project_name = directory name (defaults: demo_travel_sample / demo_beer_sample / demo_catalog_sample / demo_yelp).
     Extra travel-only phases stay on travel_golden_path (travel toolset).
     When no Zeus URL is stored, the MCP call asks before writing or cloning.
@@ -1178,16 +1178,20 @@ def _use_sample_body(
     if blocked is not None:
         return blocked
     from zeus_dev_helper_mcp.scaffold import apply_create_answers
+    from zeus_dev_helper_mcp.yelp import apply_couchbase_env
 
-    return apply_create_answers(
-        use_sample_impl(
-            _cfg(),
-            sample=sample,
-            sample_dir=sample_dir,
-            project_name=project_name,
-            parent_dir=parent_dir,
-            clone_if_missing=clone_if_missing,
-            serve_with=serve_with,
+    return apply_couchbase_env(
+        apply_create_answers(
+            use_sample_impl(
+                _cfg(),
+                sample=sample,
+                sample_dir=sample_dir,
+                project_name=project_name,
+                parent_dir=parent_dir,
+                clone_if_missing=clone_if_missing,
+                serve_with=serve_with,
+            ),
+            gate,
         ),
         gate,
     )

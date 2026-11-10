@@ -26,6 +26,7 @@ from zeus_dev_helper_mcp.clarify import (
     _peek,
     _resolve_auth,
     env_prefill,
+    query_url_has_userinfo,
     stored_zeus_url,
     valid_public_url,
 )
@@ -38,6 +39,28 @@ LLM_KEY_DESCRIPTION = (
     "True after LLM_API_KEY is in the app .env. "
     "Do not type the API key into this form. "
     "config.json llm.api_key_env stays the name LLM_API_KEY."
+)
+COUCHBASE_PASSWORD_DESCRIPTION = (
+    "True after COUCHBASE_PASSWORD is in the app .env. "
+    "Put COUCHBASE_PASSWORD in that file. "
+    "Do not type the password into this form."
+)
+COUCHBASE_URL_DEFAULT = "http://localhost:8093"
+COUCHBASE_USERNAME_DEFAULT = "Administrator"
+DECLINE_COUCHBASE_NEXT = (
+    "Couchbase setup was declined. The app was not created. "
+    "Enter COUCHBASE_QUERY_URL and COUCHBASE_USERNAME. "
+    "Put COUCHBASE_PASSWORD in the app .env. Do not type the password into this form."
+)
+CANCEL_COUCHBASE_NEXT = (
+    "Couchbase setup was cancelled. The app was not created. "
+    "Enter COUCHBASE_QUERY_URL and COUCHBASE_USERNAME. "
+    "Put COUCHBASE_PASSWORD in the app .env. Do not type the password into this form."
+)
+COUCHBASE_USERINFO_NEXT = (
+    "COUCHBASE_QUERY_URL must not include a username or password. "
+    "Enter the query URL without userinfo. "
+    "Put COUCHBASE_PASSWORD in the app .env. Do not type the password into this form."
 )
 DECLINE_CREATE_NEXT = (
     "Sample setup was declined. The app was not created. "
@@ -235,9 +258,15 @@ def _llm_message(env_path: Path, exists: bool) -> str:
     )
 
 
-def _declined_create(action: str, *, llm: bool = False) -> Clarification:
+def _declined_create(
+    action: str, *, llm: bool = False, couchbase: bool = False
+) -> Clarification:
     if llm:
         action_text = DECLINE_LLM_NEXT
+    elif couchbase and action == "cancel":
+        action_text = CANCEL_COUCHBASE_NEXT
+    elif couchbase:
+        action_text = DECLINE_COUCHBASE_NEXT
     elif action == "cancel":
         action_text = CANCEL_CREATE_NEXT
     else:
@@ -310,9 +339,220 @@ def _llm_form(provider: str, model: str, key_ready: bool) -> type[BaseModel]:
     return LlmSetupForm
 
 
+@lru_cache(maxsize=32)
+def _couchbase_form(query_url: str, username: str, password_ready: bool) -> type[BaseModel]:
+    url_default = query_url
+    username_default = username
+    ready_default = password_ready
+
+    class CouchbaseForm(BaseModel):
+        couchbase_query_url: str = Field(
+            default=url_default,
+            description=(
+                "COUCHBASE_QUERY_URL. A string. "
+                "Do not put a username or password in this URL."
+            ),
+        )
+        couchbase_username: str = Field(
+            default=username_default,
+            description="COUCHBASE_USERNAME. A string. This is a text field.",
+        )
+        couchbase_password_in_env: bool = Field(
+            default=ready_default,
+            description=COUCHBASE_PASSWORD_DESCRIPTION,
+        )
+
+    CouchbaseForm.__name__ = "CouchbaseForm"
+    CouchbaseForm.__qualname__ = "CouchbaseForm"
+    return CouchbaseForm
+
+
 def _content(answer: Any) -> dict[str, Any]:
     raw = getattr(answer, "content", None) or {}
     return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _unwrap_outcome(outcome: Any) -> Any:
+    if DeclinedElicitation is not None and isinstance(outcome, DeclinedElicitation):
+        return _declined_create("decline")
+    if CancelledElicitation is not None and isinstance(outcome, CancelledElicitation):
+        return _declined_create("cancel")
+    if AcceptedElicitation is not None and isinstance(outcome, AcceptedElicitation):
+        return outcome.data
+    return outcome
+
+
+def _couchbase_text(root: Path | None, key: str, default: str) -> str:
+    """Prefill from the app ``.env``, then ``.env.example``. No process env."""
+    from zeus_dev_helper_mcp.env_questions import (
+        dotenv_example_nonsecret,
+        dotenv_nonsecret,
+    )
+
+    found = dotenv_nonsecret(root, key)
+    if found:
+        return found
+    found = dotenv_example_nonsecret(root, key)
+    if found:
+        return found
+    return default
+
+
+def _couchbase_password_ready(root: Path | None) -> bool:
+    from zeus_dev_helper_mcp.env_questions import dotenv_present
+
+    return dotenv_present(root, "COUCHBASE_PASSWORD")
+
+
+def _couchbase_message(env_path: Path, exists: bool, *, userinfo: bool = False) -> str:
+    if userinfo:
+        lead = (
+            "COUCHBASE_QUERY_URL must not include a username or password. "
+            "Enter the query service URL without userinfo."
+        )
+    else:
+        lead = "Confirm COUCHBASE_QUERY_URL and COUCHBASE_USERNAME for the yelp demo."
+    if exists:
+        where = (
+            f"Put COUCHBASE_PASSWORD in {env_path}. "
+            "You can edit that file while this card is open."
+        )
+    else:
+        where = (
+            f"This create will write {env_path}. "
+            "Put COUCHBASE_PASSWORD there after the file appears."
+        )
+    return f"{lead} {where} Do not type the password into this form."
+
+
+def _couchbase_url_of(answer: Any) -> str:
+    return str(_content(answer).get("couchbase_query_url") or "")
+
+
+def _ask_couchbase(ctx: Any, fn: Any, *, root: Path) -> Any:
+    """Yelp Couchbase card. Decline, cancel, or userinfo writes nothing.
+
+    A query URL with userinfo is asked once more. A second userinfo answer
+    stops the create. An accept returns the same card so the SDK restores it.
+    The retry is peeked first: that answer replaced the normal digest.
+    """
+    exists = _nonempty_dir(root)
+    env_root = root if exists else None
+    form = _couchbase_form(
+        _couchbase_text(env_root, "COUCHBASE_QUERY_URL", COUCHBASE_URL_DEFAULT),
+        _couchbase_text(env_root, "COUCHBASE_USERNAME", COUCHBASE_USERNAME_DEFAULT),
+        _couchbase_password_ready(env_root),
+    )
+    env_path = root / ".env"
+    normal = _couchbase_message(env_path, exists)
+    retry = _couchbase_message(env_path, exists, userinfo=True)
+    retry_answer = _peek(ctx, fn, retry, form)
+    if retry_answer is not None:
+        if retry_answer.action != "accept":
+            return _declined_create(retry_answer.action, couchbase=True)
+        if query_url_has_userinfo(_couchbase_url_of(retry_answer)):
+            return Clarification(
+                confirmed=False,
+                first_create=True,
+                next_action=COUCHBASE_USERINFO_NEXT,
+            )
+        return Elicit(retry, form)
+    initial = _peek(ctx, fn, normal, form)
+    if initial is not None and initial.action != "accept":
+        return _declined_create(initial.action, couchbase=True)
+    if initial is not None and query_url_has_userinfo(_couchbase_url_of(initial)):
+        return Elicit(retry, form)
+    return Elicit(normal, form)
+
+
+def ask_yelp_couchbase(
+    ctx: Any,
+    fn: Any,
+    outcome: Any,
+    *,
+    sample: str,
+    root: Path,
+) -> Any:
+    """Ask the Couchbase card only for a yelp first create that can show a form."""
+    from zeus_dev_helper_mcp.config import reload_config
+    from zeus_dev_helper_mcp.sample_log import first_create_pending
+    from zeus_dev_helper_mcp.yelp import is_yelp_demo_sample
+
+    if not is_yelp_demo_sample(sample) or not _can_elicit(ctx):
+        return _unwrap_outcome(outcome)
+    if not first_create_pending(reload_config(), sample):
+        return _unwrap_outcome(outcome)
+    data = _unwrap_outcome(outcome)
+    if isinstance(data, Clarification):
+        if (
+            data.declined
+            or not data.confirmed
+            or not data.first_create
+            or not data.cards_accepted
+        ):
+            return data
+        return _ask_couchbase(ctx, fn, root=root)
+    if not hasattr(data, "password_in_env"):
+        return data
+    info = _connection_clarification(data)
+    if not info.confirmed:
+        return info
+    return _ask_couchbase(ctx, fn, root=root)
+
+
+def _merge_couchbase(info: Clarification, outcome: Any) -> Clarification:
+    """Copy the accepted Couchbase strings. The password value is not on the form."""
+    if outcome is None:
+        return info
+    data = _unwrap_outcome(outcome)
+    if isinstance(data, Clarification):
+        if data.declined or not data.confirmed:
+            return data
+        if data.couchbase_password_in_env is None:
+            return info
+        return info.model_copy(
+            update={
+                "couchbase_query_url": data.couchbase_query_url,
+                "couchbase_username": data.couchbase_username,
+                "couchbase_password_in_env": data.couchbase_password_in_env,
+            }
+        )
+    if not hasattr(data, "couchbase_password_in_env"):
+        return info
+    url = str(getattr(data, "couchbase_query_url", "") or "").strip()
+    if query_url_has_userinfo(url):
+        return Clarification(
+            confirmed=False,
+            first_create=True,
+            next_action=COUCHBASE_USERINFO_NEXT,
+        )
+    return info.model_copy(
+        update={
+            "couchbase_query_url": url,
+            "couchbase_username": str(getattr(data, "couchbase_username", "") or "").strip(),
+            "couchbase_password_in_env": bool(data.couchbase_password_in_env),
+        }
+    )
+
+
+def _after_connection_card(
+    ctx: Any,
+    fn: Any,
+    info: Clarification,
+    *,
+    sample: str,
+    root: Path,
+    couchbase: Any,
+) -> Any:
+    """Couchbase card, then the LLM card. Yelp only for Couchbase."""
+    from zeus_dev_helper_mcp.yelp import is_yelp_demo_sample
+
+    if is_yelp_demo_sample(sample) and info.first_create and info.cards_accepted:
+        merged = _merge_couchbase(info, couchbase)
+        if not merged.confirmed or merged.declined:
+            return merged
+        info = merged
+    return _ask_llm(ctx, fn, sample=sample, root=root, info=info)
 
 
 def ask_connection(
@@ -404,8 +644,12 @@ def finish_connection(
     *,
     sample: str,
     root: Path,
+    couchbase: Any = None,
 ) -> Any:
-    """Turn a connection result into the LLM card or the legacy auth gate."""
+    """Turn a connection result into the LLM card.
+
+    The yelp resolver passes the accepted Couchbase card as ``couchbase``.
+    """
     if DeclinedElicitation is not None and isinstance(outcome, DeclinedElicitation):
         return _declined_create("decline")
     if CancelledElicitation is not None and isinstance(outcome, CancelledElicitation):
@@ -422,10 +666,14 @@ def finish_connection(
             return _resolve_auth(ctx, outcome, sample, fn)
         if not data.cards_accepted:
             return data
-        return _ask_llm(ctx, fn, sample=sample, root=root, info=data)
+        return _after_connection_card(
+            ctx, fn, data, sample=sample, root=root, couchbase=couchbase
+        )
     if hasattr(data, "password_in_env"):
         info = _connection_clarification(data)
         if not info.confirmed:
             return info
-        return _ask_llm(ctx, fn, sample=sample, root=root, info=info)
+        return _after_connection_card(
+            ctx, fn, info, sample=sample, root=root, couchbase=couchbase
+        )
     return _resolve_auth(ctx, outcome, sample, fn)

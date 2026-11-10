@@ -128,6 +128,86 @@ def test_connection_schema_has_no_secret_fields() -> None:
     assert "token" not in connection["properties"]
     assert "ZEUS_PASSWORD" in connection["properties"]["password_in_env"]["description"]
     assert "LLM_API_KEY" in llm["properties"]["llm_key_in_env"]["description"]
+    from zeus_dev_helper_mcp.first_create import _couchbase_form
+
+    couchbase = render(
+        _couchbase_form("http://localhost:8093", "Administrator", False)
+    )
+    assert set(couchbase) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in couchbase
+    assert set(couchbase["properties"]) == {
+        "couchbase_query_url",
+        "couchbase_username",
+        "couchbase_password_in_env",
+    }
+    assert couchbase["properties"]["couchbase_query_url"]["type"] == "string"
+    assert couchbase["properties"]["couchbase_username"]["type"] == "string"
+    assert couchbase["properties"]["couchbase_password_in_env"]["type"] == "boolean"
+    assert "couchbase_password" not in couchbase["properties"]
+    assert "password" not in couchbase["properties"]
+    described = couchbase["properties"]["couchbase_password_in_env"]["description"]
+    assert "COUCHBASE_PASSWORD" in described
+    assert "Do not type the password into this form" in described
+    assert "couchbase_query_url" not in connection["properties"]
+
+
+def test_gate_copies_couchbase_strings_and_not_a_password(monkeypatch) -> None:
+    import dataclasses
+    import os
+
+    from zeus_dev_helper_mcp.clarify import (
+        Clarification,
+        Gate,
+        interpret_gate,
+        persist_gate,
+        query_url_has_userinfo,
+    )
+
+    assert query_url_has_userinfo("http://user:secret@localhost:8093") is True
+    assert query_url_has_userinfo("http://localhost:8093") is False
+    info = Clarification(
+        confirmed=True,
+        first_create=True,
+        cards_accepted=True,
+        zeus_url="http://192.168.0.219:8080",
+        zeus_username="edited-user",
+        llm_base_url="https://api.x.ai/v1",
+        couchbase_query_url="http://127.0.0.1:8093",
+        couchbase_username="cb-admin",
+        couchbase_password_in_env=False,
+    )
+    gate = interpret_gate(info)
+    assert gate.couchbase_query_url == "http://127.0.0.1:8093"
+    assert gate.couchbase_username == "cb-admin"
+    assert gate.couchbase_password_in_env is False
+    assert gate.llm_base_url == "https://api.x.ai/v1"
+    assert gate.zeus_username == "edited-user"
+    names = {field.name for field in dataclasses.fields(Gate)}
+    assert "couchbase_password" not in names
+    assert "password" not in names
+    for name in (
+        "COUCHBASE_QUERY_URL",
+        "COUCHBASE_USERNAME",
+        "COUCHBASE_PASSWORD",
+        "ZEUS_USERNAME",
+        "LLM_BASE_URL",
+        "LLM_MODEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    persist_gate(gate)
+    assert os.environ["COUCHBASE_QUERY_URL"] == "http://127.0.0.1:8093"
+    assert os.environ["COUCHBASE_USERNAME"] == "cb-admin"
+    assert "COUCHBASE_PASSWORD" not in os.environ
+    persist_gate(
+        Gate(
+            proceed=True,
+            cards_accepted=True,
+            couchbase_query_url="http://user:secret@localhost:8093",
+            couchbase_username="cb-admin",
+        )
+    )
+    assert os.environ["COUCHBASE_QUERY_URL"] == "http://127.0.0.1:8093"
+    assert "secret" not in os.environ["COUCHBASE_QUERY_URL"]
 
 
 def test_overlay_keeps_password_and_api_key(tmp_path) -> None:

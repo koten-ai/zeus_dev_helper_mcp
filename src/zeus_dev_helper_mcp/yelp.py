@@ -505,3 +505,85 @@ def ensure_yelp_sample(
             else _ready_next_action(env_path, images)
         ),
     }
+
+
+_CB_URL = "COUCHBASE_QUERY_URL"
+_CB_USER = "COUCHBASE_USERNAME"
+_CB_PASSWORD = "COUCHBASE_PASSWORD"
+
+
+def _payload_is_yelp(payload: dict[str, Any]) -> bool:
+    sample = payload.get("sample")
+    if isinstance(sample, dict):
+        return is_yelp_demo_sample(str(sample.get("sample") or "")) or is_yelp_demo_sample(
+            str(sample.get("name") or "")
+        )
+    return is_yelp_demo_sample(str(sample or ""))
+
+
+def apply_couchbase_env(payload: dict[str, Any], gate: Any) -> dict[str, Any]:
+    """Write accepted yelp Couchbase strings. The password value stays out."""
+    if not isinstance(payload, dict) or not _payload_is_yelp(payload):
+        return payload
+    if not getattr(gate, "cards_accepted", False):
+        return payload
+    if getattr(gate, "couchbase_password_in_env", None) is None:
+        return payload
+    root = payload.get("local_dir") or payload.get("target_dir")
+    if not isinstance(root, str) or not root.strip() or not Path(root).is_dir():
+        return payload
+    from zeus_dev_helper_mcp.app_env import (
+        _ensure_gitignore,
+        apply_env_overlay,
+        assign_env_report,
+        ensure_app_env,
+    )
+    from zeus_dev_helper_mcp.clarify import query_url_has_userinfo
+    from zeus_dev_helper_mcp.config import reload_config
+
+    query_url = str(getattr(gate, "couchbase_query_url", "") or "").strip()
+    if query_url_has_userinfo(query_url):
+        return payload
+    env_path = Path(root) / ".env"
+    if env_path.is_symlink():
+        return payload
+    # An existing file is overlaid in place. Seeding through ensure_app_env
+    # would reformat a password line from .env.example.
+    if not env_path.is_file():
+        info = ensure_app_env(reload_config(), root)
+        payload["app_env"] = info
+        assign_env_report(payload, info)
+    elif "settings_written" not in payload and not (
+        isinstance(payload.get("app_env"), dict)
+        and (
+            "settings_written" in payload["app_env"]
+            or "env_change" in payload["app_env"]
+        )
+    ):
+        payload["app_env"] = {
+            "settings_written": [],
+            "settings_kept": {},
+            "secret_presence": {},
+            "env_change": False,
+            "created_env": False,
+        }
+        assign_env_report(payload, payload["app_env"])
+    apply_env_overlay(
+        payload,
+        {
+            _CB_URL: query_url,
+            _CB_USER: str(getattr(gate, "couchbase_username", "") or "").strip(),
+        },
+        ensure_empty=(_CB_PASSWORD,),
+    )
+    _ensure_gitignore(Path(root))
+    if gate.couchbase_password_in_env is False:
+        env_path = Path(root) / ".env"
+        note = (
+            f"Fill COUCHBASE_PASSWORD in {env_path} before python -m local_guide. "
+            "Do not type the password into the form."
+        )
+        prior = str(payload.get("next_action") or "").strip()
+        if note not in prior:
+            payload["next_action"] = f"{prior} {note}".strip()
+    return payload

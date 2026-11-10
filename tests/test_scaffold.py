@@ -146,6 +146,7 @@ def test_scaffold_api_fastapi(tmp_path: Path) -> None:
         "ZEUS_PASSWORD",
         "ZEUS_BEARER_TOKEN",
         "LLM_API_KEY",
+        "COUCHBASE_PASSWORD",
     }
     env_text = (root / ".env").read_text(encoding="utf-8")
     for line in env_text.splitlines():

@@ -420,9 +420,23 @@ _OVERLAY_KEYS = (
     "ZEUS_USERNAME",
     "LLM_BASE_URL",
     "LLM_MODEL",
+    "COUCHBASE_QUERY_URL",
+    "COUCHBASE_USERNAME",
 )
-_TRACKED_SETTINGS = ("ZEUS_AUTH_MODE", "ZEUS_USERNAME", "LLM_BASE_URL", "LLM_MODEL")
-_SECRET_PRESENCE = ("ZEUS_PASSWORD", "ZEUS_BEARER_TOKEN", "LLM_API_KEY")
+_TRACKED_SETTINGS = (
+    "ZEUS_AUTH_MODE",
+    "ZEUS_USERNAME",
+    "LLM_BASE_URL",
+    "LLM_MODEL",
+    "COUCHBASE_QUERY_URL",
+    "COUCHBASE_USERNAME",
+)
+_SECRET_PRESENCE = (
+    "ZEUS_PASSWORD",
+    "ZEUS_BEARER_TOKEN",
+    "LLM_API_KEY",
+    "COUCHBASE_PASSWORD",
+)
 ENV_REPORT_KEYS = (
     "settings_written",
     "settings_kept",
@@ -432,19 +446,25 @@ ENV_REPORT_KEYS = (
 _ENV_NOTE_MARK = "Env report:"
 
 
-def overlay_nonsecret_env(root: str | Path, updates: Mapping[str, str]) -> None:
+def overlay_nonsecret_env(
+    root: str | Path,
+    updates: Mapping[str, str],
+    *,
+    ensure_empty: tuple[str, ...] = (),
+) -> None:
     """Replace accepted non-secret keys. Leave every other line unchanged.
 
-    ``ZEUS_PASSWORD``, ``ZEUS_BEARER_TOKEN``, and ``LLM_API_KEY`` stay as
-    they are, including an empty or quoted value. A missing ``.env`` is
-    created with only the accepted keys.
+    ``ZEUS_PASSWORD``, ``ZEUS_BEARER_TOKEN``, ``LLM_API_KEY``, and
+    ``COUCHBASE_PASSWORD`` stay as they are, including an empty or quoted
+    value. A missing ``.env`` is created with only the accepted keys.
+    ``ensure_empty`` adds ``KEY=`` when that key is not already in the file.
     """
     chosen = {
         key: updates[key]
         for key in _OVERLAY_KEYS
         if key in updates
     }
-    if not chosen:
+    if not chosen and not ensure_empty:
         return
     path = Path(root).expanduser().resolve() / ".env"
     if path.is_symlink():
@@ -459,16 +479,21 @@ def overlay_nonsecret_env(root: str | Path, updates: Mapping[str, str]) -> None:
     out_lines: list[str] = []
     for raw in existing.splitlines():
         match = _ASSIGN_RE.match(raw.strip())
-        if match is not None and match.group("key") in chosen:
+        if match is not None:
             key = match.group("key")
             seen.add(key)
-            prefix = "export " if match.group("export") else ""
-            out_lines.append(f"{prefix}{key}={_format_value(chosen[key])}")
-            continue
+            if key in chosen:
+                prefix = "export " if match.group("export") else ""
+                out_lines.append(f"{prefix}{key}={_format_value(chosen[key])}")
+                continue
         out_lines.append(raw)
     for key in _OVERLAY_KEYS:
         if key in chosen and key not in seen:
             out_lines.append(f"{key}={_format_value(chosen[key])}")
+            seen.add(key)
+    for key in ensure_empty:
+        if key not in seen:
+            out_lines.append(f"{key}=")
     text = "\n".join(out_lines)
     if text and not text.endswith("\n"):
         text += "\n"
@@ -490,8 +515,9 @@ def ensure_app_env(
     Confirmed Zeus routing and this process fill empty keys. The result names
     which of ``ZEUS_AUTH_MODE``, ``ZEUS_USERNAME``, ``LLM_BASE_URL``, and
     ``LLM_MODEL`` were written, and the populated values that were kept.
-    ``ZEUS_PASSWORD``, ``ZEUS_BEARER_TOKEN``, and ``LLM_API_KEY`` stay
-    presence-only. A caller with no ``.env.example`` passes ``example_text``.
+    ``ZEUS_PASSWORD``, ``ZEUS_BEARER_TOKEN``, ``LLM_API_KEY``, and
+    ``COUCHBASE_PASSWORD`` stay presence-only. A caller with no
+    ``.env.example`` passes ``example_text``.
     """
     root = Path(target_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -587,6 +613,7 @@ def _secret_presence(values: Mapping[str, str]) -> dict[str, bool]:
         "ZEUS_PASSWORD": bool((values.get("ZEUS_PASSWORD") or "").strip()),
         "ZEUS_BEARER_TOKEN": bool(bearer),
         "LLM_API_KEY": bool((values.get("LLM_API_KEY") or "").strip()),
+        "COUCHBASE_PASSWORD": bool((values.get("COUCHBASE_PASSWORD") or "").strip()),
     }
     return {name: found[name] for name in _SECRET_PRESENCE}
 
@@ -714,7 +741,12 @@ def refresh_env_report(
     }
 
 
-def apply_env_overlay(payload: dict[str, Any], updates: Mapping[str, str]) -> dict[str, Any]:
+def apply_env_overlay(
+    payload: dict[str, Any],
+    updates: Mapping[str, str],
+    *,
+    ensure_empty: tuple[str, ...] = (),
+) -> dict[str, Any]:
     """Write accepted non-secrets and refresh the ensure report.
 
     A payload that never ran ``ensure_app_env`` is returned unchanged. No
@@ -727,7 +759,7 @@ def apply_env_overlay(payload: dict[str, Any], updates: Mapping[str, str]) -> di
         return payload
     env_path = Path(root) / ".env"
     before = _read_env_text(env_path)
-    overlay_nonsecret_env(root, updates)
+    overlay_nonsecret_env(root, updates, ensure_empty=ensure_empty)
     refreshed = refresh_env_report(payload, before, _read_env_text(env_path))
     if refreshed is None:
         return payload

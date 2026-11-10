@@ -89,6 +89,7 @@ def test_populated_values_stay_and_secrets_stay_presence_only(
         "ZEUS_PASSWORD": True,
         "ZEUS_BEARER_TOKEN": True,
         "LLM_API_KEY": True,
+        "COUCHBASE_PASSWORD": False,
     }
     blob = json.dumps(out)
     assert PASSWORD not in blob
