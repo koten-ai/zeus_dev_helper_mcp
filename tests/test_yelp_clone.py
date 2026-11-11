@@ -725,9 +725,8 @@ def _accepted_server(choice: str):
 def test_accepted_server_recommends_docker_or_both_host_processes(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from zeus_dev_helper_mcp.clarify import Gate
     from zeus_dev_helper_mcp.server import _use_sample_body
-    from zeus_dev_helper_mcp.yelp import YELP_DOCKER_COMMAND, apply_yelp_server
+    from zeus_dev_helper_mcp.yelp import YELP_DOCKER_COMMAND
 
     sentinel = "compose-secret-sentinel"
     monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
@@ -774,7 +773,7 @@ def test_accepted_server_recommends_docker_or_both_host_processes(
         )
         blob = json.dumps(out)
         assert out["ok"] is True
-        assert out["server"] == "docker"
+        assert out["serve_with"] == "docker"
         assert YELP_DOCKER_COMMAND in out["run"]
         assert YELP_DOCKER_COMMAND in out["next_action"]
         assert "http://localhost:3000" in out["next_action"]
@@ -783,6 +782,9 @@ def test_accepted_server_recommends_docker_or_both_host_processes(
         assert (root / "docker-compose.yml").read_bytes() == compose_bytes
         assert (root / "Dockerfile.backend").read_bytes() == backend_bytes
         assert (root / "Dockerfile.frontend").read_bytes() == frontend_bytes
+        stored = json.loads((tmp_path / "state" / "serve_choice.json").read_text())
+        assert stored["choices"][str(root.resolve())] == "docker"
+        assert not (tmp_path / "state" / "yelp_server.json").exists()
 
     python_root = _checkout("python-yelp")
     python_out = _use_sample_body(
@@ -802,16 +804,4 @@ def test_accepted_server_recommends_docker_or_both_host_processes(
     bare = _use_sample_body(sample="yelp", gate_outcome=_accepted_server("docker"))
     assert bare.get("sample") == "yelp"
     assert YELP_DOCKER_COMMAND not in json.dumps(bare)
-    beer = {
-        "ok": True,
-        "sample": "beer",
-        "local_dir": str(python_root),
-        "next_action": "pour",
-    }
-    assert (
-        apply_yelp_server(
-            beer,
-            Gate(proceed=True, cards_accepted=True, server="docker"),
-        )
-        == beer
-    )
+    assert python_out["serve_with"] == "python"

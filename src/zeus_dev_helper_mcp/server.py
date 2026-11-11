@@ -1186,22 +1186,29 @@ def _use_sample_body(
     if blocked is not None:
         return blocked
     from zeus_dev_helper_mcp.scaffold import apply_create_answers
-    from zeus_dev_helper_mcp.yelp import apply_couchbase_env, apply_yelp_server
+    from zeus_dev_helper_mcp.serve_choice import parse_serve_with
+    from zeus_dev_helper_mcp.yelp import apply_couchbase_env
 
-    return apply_yelp_server(
-        apply_couchbase_env(
-            apply_create_answers(
-                use_sample_impl(
-                    _cfg(),
-                    sample=sample,
-                    sample_dir=sample_dir,
-                    project_name=project_name,
-                    parent_dir=parent_dir,
-                    clone_if_missing=clone_if_missing,
-                    serve_with=serve_with,
-                    server=gate.server,
-                ),
-                gate,
+    explicit, explicit_ok = parse_serve_with(serve_with)
+    card, card_ok = parse_serve_with(str(getattr(gate, "server", "") or ""))
+    if serve_with.strip() and not explicit_ok:
+        chosen = serve_with
+    elif explicit:
+        chosen = explicit
+    elif card_ok and card and getattr(gate, "cards_accepted", False):
+        chosen = card
+    else:
+        chosen = ""
+    return apply_couchbase_env(
+        apply_create_answers(
+            use_sample_impl(
+                _cfg(),
+                sample=sample,
+                sample_dir=sample_dir,
+                project_name=project_name,
+                parent_dir=parent_dir,
+                clone_if_missing=clone_if_missing,
+                serve_with=chosen,
             ),
             gate,
         ),

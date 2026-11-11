@@ -294,7 +294,6 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
     serve_with: str = "",
-    server: str = "",
 ) -> dict[str, Any]:
     """UI sample path: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
@@ -458,7 +457,7 @@ def use_sample(
             project_name=project_name,
             parent_dir=parent_dir,
             clone_if_missing=clone_if_missing,
-            server=server,
+            serve_with=serve_with,
         )
         layout = ensured.get("layout") or {}
         if ensured.get("ok") and layout.get("ok"):
@@ -507,6 +506,10 @@ def use_sample(
             "checklist_hint": "Mark 3.1 done after the yelp demo clone or reuse",
             "do_not": ensured.get("do_not"),
         }
+        if ensured.get("run"):
+            payload["run"] = ensured["run"]
+        if ensured.get("serve_with"):
+            payload["serve_with"] = ensured["serve_with"]
         local = payload.get("local_dir")
         if payload.get("ok") and local:
             from zeus_dev_helper_mcp.serve_choice import annotate_serve_choice

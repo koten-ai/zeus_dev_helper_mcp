@@ -171,21 +171,8 @@ def _child_env(root: Path, port: int) -> dict[str, str]:
     return env
 
 
-def start_app(root: Path, port: int, *, server: str = "") -> dict[str, Any]:
-    """Start the app. Yelp python is ``python -m local_guide``. Docker is not started."""
-    if _is_yelp_app(root) and (server or "").strip().lower() == "docker":
-        from zeus_dev_helper_mcp.yelp import (
-            YELP_DOCKER_COMMAND,
-            yelp_docker_next_action,
-        )
-
-        return {
-            "ok": False,
-            "started": False,
-            "failure_class": "docker_not_started",
-            "run": YELP_DOCKER_COMMAND,
-            "next_action": yelp_docker_next_action(),
-        }
+def start_app(root: Path, port: int) -> dict[str, Any]:
+    """Start the app. Yelp is ``python -m local_guide``. Beer is ``python main.py``."""
     python = root / ".venv" / "bin" / "python"
     exe = str(python) if python.is_file() else sys.executable
     yelp = _is_yelp_app(root)
@@ -685,10 +672,7 @@ def _sync_catalog_checklist(cfg: HelperConfig, root: Path | None) -> None:
 
 
 def _serve_choice_block(
-    cfg: HelperConfig,
-    root: Path,
-    serve_with: str,
-    state: str,
+    cfg: HelperConfig, root: Path, serve_with: str, state: str, base: str,
 ) -> dict[str, Any] | None:
     """Stop before Python starts when the user has not chosen, or chose Docker."""
     from zeus_dev_helper_mcp.serve_choice import (
@@ -699,8 +683,12 @@ def _serve_choice_block(
         serve_options,
         stored_serve_with,
     )
+    from zeus_dev_helper_mcp.yelp import yelp_serve_guide
 
     parsed, valid = parse_serve_with(serve_with)
+    guide = yelp_serve_guide(cfg, root, parsed, state, base) if valid and _is_yelp_app(root) else None
+    if guide is not None:
+        return _result(**guide)
     if not valid:
         return _result(
             failure_class="serve_choice_unavailable",
@@ -789,21 +777,7 @@ def _run_website_green(
                 "Do not start another process on this port."
             ),
         )
-    yelp_server = ""
-    if kind is YELP_HEALTH:
-        from zeus_dev_helper_mcp.yelp import stored_yelp_server
-
-        yelp_server = stored_yelp_server(cfg, root)
-        if yelp_server == "docker" and state == "down":
-            started = start_app(root, port, server="docker")
-            return _result(
-                failure_class=str(started.get("failure_class") or "docker_not_started"),
-                url="http://localhost:3000",
-                next_action=str(started.get("next_action") or ""),
-                run=str(started.get("run") or ""),
-                recommended_tools=[],
-            )
-    choice_block = _serve_choice_block(cfg, root, serve_with, state)
+    choice_block = _serve_choice_block(cfg, root, serve_with, state, base)
     if choice_block is not None:
         if choice_block.get("url") in ("", None):
             choice_block["url"] = base
@@ -860,35 +834,19 @@ def _run_website_green(
             recommended_tools=[],
         )
     if kind is YELP_HEALTH:
-        if yelp_server == "docker":
-            from zeus_dev_helper_mcp.yelp import (
-                YELP_DOCKER_API,
-                YELP_DOCKER_COMMAND,
-                YELP_DOCKER_UI,
-            )
-
-            action = (
-                f"Yelp API health is up at {base}/api/health. "
-                f"{YELP_DOCKER_COMMAND}. "
-                f"UI {YELP_DOCKER_UI}. API {YELP_DOCKER_API}. "
-                "Search is POST /api/search and needs an LLM key. "
-                "Do not call smoke_test_agent."
-            )
-        else:
-            action = (
-                f"Yelp API health is up at {base}/api/health. "
-                "Start the SPA with cd frontend && npm install && npm run dev "
-                "(http://localhost:5173). It proxies /api to this process. "
-                "Search is POST /api/search and needs an LLM key. "
-                "Do not call smoke_test_agent."
-            )
         return _result(
             ok=True,
             url=base,
             list_count=0,
             search_skipped=True,
             pour_enabled=False,
-            next_action=action,
+            next_action=(
+                f"Yelp API health is up at {base}/api/health. "
+                "Start the SPA with cd frontend && npm install && npm run dev "
+                "(http://localhost:5173). It proxies /api to this process. "
+                "Search is POST /api/search and needs an LLM key. "
+                "Do not call smoke_test_agent."
+            ),
             recommended_tools=[],
         )
 

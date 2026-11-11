@@ -44,8 +44,6 @@ _QUICK_START = (
 YELP_DOCKER_COMMAND = "DOCKER_BUILDKIT=1 docker compose up -d --build"
 YELP_DOCKER_UI = "http://localhost:3000"
 YELP_DOCKER_API = "http://localhost:5000"
-_YELP_SERVER_STATE = "yelp_server.json"
-_YELP_SERVERS = frozenset({"docker", "python"})
 # The git checkout is the app. A beer-shaped BFF is a different product.
 _DO_NOT_REPLACE = [
     "Do not scaffold_app",
@@ -311,14 +309,6 @@ def validate_yelp_layout(root: Path) -> dict[str, Any]:
     }
 
 
-def parse_yelp_server(value: str) -> str:
-    """``docker`` or ``python``. Anything else is unset."""
-    choice = (value or "").strip().lower()
-    if choice in _YELP_SERVERS:
-        return choice
-    return ""
-
-
 def yelp_docker_next_action() -> str:
     """Guide-only Compose command. No host process and no file contents."""
     return (
@@ -329,8 +319,8 @@ def yelp_docker_next_action() -> str:
     )
 
 
-def _server_run_sentence(server: str) -> str:
-    if parse_yelp_server(server) == "docker":
+def _server_run_sentence(serve_with: str) -> str:
+    if serve_with == "docker":
         return (
             f"{YELP_DOCKER_COMMAND}. "
             f"UI {YELP_DOCKER_UI}. API {YELP_DOCKER_API}. "
@@ -339,57 +329,64 @@ def _server_run_sentence(server: str) -> str:
     return f"{_QUICK_START} (http://localhost:5173)."
 
 
-def remember_yelp_server(cfg: HelperConfig, root: Path, choice: str) -> None:
-    """Remember docker or python for this checkout. No secrets."""
-    choice = parse_yelp_server(choice)
-    if not choice:
-        return
-    path = cfg.state_dir / _YELP_SERVER_STATE
-    payload: dict[str, Any] = {}
-    if path.is_file():
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            loaded = {}
-        if isinstance(loaded, dict):
-            payload = loaded
-    choices = payload.get("choices")
-    if not isinstance(choices, dict):
-        choices = {}
-    choices[str(root.resolve())] = choice
-    payload["choices"] = choices
-    try:
-        cfg.state_dir.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    except OSError:
-        return
+def yelp_serve_guide(
+    cfg: HelperConfig,
+    root: Path,
+    parsed: str,
+    state: str,
+    base: str,
+) -> dict[str, Any] | None:
+    """Guide-only Docker for this checkout. None means start the host processes.
 
+    ``parsed`` is the explicit ``serve_with`` value, or empty. An explicit
+    ``python`` or ``docker`` overrides the stored choice. This does not read
+    a compose file and does not require a file named ``Dockerfile``.
+    """
+    from zeus_dev_helper_mcp.serve_choice import remember_serve_with, stored_serve_with
 
-def stored_yelp_server(cfg: HelperConfig, root: Path) -> str:
-    path = cfg.state_dir / _YELP_SERVER_STATE
-    if not path.is_file():
-        return ""
-    try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return ""
-    if not isinstance(loaded, dict):
-        return ""
-    choices = loaded.get("choices")
-    if not isinstance(choices, dict):
-        return ""
-    return parse_yelp_server(str(choices.get(str(root.resolve())) or ""))
+    if parsed in {"python", "docker"}:
+        remember_serve_with(cfg, root, parsed)
+    chosen = parsed or stored_serve_with(cfg, root)
+    if chosen != "docker":
+        return None
+    if state == "up":
+        return {
+            "ok": True,
+            "failure_class": None,
+            "url": base,
+            "list_count": 0,
+            "search_skipped": True,
+            "pour_enabled": False,
+            "run": YELP_DOCKER_COMMAND,
+            "serve_with": "docker",
+            "recommended_tools": [],
+            "next_action": (
+                f"Yelp API health is up at {base}/api/health. "
+                f"{YELP_DOCKER_COMMAND}. "
+                f"UI {YELP_DOCKER_UI}. API {YELP_DOCKER_API}. "
+                "Search is POST /api/search and needs an LLM key. "
+                "Do not call smoke_test_agent."
+            ),
+        }
+    return {
+        "failure_class": "docker_not_started",
+        "url": YELP_DOCKER_UI,
+        "run": YELP_DOCKER_COMMAND,
+        "serve_with": "docker",
+        "recommended_tools": [],
+        "next_action": yelp_docker_next_action(),
+    }
 
 
 def _ready_next_action(
     env_path: str,
     images: dict[str, Any] | None = None,
     *,
-    server: str = "",
+    serve_with: str = "",
 ) -> str:
     text = (
         f"The app is the LocalAI template ({YELP_REPO}) at {env_path}. "
-        f"Run it: {_server_run_sentence(server)} "
+        f"Run it: {_server_run_sentence(serve_with)} "
         "Search POSTs /api/search. That handler loads the live "
         f"chat_request.json for {YELP_BUCKET}/{YELP_SCOPE} mode analytics and "
         "sends that document as the session body. "
@@ -466,7 +463,7 @@ def ensure_yelp_sample(
     project_name: str = "",
     parent_dir: str = "",
     clone_if_missing: bool = True,
-    server: str = "",
+    serve_with: str = "",
 ) -> dict[str, Any]:
     """Locate the LocalAI demo_yelp template or clone it; set DEMO_YELP_SAMPLE_DIR.
 
@@ -543,6 +540,11 @@ def ensure_yelp_sample(
                 ),
             )
 
+    from zeus_dev_helper_mcp.serve_choice import parse_serve_with
+
+    choice, valid = parse_serve_with(serve_with)
+    if not valid:
+        choice = ""
     layout = validate_yelp_layout(found)
     if not layout.get("ok"):
         return _unbound(
@@ -565,7 +567,11 @@ def ensure_yelp_sample(
     env_path = set_demo_yelp_sample_dir_env(found)
     save_yelp_sample_dir(cfg, found)
     config_blocked = app_config.get("failure_class") == "login_not_in_process"
-    return {
+    if choice:
+        from zeus_dev_helper_mcp.serve_choice import remember_serve_with
+
+        remember_serve_with(cfg, found, choice)
+    result: dict[str, Any] = {
         "ok": not config_blocked,
         "local_dir": str(found),
         "cloned": bool(clone_info and clone_info.get("cloned")),
@@ -584,9 +590,16 @@ def ensure_yelp_sample(
         "next_action": (
             str(app_config.get("next_action"))
             if config_blocked
-            else _ready_next_action(env_path, images, server=server)
+            else _ready_next_action(env_path, images, serve_with=choice)
         ),
     }
+    if choice == "docker":
+        result["serve_with"] = "docker"
+        result["run"] = YELP_DOCKER_COMMAND
+    elif choice == "python":
+        result["serve_with"] = "python"
+        result["run"] = _QUICK_START
+    return result
 
 
 _CB_URL = "COUCHBASE_QUERY_URL"
@@ -661,47 +674,13 @@ def apply_couchbase_env(payload: dict[str, Any], gate: Any) -> dict[str, Any]:
     _ensure_gitignore(Path(root))
     if gate.couchbase_password_in_env is False:
         env_path = Path(root) / ".env"
+        run = str(payload.get("run") or "")
+        before = YELP_DOCKER_COMMAND if YELP_DOCKER_COMMAND in run else "python -m local_guide"
         note = (
-            f"Fill COUCHBASE_PASSWORD in {env_path} before python -m local_guide. "
+            f"Fill COUCHBASE_PASSWORD in {env_path} before {before}. "
             "Do not type the password into the form."
         )
         prior = str(payload.get("next_action") or "").strip()
         if note not in prior:
             payload["next_action"] = f"{prior} {note}".strip()
-    return payload
-
-
-def apply_yelp_server(payload: dict[str, Any], gate: Any) -> dict[str, Any]:
-    """Use the accepted yelp server as the recommended command.
-
-    ``docker`` names the guide-only Compose command. ``python`` keeps both
-    host processes. An empty value leaves the python quick start in place.
-    Compose files are not read or rewritten.
-    """
-    if not isinstance(payload, dict) or not _payload_is_yelp(payload):
-        return payload
-    if not getattr(gate, "cards_accepted", False):
-        return payload
-    choice = parse_yelp_server(str(getattr(gate, "server", "") or ""))
-    if not choice:
-        return payload
-    root = payload.get("local_dir") or payload.get("target_dir")
-    if isinstance(root, str) and root.strip() and Path(root).is_dir():
-        from zeus_dev_helper_mcp.config import reload_config
-
-        remember_yelp_server(reload_config(), Path(root), choice)
-    payload["server"] = choice
-    text = str(payload.get("next_action") or "")
-    if choice == "docker":
-        payload["run"] = YELP_DOCKER_COMMAND
-        python_sentence = f"{_QUICK_START} (http://localhost:5173)."
-        text = text.replace(python_sentence, _server_run_sentence("docker"))
-        text = text.replace(_QUICK_START, YELP_DOCKER_COMMAND)
-        text = text.replace(
-            "before python -m local_guide.",
-            f"before {YELP_DOCKER_COMMAND}.",
-        )
-    else:
-        payload["run"] = _QUICK_START
-    payload["next_action"] = text
     return payload

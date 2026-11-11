@@ -665,11 +665,12 @@ def test_yelp_green_checks_health_and_skips_the_beer_list(
 def test_yelp_docker_acceptance_does_not_start_host_processes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from zeus_dev_helper_mcp.yelp import YELP_DOCKER_COMMAND, remember_yelp_server
+    from zeus_dev_helper_mcp.serve_choice import remember_serve_with
+    from zeus_dev_helper_mcp.yelp import YELP_DOCKER_COMMAND
 
     root = _yelp_tree(tmp_path)
     cfg = _cfg(tmp_path)
-    remember_yelp_server(cfg, root, "docker")
+    remember_serve_with(cfg, root, "docker")
     sentinel = "compose-secret-sentinel"
     compose = root / "docker-compose.yml"
     compose.write_text(f"PASSWORD: {sentinel}\n", encoding="utf-8")
@@ -695,21 +696,22 @@ def test_yelp_docker_acceptance_does_not_start_host_processes(
     assert "http://localhost:5000" in out["next_action"]
     assert sentinel not in json.dumps(out)
     assert compose.read_bytes() == before
+    assert "no Dockerfile" not in out["next_action"]
 
-    direct = start_app(root, 5000, server="docker")
-    assert direct["started"] is False
-    assert YELP_DOCKER_COMMAND in direct["run"]
-    assert "local_guide" not in direct["next_action"]
+    explicit = website_green(cfg, target_dir=str(root), serve_with="docker")
+    assert explicit["failure_class"] == "docker_not_started"
+    assert "no Dockerfile" not in explicit["next_action"]
+    assert YELP_DOCKER_COMMAND in explicit["run"]
 
 
 def test_yelp_python_acceptance_keeps_the_host_start(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from zeus_dev_helper_mcp.yelp import remember_yelp_server
+    from zeus_dev_helper_mcp.serve_choice import remember_serve_with
 
     root = _yelp_tree(tmp_path)
     cfg = _cfg(tmp_path)
-    remember_yelp_server(cfg, root, "python")
+    remember_serve_with(cfg, root, "docker")
     state = {"down": True}
     started = {"n": 0}
 
@@ -731,7 +733,7 @@ def test_yelp_python_acceptance_keeps_the_host_start(
     monkeypatch.setattr("zeus_dev_helper_mcp.website_green._health", health)
     monkeypatch.setattr("zeus_dev_helper_mcp.website_green.install_app", install)
     monkeypatch.setattr("zeus_dev_helper_mcp.website_green.start_app", start)
-    out = website_green(cfg, target_dir=str(root))
+    out = website_green(cfg, target_dir=str(root), serve_with="python")
     assert started["n"] == 1
     assert out["ok"] is True
     assert "/api/health" in out["next_action"]
