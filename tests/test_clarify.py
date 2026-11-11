@@ -1,4 +1,4 @@
-"""URL and auth clarification decisions. No MCP session."""
+"""URL and auth clarification decisions."""
 
 from __future__ import annotations
 
@@ -149,6 +149,114 @@ def test_connection_schema_has_no_secret_fields() -> None:
     assert "COUCHBASE_PASSWORD" in described
     assert "Do not type the password into this form" in described
     assert "couchbase_query_url" not in connection["properties"]
+    assert "server" not in connection["properties"]
+    assert "server" not in llm["properties"]
+    assert "server" not in couchbase["properties"]
+    from zeus_dev_helper_mcp.first_create import _server_form
+
+    server = render(_server_form())
+    assert set(server) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in server
+    assert set(server["properties"]) == {"server"}
+    field = server["properties"]["server"]
+    assert field["default"] == "docker"
+    assert field["enum"][0] == "docker"
+    assert field["enum"] == ["docker", "python"]
+    described = field["description"]
+    assert "one option" in described
+    assert "python -m local_guide" in described
+    assert "npm run dev" in described
+    assert "port 5000" in described
+    assert "port 5173" in described
+
+
+def test_beer_and_travel_creates_omit_the_server_field(tmp_path, monkeypatch) -> None:
+    import asyncio
+    import json
+
+    from mcp.server.connection import Connection
+    from mcp.server.context import ServerRequestContext
+    from mcp.server.mcpserver import Context
+    from mcp_types import ElicitResult, InputRequiredResult, InputResponseRequestParams
+
+    from zeus_dev_helper_mcp.server import create_mcp_server
+
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.delenv("ZEUS_URL", raising=False)
+    for name in (
+        "ZEUS_USERNAME",
+        "ZEUS_USER",
+        "ZEUS_PASSWORD",
+        "ZEUS_BEARER_TOKEN",
+        "ZEUS_TOKEN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    def elicit_ctx(server: object, params: object = None) -> Context:
+        connection = Connection.from_envelope(
+            "2026-07-28",
+            {"name": "test", "version": "0"},
+            {"elicitation": {"form": {}}},
+        )
+
+        class _Session:
+            client_capabilities = connection.client_capabilities
+
+        request = ServerRequestContext(
+            session=_Session(),
+            lifespan_context={},
+            protocol_version="2026-07-28",
+            method="tools/call",
+            request_id="1",
+        )
+        return Context(request_context=request, mcp_server=server, input_params=params)
+
+    server = create_mcp_server(["core"])
+    accept = ElicitResult(
+        action="accept",
+        content={
+            "zeus_url": "http://192.168.0.219:8080",
+            "zeus_username": "edited-user",
+            "password_in_env": True,
+        },
+    )
+    for sample, dirname in (("beer", "demo_beer_sample"), ("travel", "demo_travel_sample")):
+        root = tmp_path / dirname
+        root.mkdir()
+        (root / "README.md").write_text(f"# {sample}\n", encoding="utf-8")
+        args = {"sample": sample, "sample_dir": str(root)}
+        first = asyncio.run(
+            server.call_tool("use_sample", args, context=elicit_ctx(server))
+        )
+        assert isinstance(first, InputRequiredResult)
+        conn_key = next(iter(first.input_requests or {}))
+        first_schema = first.input_requests[conn_key].params.requested_schema
+        assert "server" not in first_schema["properties"]
+        assert "docker" not in json.dumps(first_schema)
+        second = asyncio.run(
+            server.call_tool(
+                "use_sample",
+                args,
+                context=elicit_ctx(
+                    server,
+                    InputResponseRequestParams(
+                        input_responses={conn_key: accept},
+                        request_state=first.request_state,
+                    ),
+                ),
+            )
+        )
+        assert isinstance(second, InputRequiredResult)
+        _key, request = next(iter((second.input_requests or {}).items()))
+        schema = request.params.requested_schema
+        assert set(schema["properties"]) == {
+            "llm_provider",
+            "llm_model",
+            "llm_key_in_env",
+        }
+        assert "server" not in schema["properties"]
+        assert "title" not in schema
+        assert "docker" not in json.dumps(schema)
 
 
 def test_gate_copies_couchbase_strings_and_not_a_password(monkeypatch) -> None:
@@ -175,11 +283,13 @@ def test_gate_copies_couchbase_strings_and_not_a_password(monkeypatch) -> None:
         couchbase_query_url="http://127.0.0.1:8093",
         couchbase_username="cb-admin",
         couchbase_password_in_env=False,
+        server="docker",
     )
     gate = interpret_gate(info)
     assert gate.couchbase_query_url == "http://127.0.0.1:8093"
     assert gate.couchbase_username == "cb-admin"
     assert gate.couchbase_password_in_env is False
+    assert gate.server == "docker"
     assert gate.llm_base_url == "https://api.x.ai/v1"
     assert gate.zeus_username == "edited-user"
     names = {field.name for field in dataclasses.fields(Gate)}
@@ -194,7 +304,10 @@ def test_gate_copies_couchbase_strings_and_not_a_password(monkeypatch) -> None:
         "LLM_MODEL",
     ):
         monkeypatch.delenv(name, raising=False)
+    before = set(os.environ)
     persist_gate(gate)
+    added = set(os.environ) - before
+    assert not any("SERVER" in name for name in added)
     assert os.environ["COUCHBASE_QUERY_URL"] == "http://127.0.0.1:8093"
     assert os.environ["COUCHBASE_USERNAME"] == "cb-admin"
     assert "COUCHBASE_PASSWORD" not in os.environ

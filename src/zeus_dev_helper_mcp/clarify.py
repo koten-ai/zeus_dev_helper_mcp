@@ -164,6 +164,7 @@ class Clarification(BaseModel):
     couchbase_query_url: str = ""
     couchbase_username: str = ""
     couchbase_password_in_env: bool | None = None
+    server: str = ""
 
 
 class AuthModeForm(BaseModel):
@@ -199,6 +200,7 @@ class Gate:
     couchbase_query_url: str = ""
     couchbase_username: str = ""
     couchbase_password_in_env: bool | None = None
+    server: str = ""
 
 
 def valid_public_url(url: str) -> bool:
@@ -436,6 +438,7 @@ def interpret_gate(outcome: Any) -> Gate:
             couchbase_query_url=data.couchbase_query_url,
             couchbase_username=data.couchbase_username,
             couchbase_password_in_env=data.couchbase_password_in_env,
+            server=data.server,
         )
     url = str(getattr(data, "zeus_url", "") or "").strip()
     if valid_public_url(url):
@@ -716,6 +719,40 @@ if HAS_ELICIT:
             root=root,
         )
 
+    def clarify_sample_server(
+        ctx: Context,
+        connection: Annotated[
+            ElicitationResult[Clarification], Resolve(clarify_sample_connection)
+        ],
+        couchbase: Annotated[
+            ElicitationResult[Clarification], Resolve(clarify_sample_couchbase)
+        ],
+        sample: str = "travel",
+        sample_dir: str = "",
+        project_name: str = "",
+        parent_dir: str = "",
+    ) -> Elicit[Any] | Clarification:  # type: ignore[valid-type]
+        """Yelp server card after Couchbase. Other samples pass through."""
+        from zeus_dev_helper_mcp.first_create import (
+            ask_yelp_server,
+            sample_destination,
+        )
+
+        root = sample_destination(
+            sample,
+            sample_dir=sample_dir,
+            project_name=project_name,
+            parent_dir=parent_dir,
+        )
+        return ask_yelp_server(
+            ctx,
+            clarify_sample_server,
+            connection,
+            couchbase,
+            sample=sample,
+            root=root,
+        )
+
     def clarify_sample_llm(
         ctx: Context,
         connection: Annotated[
@@ -723,6 +760,9 @@ if HAS_ELICIT:
         ],
         couchbase: Annotated[
             ElicitationResult[Clarification], Resolve(clarify_sample_couchbase)
+        ],
+        server: Annotated[
+            ElicitationResult[Clarification], Resolve(clarify_sample_server)
         ],
         sample: str = "travel",
         sample_dir: str = "",
@@ -748,6 +788,7 @@ if HAS_ELICIT:
             sample=sample,
             root=root,
             couchbase=couchbase,
+            server=server,
         )
 
     def clarify_api_connection(

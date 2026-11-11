@@ -171,8 +171,21 @@ def _child_env(root: Path, port: int) -> dict[str, str]:
     return env
 
 
-def start_app(root: Path, port: int) -> dict[str, Any]:
-    """Start the app. Yelp is ``python -m local_guide``. Beer is ``python main.py``."""
+def start_app(root: Path, port: int, *, server: str = "") -> dict[str, Any]:
+    """Start the app. Yelp python is ``python -m local_guide``. Docker is not started."""
+    if _is_yelp_app(root) and (server or "").strip().lower() == "docker":
+        from zeus_dev_helper_mcp.yelp import (
+            YELP_DOCKER_COMMAND,
+            yelp_docker_next_action,
+        )
+
+        return {
+            "ok": False,
+            "started": False,
+            "failure_class": "docker_not_started",
+            "run": YELP_DOCKER_COMMAND,
+            "next_action": yelp_docker_next_action(),
+        }
     python = root / ".venv" / "bin" / "python"
     exe = str(python) if python.is_file() else sys.executable
     yelp = _is_yelp_app(root)
@@ -776,6 +789,20 @@ def _run_website_green(
                 "Do not start another process on this port."
             ),
         )
+    yelp_server = ""
+    if kind is YELP_HEALTH:
+        from zeus_dev_helper_mcp.yelp import stored_yelp_server
+
+        yelp_server = stored_yelp_server(cfg, root)
+        if yelp_server == "docker" and state == "down":
+            started = start_app(root, port, server="docker")
+            return _result(
+                failure_class=str(started.get("failure_class") or "docker_not_started"),
+                url="http://localhost:3000",
+                next_action=str(started.get("next_action") or ""),
+                run=str(started.get("run") or ""),
+                recommended_tools=[],
+            )
     choice_block = _serve_choice_block(cfg, root, serve_with, state)
     if choice_block is not None:
         if choice_block.get("url") in ("", None):
@@ -833,19 +860,35 @@ def _run_website_green(
             recommended_tools=[],
         )
     if kind is YELP_HEALTH:
+        if yelp_server == "docker":
+            from zeus_dev_helper_mcp.yelp import (
+                YELP_DOCKER_API,
+                YELP_DOCKER_COMMAND,
+                YELP_DOCKER_UI,
+            )
+
+            action = (
+                f"Yelp API health is up at {base}/api/health. "
+                f"{YELP_DOCKER_COMMAND}. "
+                f"UI {YELP_DOCKER_UI}. API {YELP_DOCKER_API}. "
+                "Search is POST /api/search and needs an LLM key. "
+                "Do not call smoke_test_agent."
+            )
+        else:
+            action = (
+                f"Yelp API health is up at {base}/api/health. "
+                "Start the SPA with cd frontend && npm install && npm run dev "
+                "(http://localhost:5173). It proxies /api to this process. "
+                "Search is POST /api/search and needs an LLM key. "
+                "Do not call smoke_test_agent."
+            )
         return _result(
             ok=True,
             url=base,
             list_count=0,
             search_skipped=True,
             pour_enabled=False,
-            next_action=(
-                f"Yelp API health is up at {base}/api/health. "
-                "Start the SPA with cd frontend && npm install && npm run dev "
-                "(http://localhost:5173). It proxies /api to this process. "
-                "Search is POST /api/search and needs an LLM key. "
-                "Do not call smoke_test_agent."
-            ),
+            next_action=action,
             recommended_tools=[],
         )
 

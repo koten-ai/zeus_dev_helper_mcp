@@ -57,6 +57,23 @@ CANCEL_COUCHBASE_NEXT = (
     "Enter COUCHBASE_QUERY_URL and COUCHBASE_USERNAME. "
     "Put COUCHBASE_PASSWORD in the app .env. Do not type the password into this form."
 )
+SERVER_MESSAGE = (
+    "Choose how to run the yelp demo. Docker is preferred. "
+    "python is one option for both host processes."
+)
+DECLINE_SERVER_NEXT = (
+    "Server setup was declined. The app was not created. "
+    "Choose docker or python. Docker is preferred."
+)
+CANCEL_SERVER_NEXT = (
+    "Server setup was cancelled. The app was not created. "
+    "Choose docker or python. Docker is preferred."
+)
+_PYTHON_SERVER_DESCRIPTION = (
+    "python is one option for both host processes: "
+    "pip install -e . && python -m local_guide on port 5000 "
+    "and cd frontend && npm install && npm run dev on port 5173."
+)
 COUCHBASE_USERINFO_NEXT = (
     "COUCHBASE_QUERY_URL must not include a username or password. "
     "Enter the query URL without userinfo. "
@@ -259,10 +276,18 @@ def _llm_message(env_path: Path, exists: bool) -> str:
 
 
 def _declined_create(
-    action: str, *, llm: bool = False, couchbase: bool = False
+    action: str,
+    *,
+    llm: bool = False,
+    couchbase: bool = False,
+    server: bool = False,
 ) -> Clarification:
     if llm:
         action_text = DECLINE_LLM_NEXT
+    elif server and action == "cancel":
+        action_text = CANCEL_SERVER_NEXT
+    elif server:
+        action_text = DECLINE_SERVER_NEXT
     elif couchbase and action == "cancel":
         action_text = CANCEL_COUCHBASE_NEXT
     elif couchbase:
@@ -365,6 +390,26 @@ def _couchbase_form(query_url: str, username: str, password_ready: bool) -> type
     CouchbaseForm.__name__ = "CouchbaseForm"
     CouchbaseForm.__qualname__ = "CouchbaseForm"
     return CouchbaseForm
+
+
+@lru_cache(maxsize=1)
+def _server_form() -> type[BaseModel]:
+    """Yelp server card. ``docker`` is the default and the first enum value."""
+
+    class YelpServerForm(BaseModel):
+        server: Literal["docker", "python"] = Field(
+            default="docker",
+            description=(
+                "How to run the yelp demo. docker is preferred and is guide-only: "
+                "DOCKER_BUILDKIT=1 docker compose up -d --build. "
+                "UI http://localhost:3000. API http://localhost:5000. "
+                + _PYTHON_SERVER_DESCRIPTION
+            ),
+        )
+
+    YelpServerForm.__name__ = "YelpServerForm"
+    YelpServerForm.__qualname__ = "YelpServerForm"
+    return YelpServerForm
 
 
 def _content(answer: Any) -> dict[str, Any]:
@@ -500,6 +545,49 @@ def ask_yelp_couchbase(
     return _ask_couchbase(ctx, fn, root=root)
 
 
+def _ask_server(ctx: Any, fn: Any) -> Any:
+    """Yelp server card. Decline or cancel writes nothing."""
+    form = _server_form()
+    answer = _peek(ctx, fn, SERVER_MESSAGE, form)
+    if answer is not None and answer.action != "accept":
+        return _declined_create(answer.action, server=True)
+    return Elicit(SERVER_MESSAGE, form)
+
+
+def ask_yelp_server(
+    ctx: Any,
+    fn: Any,
+    connection: Any,
+    couchbase: Any,
+    *,
+    sample: str,
+    root: Path,
+) -> Any:
+    """Ask the server card only for a yelp first create that can show a form.
+
+    Same gate as the Couchbase card. Beer, travel, and the API scaffold pass
+    through. The field is not on the Couchbase form.
+    """
+    del root
+    from zeus_dev_helper_mcp.config import reload_config
+    from zeus_dev_helper_mcp.sample_log import first_create_pending
+    from zeus_dev_helper_mcp.yelp import is_yelp_demo_sample
+
+    if not is_yelp_demo_sample(sample) or not _can_elicit(ctx):
+        return _unwrap_outcome(connection)
+    if not first_create_pending(reload_config(), sample):
+        return _unwrap_outcome(connection)
+    data = _unwrap_outcome(couchbase)
+    if isinstance(data, Clarification):
+        if data.declined or not data.confirmed:
+            return data
+        if data.couchbase_password_in_env is None:
+            return data
+    elif not hasattr(data, "couchbase_password_in_env"):
+        return data
+    return _ask_server(ctx, fn)
+
+
 def _merge_couchbase(info: Clarification, outcome: Any) -> Clarification:
     """Copy the accepted Couchbase strings. The password value is not on the form."""
     if outcome is None:
@@ -535,6 +623,24 @@ def _merge_couchbase(info: Clarification, outcome: Any) -> Clarification:
     )
 
 
+def _merge_server(info: Clarification, outcome: Any) -> Clarification:
+    """Copy the accepted server value. ``docker`` and ``python`` are the only values."""
+    if outcome is None:
+        return info
+    data = _unwrap_outcome(outcome)
+    if isinstance(data, Clarification):
+        if data.declined or not data.confirmed:
+            return data
+        choice = (data.server or "").strip().lower()
+        if choice not in {"docker", "python"}:
+            return info
+        return info.model_copy(update={"server": choice})
+    choice = str(getattr(data, "server", "") or "").strip().lower()
+    if choice not in {"docker", "python"}:
+        return info
+    return info.model_copy(update={"server": choice})
+
+
 def _after_connection_card(
     ctx: Any,
     fn: Any,
@@ -543,12 +649,16 @@ def _after_connection_card(
     sample: str,
     root: Path,
     couchbase: Any,
+    server: Any = None,
 ) -> Any:
-    """Couchbase card, then the LLM card. Yelp only for Couchbase."""
+    """Couchbase card, then the server card, then the LLM card. Yelp only."""
     from zeus_dev_helper_mcp.yelp import is_yelp_demo_sample
 
     if is_yelp_demo_sample(sample) and info.first_create and info.cards_accepted:
         merged = _merge_couchbase(info, couchbase)
+        if not merged.confirmed or merged.declined:
+            return merged
+        merged = _merge_server(merged, server)
         if not merged.confirmed or merged.declined:
             return merged
         info = merged
@@ -645,10 +755,12 @@ def finish_connection(
     sample: str,
     root: Path,
     couchbase: Any = None,
+    server: Any = None,
 ) -> Any:
     """Turn a connection result into the LLM card.
 
-    The yelp resolver passes the accepted Couchbase card as ``couchbase``.
+    The yelp resolver passes the accepted Couchbase card as ``couchbase``
+    and the accepted server card as ``server``.
     """
     if DeclinedElicitation is not None and isinstance(outcome, DeclinedElicitation):
         return _declined_create("decline")
@@ -667,13 +779,25 @@ def finish_connection(
         if not data.cards_accepted:
             return data
         return _after_connection_card(
-            ctx, fn, data, sample=sample, root=root, couchbase=couchbase
+            ctx,
+            fn,
+            data,
+            sample=sample,
+            root=root,
+            couchbase=couchbase,
+            server=server,
         )
     if hasattr(data, "password_in_env"):
         info = _connection_clarification(data)
         if not info.confirmed:
             return info
         return _after_connection_card(
-            ctx, fn, info, sample=sample, root=root, couchbase=couchbase
+            ctx,
+            fn,
+            info,
+            sample=sample,
+            root=root,
+            couchbase=couchbase,
+            server=server,
         )
     return _resolve_auth(ctx, outcome, sample, fn)

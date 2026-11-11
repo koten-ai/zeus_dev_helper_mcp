@@ -294,6 +294,7 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
     serve_with: str = "",
+    server: str = "",
 ) -> dict[str, Any]:
     """UI sample path: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
@@ -457,6 +458,7 @@ def use_sample(
             project_name=project_name,
             parent_dir=parent_dir,
             clone_if_missing=clone_if_missing,
+            server=server,
         )
         layout = ensured.get("layout") or {}
         if ensured.get("ok") and layout.get("ok"):
@@ -476,7 +478,9 @@ def use_sample(
             "app_kind": "ui",
             "note": (
                 "Yelp demo UI. The git checkout at local_dir is the LocalAI template from "
-                "https://github.com/koten-ai/demo_yelp. Run it. "
+                "https://github.com/koten-ai/demo_yelp. "
+                "Docker is the preferred elicitation option. "
+                "The other option is both host processes. "
                 "Do not scaffold a replacement and do not copy demo_beer_sample. "
                 "When parent_dir is set, the clone is created there. "
                 "Do not pass sample=yelp (multi-agent handoff)."

@@ -662,6 +662,83 @@ def test_yelp_green_checks_health_and_skips_the_beer_list(
     assert "npm run dev" in out["next_action"]
 
 
+def test_yelp_docker_acceptance_does_not_start_host_processes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zeus_dev_helper_mcp.yelp import YELP_DOCKER_COMMAND, remember_yelp_server
+
+    root = _yelp_tree(tmp_path)
+    cfg = _cfg(tmp_path)
+    remember_yelp_server(cfg, root, "docker")
+    sentinel = "compose-secret-sentinel"
+    compose = root / "docker-compose.yml"
+    compose.write_text(f"PASSWORD: {sentinel}\n", encoding="utf-8")
+    (root / "Dockerfile.backend").write_text("FROM python:3.12\n", encoding="utf-8")
+    before = compose.read_bytes()
+
+    def health(base: str, kind: object = None) -> str:
+        assert kind is YELP_HEALTH
+        return "down"
+
+    def refused(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("host process started")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._health", health)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.subprocess.Popen", refused)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.subprocess.run", refused)
+    out = website_green(cfg, target_dir=str(root))
+    assert out["ok"] is False
+    assert out["failure_class"] == "docker_not_started"
+    assert YELP_DOCKER_COMMAND in out["run"]
+    assert YELP_DOCKER_COMMAND in out["next_action"]
+    assert "http://localhost:3000" in out["next_action"]
+    assert "http://localhost:5000" in out["next_action"]
+    assert sentinel not in json.dumps(out)
+    assert compose.read_bytes() == before
+
+    direct = start_app(root, 5000, server="docker")
+    assert direct["started"] is False
+    assert YELP_DOCKER_COMMAND in direct["run"]
+    assert "local_guide" not in direct["next_action"]
+
+
+def test_yelp_python_acceptance_keeps_the_host_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from zeus_dev_helper_mcp.yelp import remember_yelp_server
+
+    root = _yelp_tree(tmp_path)
+    cfg = _cfg(tmp_path)
+    remember_yelp_server(cfg, root, "python")
+    state = {"down": True}
+    started = {"n": 0}
+
+    def health(base: str, kind: object = None) -> str:
+        assert kind is YELP_HEALTH
+        return "down" if state["down"] else "up"
+
+    def install(path: Path) -> dict[str, object]:
+        assert path == root
+        return {"ok": True, "installed": True}
+
+    def start(path: Path, port: int) -> dict[str, object]:
+        started["n"] += 1
+        assert path == root
+        assert port == 5000
+        state["down"] = False
+        return {"ok": True, "started": True, "pid": 4}
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green._health", health)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.install_app", install)
+    monkeypatch.setattr("zeus_dev_helper_mcp.website_green.start_app", start)
+    out = website_green(cfg, target_dir=str(root))
+    assert started["n"] == 1
+    assert out["ok"] is True
+    assert "/api/health" in out["next_action"]
+    assert "Start the SPA with cd frontend && npm install && npm run dev" in out["next_action"]
+    assert "docker compose" not in out["next_action"]
+
+
 def test_yelp_401_does_not_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = _yelp_tree(tmp_path)
 

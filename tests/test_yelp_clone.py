@@ -699,3 +699,119 @@ def test_probe_target_and_glossary(tmp_path: Path, monkeypatch) -> None:
     topic = explain_topic(cfg, "yelp-demo")
     assert topic["found"] is True
     assert topic["topic"] == "demo_yelp"
+    assert "Docker is the preferred" in topic["summary"]
+    assert "one option for both host processes" in topic["summary"]
+
+
+def _accepted_server(choice: str):
+    from zeus_dev_helper_mcp.clarify import Clarification
+
+    return Clarification(
+        confirmed=True,
+        cards_accepted=True,
+        first_create=True,
+        zeus_url="http://zeus-dev.local:8080",
+        zeus_username="demo_1",
+        auth_mode="none",
+        save_url=True,
+        save_auth=True,
+        server=choice,
+        couchbase_query_url="http://127.0.0.1:8093",
+        couchbase_username="cb-admin",
+        couchbase_password_in_env=True,
+    )
+
+
+def test_accepted_server_recommends_docker_or_both_host_processes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from zeus_dev_helper_mcp.clarify import Gate
+    from zeus_dev_helper_mcp.server import _use_sample_body
+    from zeus_dev_helper_mcp.yelp import YELP_DOCKER_COMMAND, apply_yelp_server
+
+    sentinel = "compose-secret-sentinel"
+    monkeypatch.setenv("ZEUS_DEV_HELPER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("ZEUS_DEV_HELPER_SKIP_YELP_IMAGES", "1")
+    monkeypatch.setenv("ZEUS_AUTH_MODE", "none")
+    for name in (
+        "ZEUS_PASSWORD",
+        "ZEUS_BEARER_TOKEN",
+        "ZEUS_TOKEN",
+        "LLM_API_KEY",
+        "XAI_API_KEY",
+        "OPENAI_API_KEY",
+        "DEMO_YELP_SAMPLE_DIR",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    def _checkout(name: str) -> Path:
+        root = tmp_path / name
+        _write_layout(root)
+        (root / "pyproject.toml").write_text(
+            "[project]\nname='local-guide'\n", encoding="utf-8"
+        )
+        compose = root / "docker-compose.yml"
+        compose.write_text(
+            "services:\n  api:\n    environment:\n"
+            f"      PASSWORD: {sentinel}\n",
+            encoding="utf-8",
+        )
+        backend = root / "Dockerfile.backend"
+        backend.write_text("FROM python:3.12\n", encoding="utf-8")
+        (root / "Dockerfile.frontend").write_text("FROM node:22\n", encoding="utf-8")
+        return root
+
+    aliases = ("demo_yelp", "yelp-demo", "demo-yelp", "yelp_demo", "yelpdemo")
+    for alias in aliases:
+        root = _checkout(alias)
+        compose_bytes = (root / "docker-compose.yml").read_bytes()
+        backend_bytes = (root / "Dockerfile.backend").read_bytes()
+        frontend_bytes = (root / "Dockerfile.frontend").read_bytes()
+        out = _use_sample_body(
+            sample=alias,
+            sample_dir=str(root),
+            gate_outcome=_accepted_server("docker"),
+        )
+        blob = json.dumps(out)
+        assert out["ok"] is True
+        assert out["server"] == "docker"
+        assert YELP_DOCKER_COMMAND in out["run"]
+        assert YELP_DOCKER_COMMAND in out["next_action"]
+        assert "http://localhost:3000" in out["next_action"]
+        assert "http://localhost:5000" in out["next_action"]
+        assert sentinel not in blob
+        assert (root / "docker-compose.yml").read_bytes() == compose_bytes
+        assert (root / "Dockerfile.backend").read_bytes() == backend_bytes
+        assert (root / "Dockerfile.frontend").read_bytes() == frontend_bytes
+
+    python_root = _checkout("python-yelp")
+    python_out = _use_sample_body(
+        sample="demo_yelp",
+        sample_dir=str(python_root),
+        gate_outcome=_accepted_server("python"),
+    )
+    python_blob = json.dumps(python_out)
+    hosted = f"{python_out.get('run') or ''}\n{python_out.get('next_action') or ''}"
+    assert "pip install -e . && python -m local_guide" in hosted
+    assert "cd frontend && npm install && npm run dev" in hosted
+    assert "5000" in hosted
+    assert "5173" in hosted
+    assert YELP_DOCKER_COMMAND not in (python_out.get("run") or "")
+    assert sentinel not in python_blob
+
+    bare = _use_sample_body(sample="yelp", gate_outcome=_accepted_server("docker"))
+    assert bare.get("sample") == "yelp"
+    assert YELP_DOCKER_COMMAND not in json.dumps(bare)
+    beer = {
+        "ok": True,
+        "sample": "beer",
+        "local_dir": str(python_root),
+        "next_action": "pour",
+    }
+    assert (
+        apply_yelp_server(
+            beer,
+            Gate(proceed=True, cards_accepted=True, server="docker"),
+        )
+        == beer
+    )
