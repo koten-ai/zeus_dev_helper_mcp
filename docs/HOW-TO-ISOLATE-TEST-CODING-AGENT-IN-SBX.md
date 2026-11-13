@@ -157,13 +157,13 @@ sbx policy log agent-test
 
 Install with `pip --user` as the sandbox user `agent`. `uv` and `uvx` abort in this microVM (`jemalloc` unsupported system page size). The helper needs Python 3.11 or newer, and the `[agent]` extra so `verify_local_setup` and `smoke_test_agent` can import `zeus_client`. The app `.venv` does not satisfy that check.
 
-The pin below is the release that already came up inside `claude-claude` (`0.7.12`, 17 tools, `doctor` ok). Published helper docs currently describe source `0.7.11`. Keep one pin for the whole test.
+Pin the published release `0.7.13` (17 tools). An earlier sandbox run used `0.7.12`. Published helper docs describe **0.7.13**. Keep one pin for the whole test.
 
 ```bash
 sbx exec -u agent agent-test bash -lc 'python3 --version'
 
 sbx exec -u agent agent-test bash -lc \
-  'python3 -m pip install --user "zeus-dev-helper-mcp[agent]==0.7.12"'
+  'python3 -m pip install --user "zeus-dev-helper-mcp[agent]==0.7.13"'
 ```
 
 If `pip` prints `Approval required for …`, go to section 4, allow that host, and run the same `pip` command again.
@@ -252,7 +252,7 @@ mkdir -p "$HOME/.config/zeus_dev_helper-agent-test"
 
 sbx mcp add zeus-dev-helper-agent-test \
   --command /usr/bin/env \
-  --args "ZEUS_URL=http://zeus-dev.local:8080,ZEUS_DEV_HELPER_STATE_DIR=$HOME/.config/zeus_dev_helper-agent-test,$UVX,--isolated,--from,zeus-dev-helper-mcp[agent]==0.7.12,zeus-dev-helper-mcp"
+  --args "ZEUS_URL=http://zeus-dev.local:8080,ZEUS_DEV_HELPER_STATE_DIR=$HOME/.config/zeus_dev_helper-agent-test,$UVX,--isolated,--from,zeus-dev-helper-mcp[agent]==0.7.13,zeus-dev-helper-mcp"
 
 sbx mcp inspect zeus-dev-helper-agent-test
 sbx mcp load zeus-dev-helper-agent-test --sandbox agent-test
