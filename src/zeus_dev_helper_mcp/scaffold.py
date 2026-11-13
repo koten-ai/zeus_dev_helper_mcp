@@ -294,11 +294,12 @@ def use_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
     serve_with: str = "",
+    version: str = "",
 ) -> dict[str, Any]:
     """UI sample path: travel clone, beer catalog UI, live-stamp page, or yelp demo clone.
 
-    travel: shallow-clone https://github.com/koten-ai/demo_travel_sample.git when the destination is missing. The destination is sample_dir, or parent_dir plus project_name. A blank parent is the directory next to this Helper checkout. A foreign default directory moves to the next open sibling. An explicit foreign sample_dir returns foreign_sample_dir and writes nothing. A recorded checkout that answers GET /api/health stays in place. Start with python -m travel_planner on port 5000 unless PORT is set. The create path does not rewrite Docker files. Set DEMO_TRAVEL_SAMPLE_DIR.
-    beer: shallow-clone public demo_beer_sample when missing; set DEMO_BEER_SAMPLE_DIR.
+    travel: shallow-clone https://github.com/koten-ai/demo_travel_sample.git when the destination is missing. Optional version: a named tag that exists is cloned exactly; an omitted version or a missing tag uses the latest semver tag; main is used only when that repository has no semver tags. demo_travel_sample, demo_beer_sample, and demo_yelp are tagged 0.1.0. An existing checkout stays in place. The destination is sample_dir, or parent_dir plus project_name. A blank parent is the directory next to this Helper checkout. A foreign default directory moves to the next open sibling. An explicit foreign sample_dir returns foreign_sample_dir and writes nothing. A recorded checkout that answers GET /api/health stays in place. Start with python -m travel_planner on port 5000 unless PORT is set. The create path does not rewrite Docker files. Set DEMO_TRAVEL_SAMPLE_DIR.
+    beer: shallow-clone public demo_beer_sample when missing. A named tag that exists is cloned exactly; an omitted version or a missing tag uses the latest semver tag; main is used only when that repository has no semver tags. The repository is tagged 0.1.0. Set DEMO_BEER_SAMPLE_DIR.
     Start that checkout with python main.py (README). Search is run_turn with chat_request omitted.
     When the checkout has both a Dockerfile and a compose file, serve_choice_required
     is set, serve_options lists Python and Docker, host_question is the selection,
@@ -306,7 +307,7 @@ def use_sample(
     run Docker.
     catalog: write demo_catalog_sample from explain_scope. Beer bucket or Beer + Brewery
     still writes the beer catalog UI.
-    demo_yelp: locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp; set DEMO_YELP_SAMPLE_DIR. Aliases include yelp-demo.
+    demo_yelp: locate or clone the LocalAI template https://github.com/koten-ai/demo_yelp; set DEMO_YELP_SAMPLE_DIR. Aliases include yelp-demo. A named tag that exists is cloned exactly; an omitted version or a missing tag uses the latest semver tag; main is used only when that repository has no semver tags. The repository is tagged 0.1.0.
     Bare sample=yelp stays the multi-agent handoff.
     For API-only apps use scaffold_app(app_kind=api).
     """
@@ -331,6 +332,7 @@ def use_sample(
             parent_dir=parent_dir,
             clone_if_missing=clone_if_missing,
             serve_with=serve_with,
+            version=version,
         )
         info = dict(SAMPLE_TRAVEL)
         info["sample"] = "travel"
@@ -371,6 +373,7 @@ def use_sample(
             project_name=project_name,
             parent_dir=parent_dir,
             serve_with=serve_with,
+            version=version,
         )
         info = dict(SAMPLE_BEER)
         info["sample"] = "beer"
@@ -436,6 +439,8 @@ def use_sample(
             "env_change",
             "verification",
             "skipped_llm_alias",
+            "requested_version",
+            "ref",
         ):
             if ensured.get(key) is not None:
                 payload[key] = ensured[key]
@@ -458,6 +463,7 @@ def use_sample(
             parent_dir=parent_dir,
             clone_if_missing=clone_if_missing,
             serve_with=serve_with,
+            version=version,
         )
         layout = ensured.get("layout") or {}
         if ensured.get("ok") and layout.get("ok"):
@@ -506,6 +512,10 @@ def use_sample(
             "checklist_hint": "Mark 3.1 done after the yelp demo clone or reuse",
             "do_not": ensured.get("do_not"),
         }
+        if ensured.get("requested_version") is not None:
+            payload["requested_version"] = ensured["requested_version"]
+        if ensured.get("ref"):
+            payload["ref"] = ensured["ref"]
         if ensured.get("run"):
             payload["run"] = ensured["run"]
         if ensured.get("serve_with"):

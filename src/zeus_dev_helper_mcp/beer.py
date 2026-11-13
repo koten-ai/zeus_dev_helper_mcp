@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
+import subprocess  # noqa: F401  # tests patch this; sample_ref uses the same module
 from pathlib import Path
 from typing import Any
 
@@ -2908,8 +2908,16 @@ def clone_beer_sample(
     dest: Path,
     repo_url: str = BEER_REPO_GIT,
     timeout_s: int = 120,
+    version: str = "",
 ) -> dict[str, Any]:
-    """Shallow-clone public demo_beer_sample into dest (dest must not exist yet)."""
+    """Shallow-clone public demo_beer_sample into dest (dest must not exist yet).
+
+    ``version`` names a tag. A tag that exists is cloned exactly. An empty
+    version or a missing tag uses the latest semver tag. ``main`` is used only
+    when the remote has no semver tags. An existing checkout is not retargeted.
+    """
+    from zeus_dev_helper_mcp.sample_ref import shallow_clone_ref
+
     dest = dest.expanduser().resolve()
     if dest.exists():
         return {
@@ -2933,53 +2941,16 @@ def clone_beer_sample(
             "next_action": "Choose a writable parent directory",
         }
 
-    cmd = ["git", "clone", "--depth", "1", repo_url, str(dest)]
     manual = f"git clone --depth 1 {BEER_REPO_GIT} and set {ENV_BEER_DIR}"
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
-        )
-    except FileNotFoundError:
-        return {
-            "ok": False,
-            "cloned": False,
-            "dest": str(dest),
-            "error": "git not found on PATH",
-            "next_action": f"Install git, or {manual}",
-            "clone_cmd": " ".join(cmd),
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "ok": False,
-            "cloned": False,
-            "dest": str(dest),
-            "error": f"git clone timed out after {timeout_s}s",
-            "next_action": f"Retry use_sample or {manual}",
-            "clone_cmd": " ".join(cmd),
-        }
-
-    if proc.returncode != 0 or not dest.is_dir():
-        err = (proc.stderr or proc.stdout or "").strip()[:800]
-        return {
-            "ok": False,
-            "cloned": False,
-            "dest": str(dest),
-            "error": err or f"git clone failed (exit {proc.returncode})",
-            "next_action": f"Fix network/git access, or {manual}",
-            "clone_cmd": " ".join(cmd),
-        }
-
-    return {
-        "ok": True,
-        "cloned": True,
-        "dest": str(dest),
-        "repo": repo_url,
-        "clone_cmd": " ".join(cmd),
-    }
+    return shallow_clone_ref(
+        dest=dest,
+        repo_url=repo_url,
+        version=version,
+        timeout_s=timeout_s,
+        git_missing_next=f"Install git, or {manual}",
+        timeout_next=f"Retry use_sample or {manual}",
+        failed_next=f"Fix network/git access, or {manual}",
+    )
 
 
 def _finish_cloned_beer(
@@ -3080,6 +3051,7 @@ def ensure_beer_sample(
     parent_dir: str = "",
     force: bool = False,
     serve_with: str = "",
+    version: str = "",
 ) -> dict[str, Any]:
     """Locate an existing beer Direct UI or write a fresh template."""
     dir_name = sanitize_beer_dir_name(project_name)
@@ -3124,7 +3096,7 @@ def ensure_beer_sample(
             blocked["cloned"] = False
             blocked["repo"] = BEER_REPO
             return blocked
-        clone_info = clone_beer_sample(dest=dest)
+        clone_info = clone_beer_sample(dest=dest, version=version)
         if not clone_info.get("ok"):
             return {
                 "ok": False,
@@ -3140,6 +3112,9 @@ def ensure_beer_sample(
                 or f"Clone {BEER_REPO} and set {ENV_BEER_DIR}",
             }
         result = _finish_cloned_beer(cfg, dest, cloned=True, serve_with=serve_with)
+        result["requested_version"] = clone_info.get("requested_version", "")
+        if clone_info.get("ref"):
+            result["ref"] = clone_info["ref"]
         if relocated_from and result.get("ok"):
             result["relocated_from"] = relocated_from
             prior = str(result.get("next_action") or "").strip()

@@ -5,12 +5,17 @@ from __future__ import annotations
 import json
 import os
 import stat
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-from zeus_dev_helper_mcp.checklist import load_checklist, save_checklist, set_item_status
+from zeus_dev_helper_mcp.checklist import (
+    load_checklist,
+    save_checklist,
+    set_item_status,
+)
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.scaffold import use_sample
 from zeus_dev_helper_mcp.travel import (
@@ -40,6 +45,13 @@ def test_clone_travel_sample_success(tmp_path: Path, monkeypatch) -> None:
     dest = tmp_path / "demo_travel_sample"
 
     def fake_run(cmd, **kwargs):
+        del kwargs
+        if "ls-remote" in list(cmd):
+            m = MagicMock()
+            m.returncode = 0
+            m.stderr = ""
+            m.stdout = ""
+            return m
         dest.mkdir(parents=True)
         (dest / "README.md").write_text("# demo\n", encoding="utf-8")
         (dest / "requirements.txt").write_text("x\n", encoding="utf-8")
@@ -53,13 +65,19 @@ def test_clone_travel_sample_success(tmp_path: Path, monkeypatch) -> None:
     out = clone_travel_sample(dest=dest)
     assert out["ok"] is True
     assert out["cloned"] is True
+    assert out["ref"] == "main"
     assert dest.is_dir()
 
 
-def test_clone_travel_sample_dest_exists(tmp_path: Path) -> None:
+def test_clone_travel_sample_dest_exists(tmp_path: Path, monkeypatch) -> None:
     dest = tmp_path / "demo_travel_sample"
     dest.mkdir()
-    out = clone_travel_sample(dest=dest)
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("git was called")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", boom)
+    out = clone_travel_sample(dest=dest, version="0.1.0")
     assert out["ok"] is False
     assert out["cloned"] is False
 
@@ -71,6 +89,13 @@ def test_ensure_clones_and_sets_env(tmp_path: Path, monkeypatch) -> None:
     dest = parent / "my_travel_boot"
 
     def fake_run(cmd, **kwargs):
+        del kwargs
+        if "ls-remote" in list(cmd):
+            m = MagicMock()
+            m.returncode = 0
+            m.stderr = ""
+            m.stdout = ""
+            return m
         dest.mkdir(parents=True)
         (dest / "README.md").write_text("# demo\n", encoding="utf-8")
         (dest / "pyproject.toml").write_text("[project]\nname='t'\n", encoding="utf-8")
@@ -116,7 +141,7 @@ def test_ensure_uses_existing_sample_dir(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr("zeus_dev_helper_mcp.travel.clone_travel_sample", no_clone)
     cfg = _cfg(tmp_path)
-    out = ensure_travel_sample(cfg, sample_dir=str(root))
+    out = ensure_travel_sample(cfg, sample_dir=str(root), version="0.2.0")
     assert out["ok"] is True
     assert out["cloned"] is False
     assert called["n"] == 0
@@ -129,6 +154,13 @@ def test_use_sample_passes_project_name(tmp_path: Path, monkeypatch) -> None:
     dest = parent / "BootApp"
 
     def fake_run(cmd, **kwargs):
+        del kwargs
+        if "ls-remote" in list(cmd):
+            m = MagicMock()
+            m.returncode = 0
+            m.stderr = ""
+            m.stdout = ""
+            return m
         dest.mkdir(parents=True)
         (dest / "README.md").write_text("# demo\n", encoding="utf-8")
         (dest / "src").mkdir()
@@ -207,7 +239,14 @@ def test_foreign_default_directory_clones_the_next_sibling(
 
     def fake_run(cmd, **kwargs):
         del kwargs
-        seen["cmd"] = list(cmd)
+        cmd = list(cmd)
+        if "ls-remote" in cmd:
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stderr = ""
+            proc.stdout = ""
+            return proc
+        seen["cmd"] = cmd
         dest = Path(cmd[-1])
         _layout(dest)
         proc = MagicMock()
@@ -230,6 +269,13 @@ def test_foreign_default_directory_clones_the_next_sibling(
 
 def _clone_into_layout(cmd, **kwargs):
     del kwargs
+    cmd = list(cmd)
+    if "ls-remote" in cmd:
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.stderr = ""
+        proc.stdout = ""
+        return proc
     dest = Path(cmd[-1])
     _layout(dest)
     proc = MagicMock()
@@ -497,3 +543,190 @@ def test_bound_travel_next_step_uses_website_green_without_handoff(
     assert "handoff_to_multi" not in after["post_green"]["suggested_tools"]
     assert "jobs.host_url is not written" in after["post_green"]["note"]
     assert "handoff_to_multi" not in json.dumps(after["post_green"]["suggested_tools"])
+
+
+_REF_CASES = [
+    ("0.1.0", ["0.1.0"], "0.1.0"),
+    ("0.1.0", ["0.1.0", "0.2.0"], "0.1.0"),
+    (None, ["0.1.0", "0.2.0"], "0.2.0"),
+    ("9.9.9", ["0.1.0"], "0.1.0"),
+    (None, [], "main"),
+    ("0.1.0", [], "main"),
+    ("v0.1.0", ["v0.1.0", "0.2.0"], "v0.1.0"),
+    (None, ["0.9.0", "0.10.0", "v0.10.0"], "0.10.0"),
+]
+
+
+def _tag_text(names: list[str]) -> str:
+    lines: list[str] = []
+    for index, name in enumerate(names):
+        sha = f"{index:040d}"
+        lines.append(f"{sha} refs/tags/{name}")
+        lines.append(f"{sha} refs/tags/{name}^{{}}")
+    return "\n".join(lines)
+
+
+def _branch_of(cmd: list[str]) -> str:
+    return cmd[cmd.index("--branch") + 1]
+
+
+def _git_calls(monkeypatch: pytest.MonkeyPatch, tags: list[str], dest: Path):
+    cmds: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        del kwargs
+        cmd = list(cmd)
+        cmds.append(cmd)
+        if "ls-remote" in cmd:
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stderr = ""
+            proc.stdout = _tag_text(tags)
+            return proc
+        dest.mkdir(parents=True, exist_ok=True)
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.stderr = ""
+        proc.stdout = ""
+        return proc
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", fake_run)
+    return cmds
+
+
+@pytest.mark.parametrize(("version", "tags", "branch"), _REF_CASES)
+def test_clone_resolves_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version, tags, branch) -> None:
+    dest = tmp_path / "sample"
+    cmds = _git_calls(monkeypatch, tags, dest)
+    kwargs = {} if version is None else {"version": version}
+    out = clone_travel_sample(dest=dest, **kwargs)
+    clones = [cmd for cmd in cmds if len(cmd) > 1 and cmd[1] == "clone"]
+    assert out["ok"] is True
+    assert out["cloned"] is True
+    assert out["ref"] == branch
+    assert out["requested_version"] == ("" if version is None else version)
+    assert len(clones) == 1
+    assert _branch_of(clones[0]) == branch
+    assert "--branch" in out["clone_cmd"]
+    assert branch in out["clone_cmd"]
+
+
+def test_ls_remote_failure_does_not_clone_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dest = tmp_path / "sample"
+    cmds: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        del kwargs
+        cmd = list(cmd)
+        cmds.append(cmd)
+        proc = MagicMock()
+        proc.returncode = 128
+        proc.stderr = "fatal: unable to access"
+        proc.stdout = ""
+        return proc
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", fake_run)
+    out = clone_travel_sample(dest=dest, version="0.1.0")
+    assert out["ok"] is False
+    assert out["failure_class"] == "clone_failed"
+    assert out["cloned"] is False
+    assert out.get("ref") is None
+    assert not any(len(cmd) > 1 and cmd[1] == "clone" for cmd in cmds)
+    assert "main" not in (out.get("clone_cmd") or "")
+    assert not dest.exists()
+
+
+def test_missing_git_is_clone_failed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dest = tmp_path / "sample"
+
+    def fake_run(cmd, **kwargs):
+        del cmd, kwargs
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", fake_run)
+    out = clone_travel_sample(dest=dest, version="0.1.0")
+    assert out["ok"] is False
+    assert out["failure_class"] == "clone_failed"
+    assert out["error"] == "git not found on PATH"
+    assert not dest.exists()
+
+
+def test_clone_timeout_does_not_fall_through(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dest = tmp_path / "sample"
+    cmds: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        del kwargs
+        cmd = list(cmd)
+        cmds.append(cmd)
+        if "ls-remote" in cmd:
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stderr = ""
+            proc.stdout = _tag_text(["0.1.0"])
+            return proc
+        dest.mkdir()
+        (dest / "PARTIAL").write_text("left behind", encoding="utf-8")
+        raise subprocess.TimeoutExpired(cmd, 1)
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", fake_run)
+    out = clone_travel_sample(dest=dest, version="9.9.9")
+    clones = [cmd for cmd in cmds if len(cmd) > 1 and cmd[1] == "clone"]
+    assert out["ok"] is False
+    assert out["failure_class"] == "clone_failed"
+    assert out["ref"] == "0.1.0"
+    assert len(clones) == 1
+    assert _branch_of(clones[0]) == "0.1.0"
+    assert not dest.exists()
+
+
+def test_failed_clone_removes_partial_and_does_not_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dest = tmp_path / "sample"
+    cmds: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        del kwargs
+        cmd = list(cmd)
+        cmds.append(cmd)
+        proc = MagicMock()
+        proc.stderr = ""
+        proc.stdout = ""
+        if "ls-remote" in cmd:
+            proc.returncode = 0
+            proc.stdout = _tag_text(["0.2.0"])
+            return proc
+        dest.mkdir()
+        (dest / "PARTIAL").write_text("left behind", encoding="utf-8")
+        proc.returncode = 1
+        proc.stderr = "fatal: clone failed"
+        return proc
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", fake_run)
+    out = clone_travel_sample(dest=dest, version="0.2.0")
+    clones = [cmd for cmd in cmds if len(cmd) > 1 and cmd[1] == "clone"]
+    assert out["ok"] is False
+    assert out["failure_class"] == "clone_failed"
+    assert out["ref"] == "0.2.0"
+    assert len(clones) == 1
+    assert _branch_of(clones[0]) == "0.2.0"
+    assert not dest.exists()
+
+
+def test_use_sample_passes_version_to_travel_clone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_clone(**kwargs):
+        seen.update(kwargs)
+        return {"ok": False, "cloned": False, "error": "stop", "next_action": "stop"}
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.clone_travel_sample", fake_clone)
+    out = use_sample(
+        _cfg(tmp_path),
+        sample="travel",
+        parent_dir=str(tmp_path),
+        project_name="fresh-travel",
+        version="0.1.0",
+    )
+    assert seen["version"] == "0.1.0"
+    assert out.get("failure_class") == "clone_failed"
+
