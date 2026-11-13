@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.13
 
 ### Added
 - **[ZDM-59](https://kotenai.atlassian.net/browse/ZDM-59)** `use_sample` for beer, travel, and yelp-demo (aliases `demo_yelp`, `yelp-demo`, `demo-yelp`, `yelp_demo`, `yelpdemo`) takes optional `version`. A named tag that exists is cloned exactly, including an older tag when a newer one also exists. An omitted version or a missing tag uses the latest semver tag (`git ls-remote --tags`; major, minor, and patch compared as integers; tag names `0.1.0` and `v0.1.0` are accepted and the remote tag name is passed to `git clone --branch`). `main` is used only when that repository has no semver tags. `demo_beer_sample`, `demo_travel_sample`, and `demo_yelp` are tagged `0.1.0`. `git ls-remote` failure, missing git, or a clone timeout is `clone_failed` and does not fall through to another ref. An existing checkout stays in place. `sample=api`, `sample=catalog`, bare `sample=yelp`, and the `zeus_chat_request` clone are unchanged.
