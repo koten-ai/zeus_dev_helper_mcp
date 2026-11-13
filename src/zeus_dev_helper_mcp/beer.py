@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess  # noqa: F401  # tests patch this; sample_ref uses the same module
 from pathlib import Path
 from typing import Any
 
@@ -532,7 +531,6 @@ SAMPLE_BEER = {
         "max_rounds on that question box is 4. "
         "Do not clone demo_travel_sample. Do not write a job for this page."
     ),
-    "clone": f"git clone --depth 1 {BEER_REPO_GIT}",
     "related": [
         docs_url("zeus-client/using-zeus-client.md"),
         BEER_REPO,
@@ -2941,15 +2939,12 @@ def clone_beer_sample(
             "next_action": "Choose a writable parent directory",
         }
 
-    manual = f"git clone --depth 1 {BEER_REPO_GIT} and set {ENV_BEER_DIR}"
     return shallow_clone_ref(
         dest=dest,
         repo_url=repo_url,
         version=version,
         timeout_s=timeout_s,
-        git_missing_next=f"Install git, or {manual}",
-        timeout_next=f"Retry use_sample or {manual}",
-        failed_next=f"Fix network/git access, or {manual}",
+        env_name=ENV_BEER_DIR,
     )
 
 
@@ -3115,6 +3110,8 @@ def ensure_beer_sample(
         result["requested_version"] = clone_info.get("requested_version", "")
         if clone_info.get("ref"):
             result["ref"] = clone_info["ref"]
+        if clone_info.get("clone_cmd"):
+            result["clone_cmd"] = clone_info["clone_cmd"]
         if relocated_from and result.get("ok"):
             result["relocated_from"] = relocated_from
             prior = str(result.get("next_action") or "").strip()

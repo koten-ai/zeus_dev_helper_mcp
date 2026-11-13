@@ -118,7 +118,7 @@ def _fake_clone(monkeypatch: pytest.MonkeyPatch) -> None:
         proc.stdout = ""
         return proc
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.beer.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
 
 
 def _assert_no_secrets(payload: dict) -> None:

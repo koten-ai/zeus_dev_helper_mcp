@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -137,6 +138,48 @@ def resolve_clone_ref(
     }
 
 
+def manual_clone_command(repo_url: str, ref: str) -> str:
+    """Shallow clone of one resolved ref. ``ref`` is a tag name or ``main``."""
+    return f"git clone --depth 1 --branch {ref} {repo_url}"
+
+
+def advertised_clone_command(repo_url: str, result: Mapping[str, Any] | None) -> str:
+    """Clone command to show the agent. Empty when this call did not resolve a ref."""
+    data: Mapping[str, Any] = result if isinstance(result, Mapping) else {}
+    sources: list[Mapping[str, Any]] = [data]
+    nested = data.get("clone")
+    if isinstance(nested, Mapping):
+        sources.append(nested)
+    for source in sources:
+        cmd = str(source.get("clone_cmd") or "")
+        if cmd.startswith("git clone "):
+            return cmd
+    for source in sources:
+        ref = str(source.get("ref") or "")
+        if ref:
+            return manual_clone_command(repo_url, ref)
+    return ""
+
+
+def _next_action(*, kind: str, repo_url: str, ref: str, env_name: str) -> str:
+    """Recovery text. A known ref includes ``--branch``. An unknown ref does not invent one."""
+    if ref:
+        command = manual_clone_command(repo_url, ref)
+        if env_name:
+            command = f"{command} and set {env_name}"
+        if kind == "git_missing":
+            return f"Install git, or {command}"
+        if kind == "timeout":
+            return f"Retry use_sample or {command}"
+        return f"Fix network/git access, or {command}"
+    tail = f" and set {env_name}" if env_name else ""
+    if kind == "git_missing":
+        return f"Install git, or clone manually{tail}"
+    if kind == "timeout":
+        return f"Retry use_sample or clone manually{tail}"
+    return f"Fix network/git access, or clone manually{tail}"
+
+
 def remove_partial_checkout(dest: Path) -> None:
     """Remove a directory a failed clone left behind. A symlink is unlinked only."""
     if dest.is_symlink():
@@ -176,30 +219,23 @@ def shallow_clone_ref(
     repo_url: str,
     version: str = "",
     timeout_s: int = 120,
-    git_missing_next: str,
-    timeout_next: str,
-    failed_next: str,
+    env_name: str = "",
 ) -> dict[str, Any]:
     """Shallow-clone ``repo_url`` at the resolved ref. One ref; no second attempt.
 
     When the clone fails and leaves ``dest``, that partial directory is removed
-    before this returns. This does not fall through to another ref.
+    before this returns. This does not fall through to another ref. Once ``ref``
+    is known, ``next_action`` names ``git clone --depth 1 --branch <ref>``.
     """
     requested = _requested(version)
     resolved = resolve_clone_ref(repo_url, requested, timeout_s=timeout_s)
     if not resolved.get("ok"):
-        kind = resolved.get("kind")
-        if kind == "git_missing":
-            next_action = git_missing_next
-        elif kind == "timeout":
-            next_action = timeout_next
-        else:
-            next_action = failed_next
+        kind = str(resolved.get("kind") or "ls_remote_failed")
         return _failed(
             dest=dest,
             requested=requested,
             error=str(resolved.get("error") or "git ls-remote failed"),
-            next_action=next_action,
+            next_action=_next_action(kind=kind, repo_url=repo_url, ref="", env_name=env_name),
             clone_cmd=str(resolved.get("clone_cmd") or ""),
         )
     ref = str(resolved["ref"])
@@ -219,7 +255,9 @@ def shallow_clone_ref(
             dest=dest,
             requested=requested,
             error="git not found on PATH",
-            next_action=git_missing_next,
+            next_action=_next_action(
+                kind="git_missing", repo_url=repo_url, ref=ref, env_name=env_name
+            ),
             clone_cmd=clone_cmd,
             ref=ref,
         )
@@ -229,7 +267,9 @@ def shallow_clone_ref(
             dest=dest,
             requested=requested,
             error=f"git clone timed out after {timeout_s}s",
-            next_action=timeout_next,
+            next_action=_next_action(
+                kind="timeout", repo_url=repo_url, ref=ref, env_name=env_name
+            ),
             clone_cmd=clone_cmd,
             ref=ref,
         )
@@ -240,7 +280,9 @@ def shallow_clone_ref(
             dest=dest,
             requested=requested,
             error=err,
-            next_action=failed_next,
+            next_action=_next_action(
+                kind="clone_failed", repo_url=repo_url, ref=ref, env_name=env_name
+            ),
             clone_cmd=clone_cmd,
             ref=ref,
         )

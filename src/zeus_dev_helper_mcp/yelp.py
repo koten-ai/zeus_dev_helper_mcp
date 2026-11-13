@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess  # noqa: F401  # tests patch this; sample_ref uses the same module
 from pathlib import Path
 from typing import Any
 
@@ -231,15 +230,12 @@ def clone_yelp_sample(
             "next_action": "Choose a writable parent directory",
         }
 
-    manual = f"clone manually and set {ENV_YELP_DIR}"
     return shallow_clone_ref(
         dest=dest,
         repo_url=repo_url,
         version=version,
         timeout_s=timeout_s,
-        git_missing_next=f"Install git, or {manual}",
-        timeout_next=f"Retry use_sample or {manual}",
-        failed_next=f"Fix network/git access, or {manual}",
+        env_name=ENV_YELP_DIR,
     )
 
 

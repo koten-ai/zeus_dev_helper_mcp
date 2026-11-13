@@ -219,7 +219,6 @@ SAMPLE_TRAVEL = {
     "name": "demo_travel_sample",
     "repo": "https://github.com/koten-ai/demo_travel_sample",
     "note": "Primary single-agent UI demo (public). use_sample clones when no local path is set.",
-    "clone": "git clone --depth 1 https://github.com/koten-ai/demo_travel_sample.git",
     "related": [
         "https://github.com/koten-ai/zeus_client_python/tree/main/docs/demo-builder",
         "https://docs.koten.ai/zeus-client/using-zeus-client",
@@ -323,7 +322,11 @@ def use_sample(
             serve_with=serve_with,
         )
     if sample in ("travel", "demo_travel", "travel_sample", "demo_travel_sample", "ui"):
-        from zeus_dev_helper_mcp.travel import copy_travel_fields, travel_golden_path
+        from zeus_dev_helper_mcp.travel import (
+            TRAVEL_REPO_GIT,
+            copy_travel_fields,
+            travel_golden_path,
+        )
 
         golden = travel_golden_path(
             cfg,
@@ -334,10 +337,15 @@ def use_sample(
             serve_with=serve_with,
             version=version,
         )
+        from zeus_dev_helper_mcp.sample_ref import advertised_clone_command
+
         info = dict(SAMPLE_TRAVEL)
         info["sample"] = "travel"
         info["app_kind"] = "ui"
         info["private"] = False
+        travel_clone = advertised_clone_command(TRAVEL_REPO_GIT, golden)
+        if travel_clone:
+            info["clone"] = travel_clone
         payload: dict[str, Any] = {
             "ok": bool(golden.get("ok")),
             "sample": info,
@@ -364,7 +372,12 @@ def use_sample(
 
         copy_serve_choice(golden, payload)
         return _with_sample_build(cfg, payload, "travel")
-    from zeus_dev_helper_mcp.beer import SAMPLE_BEER, ensure_beer_sample, is_beer_sample
+    from zeus_dev_helper_mcp.beer import (
+        BEER_REPO_GIT,
+        SAMPLE_BEER,
+        ensure_beer_sample,
+        is_beer_sample,
+    )
 
     if is_beer_sample(sample):
         ensured = ensure_beer_sample(
@@ -375,8 +388,13 @@ def use_sample(
             serve_with=serve_with,
             version=version,
         )
+        from zeus_dev_helper_mcp.sample_ref import advertised_clone_command
+
         info = dict(SAMPLE_BEER)
         info["sample"] = "beer"
+        beer_clone = advertised_clone_command(BEER_REPO_GIT, ensured)
+        if beer_clone:
+            info["clone"] = beer_clone
         info["app_kind"] = "ui"
         info["track"] = "ui-direct"
         llm_required = bool(ensured.get("llm_required", False))
@@ -490,8 +508,12 @@ def use_sample(
                 "When parent_dir is set, the clone is created there. "
                 "Do not pass sample=yelp (multi-agent handoff)."
             ),
-            "clone": f"git clone --depth 1 {YELP_REPO_GIT}",
         }
+        from zeus_dev_helper_mcp.sample_ref import advertised_clone_command
+
+        yelp_clone = advertised_clone_command(YELP_REPO_GIT, ensured)
+        if yelp_clone:
+            info["clone"] = yelp_clone
         payload = {
             "ok": bool(ensured.get("ok")),
             "sample": info,

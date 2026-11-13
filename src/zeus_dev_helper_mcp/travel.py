@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess  # noqa: F401  # tests patch this; sample_ref uses the same module
 from pathlib import Path
 from typing import Any
 
@@ -205,15 +204,12 @@ def clone_travel_sample(
             "next_action": "Choose a writable parent directory",
         }
 
-    manual = "clone manually and set DEMO_TRAVEL_SAMPLE_DIR"
     return shallow_clone_ref(
         dest=dest,
         repo_url=repo_url,
         version=version,
         timeout_s=timeout_s,
-        git_missing_next=f"Install git, or {manual}",
-        timeout_next="Retry use_sample or clone manually",
-        failed_next=f"Fix network/git access, or {manual}",
+        env_name=ENV_TRAVEL_DIR,
     )
 
 
@@ -869,13 +865,14 @@ def travel_golden_path(
     else:
         next_action = ensured.get("next_action") or "use_sample to clone demo_travel_sample"
 
+    from zeus_dev_helper_mcp.sample_ref import advertised_clone_command
+
     payload = {
         "ok": bool(ensured.get("ok")),
         "sample": "travel",
         "repo": TRAVEL_REPO,
         "private": False,
-        "clone": (ensured.get("clone") or {}).get("clone_cmd")
-        or f"git clone --depth 1 {TRAVEL_REPO_GIT}",
+        "clone": advertised_clone_command(TRAVEL_REPO_GIT, ensured),
         "cloned": bool(ensured.get("cloned")),
         "project_name": ensured.get("project_name"),
         "local_dir": str(root) if root else None,
