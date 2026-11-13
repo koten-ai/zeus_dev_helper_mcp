@@ -356,7 +356,9 @@ def test_travel_connection_schema_has_no_couchbase_fields(tmp_path, monkeypatch)
     assert "couchbase" not in json.dumps(request.params.requested_schema)
 
 
-def test_yelp_create_asks_connection_then_couchbase_then_llm(tmp_path, monkeypatch) -> None:
+def test_yelp_create_asks_connection_then_couchbase_then_server_then_llm(
+    tmp_path, monkeypatch
+) -> None:
     from zeus_dev_helper_mcp.server import create_mcp_server
     from zeus_dev_helper_mcp.yelp import apply_couchbase_env as real_apply
 
@@ -376,6 +378,7 @@ def test_yelp_create_asks_connection_then_couchbase_then_llm(tmp_path, monkeypat
         seen["url"] = gate.couchbase_query_url
         seen["user"] = gate.couchbase_username
         seen["flag"] = gate.couchbase_password_in_env
+        seen["server"] = gate.server
         assert SECRET not in repr(gate)
         return real_apply(payload, gate)
 
@@ -410,22 +413,42 @@ def test_yelp_create_asks_connection_then_couchbase_then_llm(tmp_path, monkeypat
     assert "COUCHBASE_PASSWORD" in props["couchbase_password_in_env"]["description"]
     assert "Do not type the password" in card.params.message
     assert SECRET not in card.params.message
+    couchbase_answer = {
+        "couchbase_query_url": "http://127.0.0.1:8093",
+        "couchbase_username": "cb-admin",
+        "couchbase_password_in_env": False,
+    }
     third = _respond(
         server,
         args,
         second.request_state,
         {
             conn_key: _accept(_CONN),
-            cb_key: _accept(
-                {
-                    "couchbase_query_url": "http://127.0.0.1:8093",
-                    "couchbase_username": "cb-admin",
-                    "couchbase_password_in_env": False,
-                }
-            ),
+            cb_key: _accept(couchbase_answer),
         },
     )
-    llm_key, llm = _pending(third)
+    server_key, server_card = _pending(third)
+    server_schema = server_card.params.requested_schema
+    assert set(server_schema) <= {"$schema", "type", "properties", "required"}
+    assert "title" not in server_schema
+    server_props = server_schema["properties"]
+    assert set(server_props) == {"server"}
+    assert server_props["server"]["default"] == "docker"
+    assert server_props["server"]["enum"] == ["docker", "python"]
+    assert "one option" in server_props["server"]["description"]
+    assert "python -m local_guide" in server_props["server"]["description"]
+    assert "npm run dev" in server_props["server"]["description"]
+    fourth = _respond(
+        server,
+        args,
+        third.request_state,
+        {
+            conn_key: _accept(_CONN),
+            cb_key: _accept(couchbase_answer),
+            server_key: _accept({"server": server_props["server"]["default"]}),
+        },
+    )
+    llm_key, llm = _pending(fourth)
     assert set(llm.params.requested_schema["properties"]) == {
         "llm_provider",
         "llm_model",
@@ -435,16 +458,11 @@ def test_yelp_create_asks_connection_then_couchbase_then_llm(tmp_path, monkeypat
     result = _respond(
         server,
         args,
-        third.request_state,
+        fourth.request_state,
         {
             conn_key: _accept(_CONN),
-            cb_key: _accept(
-                {
-                    "couchbase_query_url": "http://127.0.0.1:8093",
-                    "couchbase_username": "cb-admin",
-                    "couchbase_password_in_env": False,
-                }
-            ),
+            cb_key: _accept(couchbase_answer),
+            server_key: _accept({"server": server_props["server"]["default"]}),
             llm_key: _accept(
                 {
                     "llm_provider": llm_props["llm_provider"]["default"],
@@ -459,6 +477,7 @@ def test_yelp_create_asks_connection_then_couchbase_then_llm(tmp_path, monkeypat
     assert seen["url"] == "http://127.0.0.1:8093"
     assert seen["user"] == "cb-admin"
     assert seen["flag"] is False
+    assert seen["server"] == "docker"
     env_text = (root / ".env").read_text(encoding="utf-8")
     assert "COUCHBASE_QUERY_URL=http://127.0.0.1:8093" in env_text
     assert "COUCHBASE_USERNAME=cb-admin" in env_text
@@ -466,7 +485,10 @@ def test_yelp_create_asks_connection_then_couchbase_then_llm(tmp_path, monkeypat
     assert body["settings_written"] == ["COUCHBASE_QUERY_URL", "COUCHBASE_USERNAME"]
     assert body["secret_presence"] == _presence(password=True)
     assert "Fill COUCHBASE_PASSWORD" in body["next_action"]
-    assert "python -m local_guide" in body["next_action"]
+    assert "DOCKER_BUILDKIT=1 docker compose up -d --build" in body["run"]
+    assert "DOCKER_BUILDKIT=1 docker compose up -d --build" in body["next_action"]
+    assert "http://localhost:3000" in body["next_action"]
+    assert "before python -m local_guide" not in body["next_action"]
     blob = json.dumps(body)
     assert SECRET not in blob
     config = (root / "config.json").read_text(encoding="utf-8")
@@ -479,6 +501,55 @@ def test_yelp_create_asks_connection_then_couchbase_then_llm(tmp_path, monkeypat
     )
     assert SECRET not in state_text
     assert (tmp_path / "state" / "yelp-demo-build.md").is_file()
+
+
+def test_yelp_server_decline_or_cancel_does_not_create(tmp_path, monkeypatch) -> None:
+    from mcp_types import ElicitResult
+
+    from zeus_dev_helper_mcp.server import create_mcp_server
+
+    root = _prepare_yelp_tree(tmp_path, monkeypatch, env_text="KEEP=yes\n")
+    before = (root / ".env").read_text(encoding="utf-8")
+    server = create_mcp_server(["core"])
+    args = {"sample": "yelpdemo", "sample_dir": str(root)}
+    couchbase_answer = {
+        "couchbase_query_url": "http://127.0.0.1:8093",
+        "couchbase_username": "cb-admin",
+        "couchbase_password_in_env": True,
+    }
+
+    def _stop(action: str) -> dict[str, Any]:
+        first = _yelp_call(server, args)
+        conn_key, _conn = _pending(first)
+        second = _respond(server, args, first.request_state, {conn_key: _accept(_CONN)})
+        cb_key, _card = _pending(second)
+        third = _respond(
+            server,
+            args,
+            second.request_state,
+            {conn_key: _accept(_CONN), cb_key: _accept(couchbase_answer)},
+        )
+        server_key, card = _pending(third)
+        assert card.params.requested_schema["properties"]["server"]["default"] == "docker"
+        stopped = _respond(
+            server,
+            args,
+            third.request_state,
+            {
+                conn_key: _accept(_CONN),
+                cb_key: _accept(couchbase_answer),
+                server_key: ElicitResult(action=action),
+            },
+        )
+        return _structured(stopped)
+
+    for action in ("decline", "cancel"):
+        body = _stop(action)
+        assert body["ok"] is False
+        assert body["written"] is False
+        assert "The app was not created" in body["next_action"]
+        assert (root / ".env").read_text(encoding="utf-8") == before
+        assert not (tmp_path / "state" / "yelp-demo-build.md").exists()
 
 
 def test_yelp_couchbase_decline_and_userinfo_write_nothing(tmp_path, monkeypatch) -> None:

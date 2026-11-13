@@ -672,10 +672,7 @@ def _sync_catalog_checklist(cfg: HelperConfig, root: Path | None) -> None:
 
 
 def _serve_choice_block(
-    cfg: HelperConfig,
-    root: Path,
-    serve_with: str,
-    state: str,
+    cfg: HelperConfig, root: Path, serve_with: str, state: str, base: str,
 ) -> dict[str, Any] | None:
     """Stop before Python starts when the user has not chosen, or chose Docker."""
     from zeus_dev_helper_mcp.serve_choice import (
@@ -686,8 +683,12 @@ def _serve_choice_block(
         serve_options,
         stored_serve_with,
     )
+    from zeus_dev_helper_mcp.yelp import yelp_serve_guide
 
     parsed, valid = parse_serve_with(serve_with)
+    guide = yelp_serve_guide(cfg, root, parsed, state, base) if valid and _is_yelp_app(root) else None
+    if guide is not None:
+        return _result(**guide)
     if not valid:
         return _result(
             failure_class="serve_choice_unavailable",
@@ -776,7 +777,7 @@ def _run_website_green(
                 "Do not start another process on this port."
             ),
         )
-    choice_block = _serve_choice_block(cfg, root, serve_with, state)
+    choice_block = _serve_choice_block(cfg, root, serve_with, state, base)
     if choice_block is not None:
         if choice_block.get("url") in ("", None):
             choice_block["url"] = base

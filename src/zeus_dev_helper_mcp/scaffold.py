@@ -457,6 +457,7 @@ def use_sample(
             project_name=project_name,
             parent_dir=parent_dir,
             clone_if_missing=clone_if_missing,
+            serve_with=serve_with,
         )
         layout = ensured.get("layout") or {}
         if ensured.get("ok") and layout.get("ok"):
@@ -476,7 +477,9 @@ def use_sample(
             "app_kind": "ui",
             "note": (
                 "Yelp demo UI. The git checkout at local_dir is the LocalAI template from "
-                "https://github.com/koten-ai/demo_yelp. Run it. "
+                "https://github.com/koten-ai/demo_yelp. "
+                "Docker is the preferred elicitation option. "
+                "The other option is both host processes. "
                 "Do not scaffold a replacement and do not copy demo_beer_sample. "
                 "When parent_dir is set, the clone is created there. "
                 "Do not pass sample=yelp (multi-agent handoff)."
@@ -503,6 +506,10 @@ def use_sample(
             "checklist_hint": "Mark 3.1 done after the yelp demo clone or reuse",
             "do_not": ensured.get("do_not"),
         }
+        if ensured.get("run"):
+            payload["run"] = ensured["run"]
+        if ensured.get("serve_with"):
+            payload["serve_with"] = ensured["serve_with"]
         local = payload.get("local_dir")
         if payload.get("ok") and local:
             from zeus_dev_helper_mcp.serve_choice import annotate_serve_choice
