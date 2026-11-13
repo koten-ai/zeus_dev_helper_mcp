@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -198,12 +197,18 @@ def clone_yelp_sample(
     dest: Path,
     repo_url: str = YELP_REPO_GIT,
     timeout_s: int = 120,
+    version: str = "",
 ) -> dict[str, Any]:
     """Shallow-clone demo_yelp into dest (dest must not exist yet).
 
     The repo may be private. The clone URL carries no token. Failure tells the
-    caller to clone manually and set DEMO_YELP_SAMPLE_DIR.
+    caller to clone manually and set DEMO_YELP_SAMPLE_DIR. ``version`` names a
+    tag. A tag that exists is cloned exactly. An empty version or a missing tag
+    uses the latest semver tag. ``main`` is used only when the remote has no
+    semver tags. An existing checkout is not retargeted.
     """
+    from zeus_dev_helper_mcp.sample_ref import shallow_clone_ref
+
     dest = dest.expanduser().resolve()
     if dest.exists():
         return {
@@ -225,53 +230,13 @@ def clone_yelp_sample(
             "next_action": "Choose a writable parent directory",
         }
 
-    cmd = ["git", "clone", "--depth", "1", repo_url, str(dest)]
-    manual = f"clone manually and set {ENV_YELP_DIR}"
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
-        )
-    except FileNotFoundError:
-        return {
-            "ok": False,
-            "cloned": False,
-            "dest": str(dest),
-            "error": "git not found on PATH",
-            "next_action": f"Install git, or {manual}",
-            "clone_cmd": " ".join(cmd),
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "ok": False,
-            "cloned": False,
-            "dest": str(dest),
-            "error": f"git clone timed out after {timeout_s}s",
-            "next_action": f"Retry use_sample or {manual}",
-            "clone_cmd": " ".join(cmd),
-        }
-
-    if proc.returncode != 0 or not dest.is_dir():
-        err = (proc.stderr or proc.stdout or "").strip()[:800]
-        return {
-            "ok": False,
-            "cloned": False,
-            "dest": str(dest),
-            "error": err or f"git clone failed (exit {proc.returncode})",
-            "next_action": f"Fix network/git access, or {manual}",
-            "clone_cmd": " ".join(cmd),
-        }
-
-    return {
-        "ok": True,
-        "cloned": True,
-        "dest": str(dest),
-        "repo": repo_url,
-        "clone_cmd": " ".join(cmd),
-    }
+    return shallow_clone_ref(
+        dest=dest,
+        repo_url=repo_url,
+        version=version,
+        timeout_s=timeout_s,
+        env_name=ENV_YELP_DIR,
+    )
 
 
 def _resolve_clone_dest(
@@ -464,6 +429,7 @@ def ensure_yelp_sample(
     parent_dir: str = "",
     clone_if_missing: bool = True,
     serve_with: str = "",
+    version: str = "",
 ) -> dict[str, Any]:
     """Locate the LocalAI demo_yelp template or clone it; set DEMO_YELP_SAMPLE_DIR.
 
@@ -489,7 +455,7 @@ def ensure_yelp_sample(
     if pin_parent:
         found = dest if dest.is_dir() else None
         if found is None and clone_if_missing:
-            clone_info = clone_yelp_sample(dest=dest)
+            clone_info = clone_yelp_sample(dest=dest, version=version)
             if clone_info.get("ok"):
                 found = dest
             else:
@@ -521,7 +487,7 @@ def ensure_yelp_sample(
     else:
         found = dest if dest.is_dir() else None
         if found is None and clone_if_missing:
-            clone_info = clone_yelp_sample(dest=dest)
+            clone_info = clone_yelp_sample(dest=dest, version=version)
             if clone_info.get("ok"):
                 found = dest
             else:
@@ -593,6 +559,10 @@ def ensure_yelp_sample(
             else _ready_next_action(env_path, images, serve_with=choice)
         ),
     }
+    if clone_info and clone_info.get("cloned"):
+        result["requested_version"] = clone_info.get("requested_version", "")
+        if clone_info.get("ref"):
+            result["ref"] = clone_info["ref"]
     if choice == "docker":
         result["serve_with"] = "docker"
         result["run"] = YELP_DOCKER_COMMAND

@@ -104,6 +104,12 @@ def _plant(dest: Path, *, env: str = "") -> None:
 def _fake_clone(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(cmd, **kwargs):
         del kwargs
+        if "ls-remote" in list(cmd):
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stderr = ""
+            proc.stdout = ""
+            return proc
         dest = Path(cmd[-1])
         _plant(dest)
         proc = MagicMock()
@@ -112,7 +118,7 @@ def _fake_clone(monkeypatch: pytest.MonkeyPatch) -> None:
         proc.stdout = ""
         return proc
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.beer.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
 
 
 def _assert_no_secrets(payload: dict) -> None:

@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from zeus_dev_helper_mcp.checklist import load_checklist
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.explain import explain_topic
@@ -60,7 +62,15 @@ def test_clone_yelp_sample_success(tmp_path: Path, monkeypatch) -> None:
     seen: dict[str, list[str]] = {}
 
     def fake_run(cmd, **kwargs):
-        seen["cmd"] = list(cmd)
+        del kwargs
+        cmd = list(cmd)
+        if "ls-remote" in cmd:
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stderr = ""
+            proc.stdout = ""
+            return proc
+        seen["cmd"] = cmd
         _write_layout(dest)
         proc = MagicMock()
         proc.returncode = 0
@@ -68,19 +78,25 @@ def test_clone_yelp_sample_success(tmp_path: Path, monkeypatch) -> None:
         proc.stdout = "Cloning...\n"
         return proc
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.yelp.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
     out = clone_yelp_sample(dest=dest)
     assert out["ok"] is True
     assert out["cloned"] is True
+    assert out["ref"] == "main"
     assert dest.is_dir()
-    assert seen["cmd"][:4] == ["git", "clone", "--depth", "1"]
-    assert seen["cmd"][4] == YELP_REPO_GIT
+    assert seen["cmd"][:6] == ["git", "clone", "--depth", "1", "--branch", "main"]
+    assert seen["cmd"][6] == YELP_REPO_GIT
 
 
-def test_clone_yelp_sample_dest_exists(tmp_path: Path) -> None:
+def test_clone_yelp_sample_dest_exists(tmp_path: Path, monkeypatch) -> None:
     dest = tmp_path / "demo_yelp"
     dest.mkdir()
-    out = clone_yelp_sample(dest=dest)
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("git was called")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", boom)
+    out = clone_yelp_sample(dest=dest, version="0.1.0")
     assert out["ok"] is False
     assert out["cloned"] is False
 
@@ -92,6 +108,13 @@ def test_ensure_clones_and_sets_env(tmp_path: Path, monkeypatch) -> None:
     dest = parent / "my_yelp_boot"
 
     def fake_run(cmd, **kwargs):
+        del kwargs
+        if "ls-remote" in list(cmd):
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stderr = ""
+            proc.stdout = ""
+            return proc
         _write_layout(dest)
         proc = MagicMock()
         proc.returncode = 0
@@ -99,7 +122,7 @@ def test_ensure_clones_and_sets_env(tmp_path: Path, monkeypatch) -> None:
         proc.stdout = ""
         return proc
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.yelp.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
     monkeypatch.setattr(
         "zeus_dev_helper_mcp.yelp._find_yelp_dir",
         lambda explicit="", cfg=None: None,
@@ -133,7 +156,7 @@ def test_ensure_uses_existing_sample_dir(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr("zeus_dev_helper_mcp.yelp.clone_yelp_sample", no_clone)
     cfg = _cfg(tmp_path)
-    out = ensure_yelp_sample(cfg, sample_dir=str(root))
+    out = ensure_yelp_sample(cfg, sample_dir=str(root), version="0.2.0")
     assert out["ok"] is True
     assert out["cloned"] is False
     assert called["n"] == 0
@@ -146,6 +169,13 @@ def test_use_sample_yelp_demo_passes_project_name(tmp_path: Path, monkeypatch) -
     dest = parent / "BootYelp"
 
     def fake_run(cmd, **kwargs):
+        del kwargs
+        if "ls-remote" in list(cmd):
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stderr = ""
+            proc.stdout = ""
+            return proc
         _write_layout(dest)
         proc = MagicMock()
         proc.returncode = 0
@@ -153,7 +183,7 @@ def test_use_sample_yelp_demo_passes_project_name(tmp_path: Path, monkeypatch) -
         proc.stdout = ""
         return proc
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.yelp.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
     monkeypatch.setattr(
         "zeus_dev_helper_mcp.yelp._find_yelp_dir",
         lambda explicit="", cfg=None: None,
@@ -206,7 +236,7 @@ def test_failed_clone_does_not_fall_through(tmp_path: Path, monkeypatch) -> None
         proc.stdout = ""
         return proc
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.yelp.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
     cfg = _cfg(tmp_path)
     out = use_sample(cfg, sample="demo_yelp", parent_dir=str(parent))
     assert out["ok"] is False
@@ -368,6 +398,14 @@ def test_parent_dir_clones_instead_of_outside_checkout(tmp_path: Path, monkeypat
     )
 
     def fake_run(cmd, **kwargs):
+        del kwargs
+        cmd = list(cmd)
+        if "ls-remote" in cmd:
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stderr = ""
+            proc.stdout = ""
+            return proc
         assert cmd[-1] == str(dest.resolve())
         _write_layout(dest)
         proc = MagicMock()
@@ -376,7 +414,7 @@ def test_parent_dir_clones_instead_of_outside_checkout(tmp_path: Path, monkeypat
         proc.stdout = ""
         return proc
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.yelp.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
     cfg = _cfg(tmp_path)
     out = use_sample(
         cfg,
@@ -415,7 +453,7 @@ def test_parent_dir_clone_failure_names_outside_checkout(
         proc.stdout = ""
         return proc
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.yelp.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
     cfg = _cfg(tmp_path)
     out = ensure_yelp_sample(cfg, project_name="demo_yelp", parent_dir=str(parent))
     assert out["ok"] is False
@@ -805,3 +843,27 @@ def test_accepted_server_recommends_docker_or_both_host_processes(
     assert bare.get("sample") == "yelp"
     assert YELP_DOCKER_COMMAND not in json.dumps(bare)
     assert python_out["serve_with"] == "python"
+
+
+def test_use_sample_passes_version_to_yelp_clone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_clone(**kwargs):
+        seen.update(kwargs)
+        return {"ok": False, "cloned": False, "error": "stop", "next_action": "stop"}
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.yelp.clone_yelp_sample", fake_clone)
+    monkeypatch.setattr(
+        "zeus_dev_helper_mcp.yelp._find_yelp_dir",
+        lambda explicit="", cfg=None: None,
+    )
+    out = use_sample(
+        _cfg(tmp_path),
+        sample="demo_yelp",
+        parent_dir=str(tmp_path),
+        project_name="fresh-yelp",
+        version="0.1.0",
+    )
+    assert seen["version"] == "0.1.0"
+    assert out.get("failure_class") == "clone_failed" or out["ok"] is False
+

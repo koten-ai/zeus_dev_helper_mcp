@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +75,8 @@ TRAVEL_RESULT_KEYS = (
     "written",
     "run",
     "error",
+    "requested_version",
+    "ref",
 )
 
 
@@ -172,8 +173,16 @@ def clone_travel_sample(
     dest: Path,
     repo_url: str = TRAVEL_REPO_GIT,
     timeout_s: int = 120,
+    version: str = "",
 ) -> dict[str, Any]:
-    """Shallow-clone public demo_travel_sample into dest (dest must not exist yet)."""
+    """Shallow-clone public demo_travel_sample into dest (dest must not exist yet).
+
+    ``version`` names a tag. A tag that exists is cloned exactly. An empty
+    version or a missing tag uses the latest semver tag. ``main`` is used only
+    when the remote has no semver tags. An existing checkout is not retargeted.
+    """
+    from zeus_dev_helper_mcp.sample_ref import shallow_clone_ref
+
     dest = dest.expanduser().resolve()
     if dest.exists():
         return {
@@ -195,52 +204,13 @@ def clone_travel_sample(
             "next_action": "Choose a writable parent directory",
         }
 
-    cmd = ["git", "clone", "--depth", "1", repo_url, str(dest)]
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
-        )
-    except FileNotFoundError:
-        return {
-            "ok": False,
-            "cloned": False,
-            "dest": str(dest),
-            "error": "git not found on PATH",
-            "next_action": "Install git, or clone manually and set DEMO_TRAVEL_SAMPLE_DIR",
-            "clone_cmd": " ".join(cmd),
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "ok": False,
-            "cloned": False,
-            "dest": str(dest),
-            "error": f"git clone timed out after {timeout_s}s",
-            "next_action": "Retry use_sample or clone manually",
-            "clone_cmd": " ".join(cmd),
-        }
-
-    if proc.returncode != 0 or not dest.is_dir():
-        err = (proc.stderr or proc.stdout or "").strip()[:800]
-        return {
-            "ok": False,
-            "cloned": False,
-            "dest": str(dest),
-            "error": err or f"git clone failed (exit {proc.returncode})",
-            "next_action": "Fix network/git access, or clone manually and set DEMO_TRAVEL_SAMPLE_DIR",
-            "clone_cmd": " ".join(cmd),
-        }
-
-    return {
-        "ok": True,
-        "cloned": True,
-        "dest": str(dest),
-        "repo": repo_url,
-        "clone_cmd": " ".join(cmd),
-    }
+    return shallow_clone_ref(
+        dest=dest,
+        repo_url=repo_url,
+        version=version,
+        timeout_s=timeout_s,
+        env_name=ENV_TRAVEL_DIR,
+    )
 
 
 def _resolve_clone_dest(
@@ -486,6 +456,10 @@ def _checkout_result(
         "repo": TRAVEL_REPO,
         "private": False,
     }
+    if clone_info and clone_info.get("cloned"):
+        result["requested_version"] = clone_info.get("requested_version", "")
+        if clone_info.get("ref"):
+            result["ref"] = clone_info["ref"]
     result.update(extra)
     return result
 
@@ -516,6 +490,7 @@ def ensure_travel_sample(
     project_name: str = "",
     parent_dir: str = "",
     clone_if_missing: bool = True,
+    version: str = "",
 ) -> dict[str, Any]:
     """Clone public demo_travel_sample when the destination is missing.
 
@@ -586,9 +561,9 @@ def ensure_travel_sample(
             blocked["cloned"] = False
             blocked["repo"] = TRAVEL_REPO
             return blocked
-        clone_info = clone_travel_sample(dest=dest)
+        clone_info = clone_travel_sample(dest=dest, version=version)
         if not clone_info.get("ok"):
-            return {
+            failed: dict[str, Any] = {
                 "ok": False,
                 "local_dir": str(dest),
                 "cloned": False,
@@ -596,6 +571,7 @@ def ensure_travel_sample(
                 "failure_class": "clone_failed",
                 "project_name": dir_name,
                 "clone": clone_info,
+                "requested_version": clone_info.get("requested_version", ""),
                 "env": {ENV_TRAVEL_DIR: None},
                 "error": clone_info.get("error"),
                 "next_action": clone_info.get("next_action")
@@ -603,6 +579,9 @@ def ensure_travel_sample(
                 "repo": TRAVEL_REPO,
                 "private": False,
             }
+            if clone_info.get("ref"):
+                failed["ref"] = clone_info["ref"]
+            return failed
     elif not looks_like_travel_sample(dest):
         return _foreign_travel_result(dest)
 
@@ -788,6 +767,7 @@ def travel_golden_path(
     parent_dir: str = "",
     clone_if_missing: bool = True,
     serve_with: str = "",
+    version: str = "",
 ) -> dict[str, Any]:
     """Locate or clone public demo_travel_sample; validate layout; set DEMO_TRAVEL_SAMPLE_DIR."""
     ensured = ensure_travel_sample(
@@ -796,6 +776,7 @@ def travel_golden_path(
         project_name=project_name,
         parent_dir=parent_dir,
         clone_if_missing=clone_if_missing,
+        version=version,
     )
     root_s = ensured.get("local_dir")
     root = Path(root_s) if root_s else None
@@ -884,13 +865,14 @@ def travel_golden_path(
     else:
         next_action = ensured.get("next_action") or "use_sample to clone demo_travel_sample"
 
+    from zeus_dev_helper_mcp.sample_ref import advertised_clone_command
+
     payload = {
         "ok": bool(ensured.get("ok")),
         "sample": "travel",
         "repo": TRAVEL_REPO,
         "private": False,
-        "clone": (ensured.get("clone") or {}).get("clone_cmd")
-        or f"git clone --depth 1 {TRAVEL_REPO_GIT}",
+        "clone": advertised_clone_command(TRAVEL_REPO_GIT, ensured),
         "cloned": bool(ensured.get("cloned")),
         "project_name": ensured.get("project_name"),
         "local_dir": str(root) if root else None,

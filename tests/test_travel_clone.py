@@ -10,7 +10,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from zeus_dev_helper_mcp.checklist import load_checklist, save_checklist, set_item_status
+from zeus_dev_helper_mcp.checklist import (
+    load_checklist,
+    save_checklist,
+    set_item_status,
+)
 from zeus_dev_helper_mcp.config import HelperConfig
 from zeus_dev_helper_mcp.scaffold import use_sample
 from zeus_dev_helper_mcp.travel import (
@@ -40,6 +44,13 @@ def test_clone_travel_sample_success(tmp_path: Path, monkeypatch) -> None:
     dest = tmp_path / "demo_travel_sample"
 
     def fake_run(cmd, **kwargs):
+        del kwargs
+        if "ls-remote" in list(cmd):
+            m = MagicMock()
+            m.returncode = 0
+            m.stderr = ""
+            m.stdout = ""
+            return m
         dest.mkdir(parents=True)
         (dest / "README.md").write_text("# demo\n", encoding="utf-8")
         (dest / "requirements.txt").write_text("x\n", encoding="utf-8")
@@ -49,17 +60,23 @@ def test_clone_travel_sample_success(tmp_path: Path, monkeypatch) -> None:
         m.stdout = "Cloning...\n"
         return m
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
     out = clone_travel_sample(dest=dest)
     assert out["ok"] is True
     assert out["cloned"] is True
+    assert out["ref"] == "main"
     assert dest.is_dir()
 
 
-def test_clone_travel_sample_dest_exists(tmp_path: Path) -> None:
+def test_clone_travel_sample_dest_exists(tmp_path: Path, monkeypatch) -> None:
     dest = tmp_path / "demo_travel_sample"
     dest.mkdir()
-    out = clone_travel_sample(dest=dest)
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("git was called")
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", boom)
+    out = clone_travel_sample(dest=dest, version="0.1.0")
     assert out["ok"] is False
     assert out["cloned"] is False
 
@@ -71,6 +88,13 @@ def test_ensure_clones_and_sets_env(tmp_path: Path, monkeypatch) -> None:
     dest = parent / "my_travel_boot"
 
     def fake_run(cmd, **kwargs):
+        del kwargs
+        if "ls-remote" in list(cmd):
+            m = MagicMock()
+            m.returncode = 0
+            m.stderr = ""
+            m.stdout = ""
+            return m
         dest.mkdir(parents=True)
         (dest / "README.md").write_text("# demo\n", encoding="utf-8")
         (dest / "pyproject.toml").write_text("[project]\nname='t'\n", encoding="utf-8")
@@ -80,7 +104,7 @@ def test_ensure_clones_and_sets_env(tmp_path: Path, monkeypatch) -> None:
         m.stdout = ""
         return m
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
     # Avoid discovering real sibling demo_travel_sample on this machine.
     monkeypatch.setattr(
         "zeus_dev_helper_mcp.travel._find_travel_dir",
@@ -116,7 +140,7 @@ def test_ensure_uses_existing_sample_dir(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr("zeus_dev_helper_mcp.travel.clone_travel_sample", no_clone)
     cfg = _cfg(tmp_path)
-    out = ensure_travel_sample(cfg, sample_dir=str(root))
+    out = ensure_travel_sample(cfg, sample_dir=str(root), version="0.2.0")
     assert out["ok"] is True
     assert out["cloned"] is False
     assert called["n"] == 0
@@ -129,6 +153,13 @@ def test_use_sample_passes_project_name(tmp_path: Path, monkeypatch) -> None:
     dest = parent / "BootApp"
 
     def fake_run(cmd, **kwargs):
+        del kwargs
+        if "ls-remote" in list(cmd):
+            m = MagicMock()
+            m.returncode = 0
+            m.stderr = ""
+            m.stdout = ""
+            return m
         dest.mkdir(parents=True)
         (dest / "README.md").write_text("# demo\n", encoding="utf-8")
         (dest / "src").mkdir()
@@ -138,7 +169,7 @@ def test_use_sample_passes_project_name(tmp_path: Path, monkeypatch) -> None:
         m.stdout = ""
         return m
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
     monkeypatch.setattr(
         "zeus_dev_helper_mcp.travel._find_travel_dir",
         lambda explicit="", cfg=None: None,
@@ -207,7 +238,14 @@ def test_foreign_default_directory_clones_the_next_sibling(
 
     def fake_run(cmd, **kwargs):
         del kwargs
-        seen["cmd"] = list(cmd)
+        cmd = list(cmd)
+        if "ls-remote" in cmd:
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stderr = ""
+            proc.stdout = ""
+            return proc
+        seen["cmd"] = cmd
         dest = Path(cmd[-1])
         _layout(dest)
         proc = MagicMock()
@@ -216,7 +254,7 @@ def test_foreign_default_directory_clones_the_next_sibling(
         proc.stdout = ""
         return proc
 
-    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", fake_run)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", fake_run)
     out = ensure_travel_sample(_cfg(tmp_path), parent_dir=str(parent))
     assert out["ok"] is True
     assert out["cloned"] is True
@@ -230,6 +268,13 @@ def test_foreign_default_directory_clones_the_next_sibling(
 
 def _clone_into_layout(cmd, **kwargs):
     del kwargs
+    cmd = list(cmd)
+    if "ls-remote" in cmd:
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.stderr = ""
+        proc.stdout = ""
+        return proc
     dest = Path(cmd[-1])
     _layout(dest)
     proc = MagicMock()
@@ -250,7 +295,7 @@ def test_python_tree_without_travel_planner_is_relocated(
     (foreign / "README.md").write_text("# other app\n", encoding="utf-8")
     (foreign / "src" / "other_app").mkdir(parents=True)
     (foreign / "requirements.txt").write_text("flask\n", encoding="utf-8")
-    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", _clone_into_layout)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", _clone_into_layout)
     out = ensure_travel_sample(_cfg(tmp_path), parent_dir=str(parent))
     assert out["ok"] is True
     assert Path(out["local_dir"]).name == "demo_travel_sample-2"
@@ -266,7 +311,7 @@ def test_travel_planner_without_readme_is_relocated(
     foreign = parent / "demo_travel_sample"
     (foreign / "src" / "travel_planner").mkdir(parents=True)
     (foreign / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
-    monkeypatch.setattr("zeus_dev_helper_mcp.travel.subprocess.run", _clone_into_layout)
+    monkeypatch.setattr("zeus_dev_helper_mcp.sample_ref.subprocess.run", _clone_into_layout)
     out = ensure_travel_sample(_cfg(tmp_path), parent_dir=str(parent))
     assert out["ok"] is True
     assert Path(out["local_dir"]).name == "demo_travel_sample-2"
@@ -497,3 +542,23 @@ def test_bound_travel_next_step_uses_website_green_without_handoff(
     assert "handoff_to_multi" not in after["post_green"]["suggested_tools"]
     assert "jobs.host_url is not written" in after["post_green"]["note"]
     assert "handoff_to_multi" not in json.dumps(after["post_green"]["suggested_tools"])
+
+
+def test_use_sample_passes_version_to_travel_clone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_clone(**kwargs):
+        seen.update(kwargs)
+        return {"ok": False, "cloned": False, "error": "stop", "next_action": "stop"}
+
+    monkeypatch.setattr("zeus_dev_helper_mcp.travel.clone_travel_sample", fake_clone)
+    out = use_sample(
+        _cfg(tmp_path),
+        sample="travel",
+        parent_dir=str(tmp_path),
+        project_name="fresh-travel",
+        version="0.1.0",
+    )
+    assert seen["version"] == "0.1.0"
+    assert out.get("failure_class") == "clone_failed"
+
